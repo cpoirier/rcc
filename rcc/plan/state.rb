@@ -12,6 +12,7 @@ require "rcc/environment.rb"
 require "rcc/model/rule.rb"
 require "rcc/model/form.rb"
 require "rcc/plan/item.rb"
+require "rcc/plan/actions/action.rb"
 require "rcc/util/ordered_hash.rb"
 
 module RCC
@@ -42,23 +43,29 @@ module Plan
       attr_reader :signature
       attr_reader :state_number
       attr_reader :items
+      attr_reader :transitions
+      attr_reader :reductions
+      attr_reader :actions
+      attr_reader :conflicts
       
       def initialize( state_number, start_items = [], context_state = nil  )
-         @state_number = state_number
-         @items        = [] 
-         @start_items  = [] 
-         @closed       = false
-         @signature    = nil
-         @transitions  = {}
-         @reductions   = []
-         @queue        = []
+         @state_number = state_number    # The number of this State within the overall ParserPlan
+         @items        = []              # All Items in this State
+         @start_items  = []              # The Items that started this State (ie. weren't added by close())
+         @closed       = false           # A flag indicating that close() has been called
+         @signature    = nil             # A representation of this State that will be common to all mergable States
+         @transitions  = {}              # Symbol.name => State
+         @reductions   = []              # An array of complete? Items
+         @queue        = []              # A queue of unclosed Items in this State
+         @actions      = {}              # Symbol.name => Action
+         @conflicts    = {}              # Symbol.name => ???
 
-         @item_index   = {}
+         @item_index   = {}              # An index used to avoid duplication of Items within the State
          start_items.each do |item|
             add_item( item )
          end
          
-         @context_states = {} 
+         @context_states = {}            # States that refer to us via transitions or reductions
          @context_states[context_state.state_number] = true unless context_state.nil?
       end
       
@@ -254,7 +261,9 @@ module Plan
             # We only have (further) work to do if the Item has a non-terminal leader.  Our add_productions()
             # subsystem deals with adding/merging Items, as appropriate.
             
-            unless item.complete? or item.leader.terminal?
+            if item.complete? then
+               @reductions << item
+            elsif !item.leader.terminal?
                set_name_to_add = item.leader.name
                add_productions( production_sets[set_name_to_add], item, production_sets )
             end
@@ -335,9 +344,87 @@ module Plan
       end
       
       
+      #
+      # add_transition()
+      #  - registers a transition from this to another for the specified Symbol name
+      
       def add_transition( symbol_name, transition_state )
          @transitions[symbol_name] = transition_state
       end
+      
+            
+      #
+      # generate_actions()
+      #  - resolves conflicts and generates a list of actions for this State
+      
+      def generate_actions( production_sets, precedence_direction = -1 )
+         
+         #
+         # First, generate lists of options: Items grouped by la(1) Symbol name
+         
+         options = {}
+         @items.each do |item|
+            determinants = item.determinants( production_sets )
+            determinants.each do |determinant|
+               options[determinant] = [] unless options.member?(determinant)
+               options[determinant] << item
+            end
+         end
+         
+         #
+         # If there is only one option for an la(1) Symbol, life is good.  If there is more than one option, either we
+         # must increase the lookahead length, request backtracking, or do something arbitrary.  Associativity and
+         # precedence are the best "arbitrary" things to do.
+         
+         options.each do |symbol_name, items|
+            
+            #
+            # Choose an action for la() terminal
+
+            chosen_item = nil
+            if items.length == 1 then
+               chosen_item = items[0]
+            else
+               
+               #
+               # Choose the winner first.  Precedence trumps everything.  Associativity resolves precedence
+               # ambiguities.
+               
+               items.each do |item|
+                  if chosen_item.nil? then 
+                     chosen_item = item
+                  else
+                     if item.production.precedence * precedence_direction > chosen_item.production.precedence then
+                        
+                     
+                  end
+               end
+                  
+               
+               
+               #
+               # Then register the losers as conflicts.
+               
+            end
+            
+            #
+            # Build the action.
+            
+            if chosen_item.complete? then
+               @actions[symbol_name] = Actions::Reduce.new( chosen_item.production.number )
+            else
+               if chosen_item.leader.terminal? then
+                  @actions[symbol_name] = Actions::Shift.new( @transitions[symbol_name].state_number )
+               else
+                  @actions[symbol_name] = Actions::Goto.new( @transitions[symbol_name].state_number )
+               end
+            end
+         end
+         
+         
+      end
+      
+      
       
    
 
@@ -360,7 +447,7 @@ module Plan
          
          rows = []
          @items.each do |item|
-            rows << [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" "), item.complete? ? item.followers.join(" | ") : nil ]
+            rows << [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" "), item.complete? ? item.determinant.join(" | ") : nil ] # item.complete? ? item.determinant.join(" | ") : nil ]
          end
          
          #
@@ -386,7 +473,7 @@ module Plan
             if row[3].nil? then
                stream << indent << output << "\n"
             else
-               stream << indent << output << "   >>> " << row[3] << "\n"
+               stream << indent << output << "   >>> Reduce if >>> " << row[3] << "\n"
             end
          end
 
@@ -405,7 +492,7 @@ module Plan
          
          unless @reductions.empty?
             @reductions.each do |item|
-               stream << indent << sprintf( "   Reduce rule #{item.production.output} => #{item.production.symbols}" ) 
+               stream << indent << sprintf( "   Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" ) 
                stream << " (*)" if item.object_id == @chosen_reduction.object_id
                stream << "\n"
             end

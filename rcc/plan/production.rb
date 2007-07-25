@@ -25,6 +25,7 @@ module Plan
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      attr_reader :number
       attr_reader :rule_name
       attr_reader :name
       attr_reader :symbols
@@ -32,9 +33,10 @@ module Plan
       attr_reader :precedence
       attr_reader :form_id
 
-      def initialize( rule_name, symbol_phrase, associativity, precedence, form_id, form = nil )
+      def initialize( number, rule_name, symbol_phrase, associativity, precedence, form_id, form = nil )
          type_check( symbol_phrase, "RCC::Model::Phrase" )
          
+         @number        = number
          @rule_name     = rule_name
          @name          = rule_name.intern
          @symbols       = symbol_phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?) }

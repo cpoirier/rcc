@@ -23,6 +23,15 @@ module Plan
       
       
       #
+      # ::single()
+      #  - convenience factory, builds a SequenceSet with only one sequence
+      
+      def self.single( sequence )
+         return SequenceSet.new( [sequence] )
+      end
+      
+      
+      #
       # ::merge()
       #  - given an array of SequenceSets, produces a single SequenceSet with all the members
       
@@ -80,6 +89,14 @@ module Plan
          end
       end
       
+      def length()
+         if @sequences.empty? then
+            return 0
+         else
+            return @sequences[0].length
+         end
+      end
+      
       def <<( sequence )
          if @signatures.nil? then
             @sequences << sequence
@@ -103,6 +120,21 @@ module Plan
          return SequenceSet.new( @sequences.collect{|old_sequence| sequence + old_sequence} )
       end
       
+      
+      #
+      # slice()
+      #  - returns a SequenceSet with a slice of the individual sequences in this set
+      
+      def slice( *parameters )
+         set = SequenceSet.new()
+         
+         @sequences.each do |sequence|
+            set << sequence.slice( *parameters )
+         end
+         
+         return set
+      end
+
 
       #
       # to_s()

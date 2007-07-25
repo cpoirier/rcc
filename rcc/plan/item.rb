@@ -99,38 +99,117 @@ module Plan
       
       
       #
+      # determinant()
+      #  - returns a list of tokens that will be used to decide what do to for this item
+      #     - for a complete item, this is the next token on lookahead, calculated by asking our contexts 
+      #       for the list of terminals that can follow their leader (we are the leader)
+      #     - for an incomplete item, returns the next token
+      
+      def determinant( k = 1, production_sets = nil )
+         assert( k == 1, "only k = 1 supported, presently" )
+         
+         production_sets = @production_sets if production_sets.nil?
+         assert( !production_sets.nil?, "you must supply a hash of ProductionSets to determinant() when it is calculated" )
+         
+         return sequences_after_mark(k, production_sets).start_terminals(production_sets)
+      end
+      
+      
+      
+      #
       # followers()
       #  - returns the list of terminals which may legitimately follow the leader()
       #  - this is a dynamic calculation, and should not be relied upon until the entire state table is built!
+      #  - for now, this is k = 1
       
       def followers( production_sets = nil, loop_detection = nil )
          production_sets = @production_sets if production_sets.nil?
          assert( !production_sets.nil?, "you must supply a hash of ProductionSets to followers() when it is calculated" )
          
-         sequences = follow_sequences( production_sets )
-         return sequences.start_terminals( production_sets )
+         return sequences_after_leader( 1, production_sets ).start_terminals(production_sets)
       end
-      
-      
+
+
       #
-      # follow_sequences()
-      #  - transitively constructs all potential lookahead sequences that can follow the leader()
+      # production_la()
+      #  - returns the terminals that can follow our Production, were it to be complete
       
-      def follow_sequences( production_sets = nil, loop_detection = [] )
-         return @follow_sequences unless @follow_sequences.nil?
-         return SequenceSet.empty_set() if loop_detection.member?(self.object_id)
+      def production_la( k = 1, production_sets = nil )
+         assert( k == 1, "only k = 1 supported, presently" )
+         return @production_la unless @production_la.nil?
+
+         production_sets = @production_sets if production_sets.nil?
+         assert( !production_sets.nil?, "you must supply a hash of ProductionSets to followers() when it is calculated" )
          
-         loop_detection = [self.object_id] + loop_detection
          sequence_sets = @follow_contexts.collect do |context|
             if context.nil? then
                SequenceSet.end_of_input_set
             else
-               set = context.follow_sequences( production_sets, loop_detection )
+               set = context.sequences_after_leader( k, production_sets )
             end
          end
          
-         @follow_sequences = SequenceSet.merge( sequence_sets ).prefix( rest(1) )
-         return @follow_sequences
+         @production_la_sequences = SequenceSet.merge( sequence_sets )
+         @production_la = @production_la_sequences.start_terminals( production_sets )
+         
+         return @production_la
+      end
+         
+         
+         
+
+      
+      
+      #
+      # sequences_after_mark()
+      #  - transitively constructs all potential symbol sequences that can be seen looking "down" the rule 
+      #    from the mark and flowing into the lookahead, as necessary
+      #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
+      
+      def sequences_after_mark( length = 1, production_sets = nil, loop_detection = [] )
+         return @sequences_after_mark unless @sequences_after_mark.nil? or @sequences_after_mark.length < length
+         return SequenceSet.empty_set() if loop_detection.member?(self.object_id)
+         
+         production_sets = @production_sets if production_sets.nil?
+         assert( !production_sets.nil?, "you must supply a hash of ProductionSets to sequences_after_mark() when it is calculated" )
+
+         #
+         # Satisfy as much of the request as possible locally.  If the request is fully satisfied without going
+         # to our follow contexts, all the better.
+         
+         local_symbols = rest()
+         if local_symbols.length >= length then
+            @sequences_after_mark = SequenceSet.single( local_symbols )
+            
+         #
+         # Otherwise, we have to go to our follow contexts for additional symbols.  We don't want the
+         # leader symbol from our contexts, as we ARE that leader symbol.
+         
+         else
+            loop_detection = [self.object_id] + loop_detection
+            sequence_sets = @follow_contexts.collect do |context|
+               if context.nil? then
+                  SequenceSet.end_of_input_set
+               else
+                  set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detection )
+               end
+            end
+            
+            @sequences_after_mark = SequenceSet.merge( sequence_sets ).prefix( local_symbols )
+         end
+         
+         return @sequences_after_mark
+      end
+      
+      
+      #
+      # sequences_after_leader()
+      #  - similar to sequences_after_mark, but skips the leader 
+      #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
+      
+      def sequences_after_leader( length = 1, production_sets = nil, loop_detection = [] )
+         sequences = sequences_after_mark( length + 1, production_sets, loop_detection )
+         return sequences.slice( 1..-1 )
       end
       
       
@@ -163,10 +242,8 @@ module Plan
       def add_follow_context( item )
          type_check( item, Item, true )
          
-         unless item == self
-            unless @follow_contexts.member?(item)
-               @follow_contexts << item
-            end
+         unless @follow_contexts.member?(item)
+            @follow_contexts << item
          end
       end
       
