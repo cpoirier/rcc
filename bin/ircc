@@ -1,0 +1,81 @@
+#!/usr/bin/env ruby
+#================================================================================================================================
+#
+# Ruby Compiler Compiler (rcc)
+#
+# Copyright 2007 Chris Poirier (cpoirier@gmail.com)
+# Licensed under the Academic Free License version 2.1
+#
+#================================================================================================================================
+
+   $LOAD_PATH << File.expand_path( "#{File.dirname($0)}/../" )
+      
+   require "rcc/environment.rb"
+   require "rcc/grammar.rb"
+   require "rcc/model/loader.rb"
+   require "rcc/interpreter/lexer.rb"
+   require "rcc/interpreter/parser.rb"
+
+   if ARGV.empty? then
+      puts "USAGE: #{File.basename($0)} <grammar file> (explain? <mode>)?"
+      puts "MODES: lex"
+      exit 10
+   end
+   
+
+   #
+   # Load and compile the grammar.
+   
+   grammar = RCC::Grammar.new( File.basename(ARGV[0]) )
+   File.open(ARGV[0]) do |file|
+      loader = RCC::Model::Loader.new( grammar )
+      loader.load( file.read(), ARGV[0] )
+   end
+   
+   grammar.compile()
+   grammar.display_states( STDOUT )
+   
+   
+   #
+   # Process the input.  If ARGV[1] is "lex", we will run the lexer over the input and do no parsing.
+   # Otherwise, we parse.
+   
+   explain = false
+   if ARGV[1] == "explain" then
+      explain = true
+      mode    = ARGV[2]
+   else
+      mode    = ARGV[1]
+   end
+      
+   
+   case mode
+      when nil, "parse"
+         lexer  = RCC::Interpreter::Lexer.new( grammar, STDIN, "<stdin>" )
+         parser = RCC::Interpreter::Parser.new( grammar, lexer )
+         cst    = parser.parse( explain )
+         
+         if explain then
+            STDOUT.puts ""
+            STDOUT.puts ""
+         end
+            
+         cst.display( STDOUT, "" )
+         
+      when "lex"
+         
+         lexer = RCC::Interpreter::Lexer.new( grammar, STDIN, "<stdin>" )
+         while token = lexer.next_token( explain )
+            puts "[#{token.gsub("\n", "\\n")}]#{token.type.is_a?(Symbol) ? ":" + token.type.to_s : "" } at #{token.line_number}:#{token.column_number}"  unless explain
+         end
+         
+         if lexer.input_remaining? then
+            puts "UNRECOGNIZED INPUT at #{lexer.line_number}:#{lexer.column_number} [#{lexer.sample_unconsumed.gsub("\n", "\\n")}]"
+         else
+            puts "DONE"
+         end
+         
+      else
+         puts "Supported modes: parse, lex"
+         exit 10
+   end
