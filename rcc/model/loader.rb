@@ -11,6 +11,7 @@
 require "rcc/environment.rb"
 require "rcc/model/token.rb"
 require "rcc/model/rule.rb"
+require "rcc/model/precedence_table.rb"
 require "rcc/model/form_elements/element.rb"
 require "rcc/model/terminal_definitions/definition.rb"
 
@@ -68,8 +69,9 @@ module Model
  # default property is a form label, but you can supply other data as name=value pairs (each in their own pair of braces).  
  # 
  # Supported properties:
+ #    label - the label to apply to the form for purpose of identification in Precedence rules
+ #          - label is the default property, so you don't need to use "label="
  #    assoc - the associativity for binary forms (left, right, or none; defaults to none; further discussion below)
- #    prec  - the name of a rule/form to match for precedence (further discussion below)
  #
  # Example:
  #    Rules
@@ -77,9 +79,9 @@ module Model
  #    
  #       expression 
  #          => expression '+' eos? expression     {addition_expression}       {assoc=left}
- #          => expression '-' eos? expression     {subtraction_expression}    {assoc=left} {prec=addition_expression}
+ #          => expression '-' eos? expression     {subtraction_expression}    {assoc=left}
  #          => expression '*' eos? expression     {multiplication_expression} {assoc=left} 
- #          => expression '/' eos? expression     {division_expression}       {assoc=left} {prec=multiplication_expression}
+ #          => expression '/' eos? expression     {division_expression}       {assoc=left}
  #          => '-' expression                     {negation_expression}
  #          => relation                           {relation_expression}
  #          => predicate                          {predicate_expression}
@@ -104,29 +106,80 @@ module Model
  # rule element as optional.  In an rcc-produced AST, any missing slots will be nil.
  #
  #
- # Associativity and Precedence
- # ----------------------------
+ # Conflicts and Associativity
+ # ---------------------------
  # rcc generates LALR(k) parsers.  Basically, what this means is that the parser reads tokens onto a stack until it recognizes 
  # something at the top of the stack that matches a Rule.  It then pops the relevant tokens off the top of the stack, applies
  # the Rule, then pushes the Rule result back onto the stack for use in future matches.
  #
- # Because the parser is working this way, it has the choice to defer reductions, should it make sense to do so.  This turns 
- # out to be really useful.  Consider basic math: multiplication and division must be done before addition and subtraction, 
- # but, other than those rules, operation proceeds from left to right.  This means that all four operators are "left" 
- # associative, but that multiplication and division have a higher precedence than addition and subtraction.  What this means 
- # for the parser is that if it can reduce an addition expression from the top of the stack, but the next token on lookahead 
- # is a multiplication sign, it should shift instead, and defer the reduction of the addition rule until after the 
- # multiplication rule has been reduced.  The result is that the proper order of operations is respected.
+ # Because the parser is working this way, it has the choice to defer or prioritize reductions, should it make sense to do so.  
+ # One place this comes into play is associativity.  Consider this basic math expression:
+ #    1 + 2 - 3
+ #
+ # This expression can be grouped in one of two ways: (1 + 2) - 3  OR  1 + (2 - 3).  Now, in basic math, the two options just
+ # happen to have the same meaning, but it shows the concept of associativity: the first parse is "left" associative; the 
+ # second is "right" associative. 
+ # 
+ # By default, LR parsers treat all rules as right-associative: shifts are prioritized over reduces, given an option.  But
+ # this is not always ideal.  While it doesn't matter in our simple example, in real life, basic math is defined as left-
+ # associative.  If, say, those terms were function calls instead of numbers, you would want the evaluation to proceed from 
+ # left to right, to ensure that any side-effects from those functions occur the in order your user is expecting.  
  #
  # rcc supports three associativities: left, right, and none.  For left associativity, the left-most match will be reduced 
- # first.  For right associativity, the right-most match will be reduced first.  For non-associativity, no pairing of operands
- # is done.  These associativities are primarily useful for binary and greater expressions (ie. exp => exp '+' exp).  You
- # specify associativity as a property on the rule form (see above).
+ # first.  For right associativity, the right-most match will be reduced first.  For non-associativity, no repeating of
+ # a form is allowed.  This last option is useful if you want to force associativity to be explicitly chosen by the user:
+ # ie. "1 + 2 + 3" would have to be written either as "(1 + 2) + 3" or "1 + (2 + 3)", in order to be accepted by the parser.  
  #
- # By default, rules defined earlier in the grammar have lower precedence than rules defined later in the grammar.  This
- # is not always ideal.  For instance, in our basic math example, addition and subtraction need to have the same precedence,
- # and it needs to be lower than multiplication and division.  You can change the precedence of a rule or form by
- # specifying another rule/form it should be equal to, using a property on the form (see above).
+ # You specify associativity as a property on the rule form (see above).
+ #
+ #
+ # Conflicts and Precedence
+ # ------------------------
+ # In the previous section, we discussed how the associativity of rules can control when to shift and when to reduce.  This
+ # implies that the parser had a choice: that, in fact, it was in a state where it could (and therefore had to) choose between
+ # a shift and a reduce.  
+ #
+ # Real grammars often have many such conflicts between rules.  Associativity can help solve some of those conflicts, but
+ # other tools can be useful, too.
+ # 
+ # Consider the following grammar:
+ #   expression => number
+ #              => expression '*' expression   {assoc=left} {multiplication_expression}
+ #              => expression '/' expression   {assoc=left} {division_expression}
+ #              => expression '+' expression   {assoc=left} {addition_expression}
+ #              => expression '-' expression   {assoc=left} {subtraction_expression}
+ #
+ # This grammar expresses basic math on numbers, in that it has the four basic operators and marks them all as left-
+ # associative.  But there's a wrinkle: in real math, multiplication and division must be done BEFORE addition and subtraction.  
+ # That's a significant complication, and associativity alone is not enough to solve it.  We could find a way to rewrite the 
+ # grammar, to express those relationship, but that would probably make our grammar less readable, not more so.
+ #
+ # What we really need is to be able to express a precedence relationship between these forms.  This is done using a 
+ # Precedence section.
+ # 
+ # Example:
+ #    Precedence
+ #      multiplication_expression division_expression
+ #      addition_expression       subtraction_expression
+ #    end
+ #
+ # Within a Precedence section, each line indicates rules or forms (by name or label) that should be treated as having equal
+ # precedence.  Lines earlier in the section indicate higher precedence than lines later in the section.
+ #
+ # You can have multiple Precedence sections, each of which indicates a closed set of relationships.  When resolving 
+ # shift/reduce conflicts between rules that appear in the same section, precedence will be used.  When resolving shift/reduce
+ # conflicts between rules that do not appear in the same Precedence section, precedence will not be used.
+ #
+ #
+ # Conflicts and Backtracking
+ # --------------------------
+ # Coming soon.
+ #
+ #
+ # Error recovery
+ # --------------
+ # Coming soon.
+ #
 
    class Loader
       
@@ -167,6 +220,8 @@ module Model
          load_rules() 
 
          skip_eos()
+         load_precedence_table() && skip_eos() while la() == "Precedence"
+
          nyi "error handling for trailing tokens" if la() != nil
       end
 
@@ -253,8 +308,10 @@ module Model
                         name  = consume( :WORD )
                                 consume( "="   )
                         value = consume( :WORD )
-                        
-                        if key = Model::Form.validate_property_name(name) then
+
+                        if name == "label" then
+                           form_name = value
+                        elsif key = Model::Form.validate_property_name(name) then
                            if value = Model::Form.validate_property_value(@grammar, rule, name, value) then
                               properties[key] = value
                            else
@@ -354,6 +411,34 @@ module Model
       end
       
 
+
+      #
+      # load_precedence_table()
+      #  - parses a single precedence table and builds the model
+      
+      def load_precedence_table()
+         process_block( "Precedence" ) do
+            precedence_table = @grammar.create_precedence_table()
+            current_row      = precedence_table.create_row()
+            
+            until at_end_of_block()
+               if la() == :EOS then
+                  consume()
+                  current_row = precedence_table.create_row()
+               else
+                  search_name = consume( :WORD, "expected rule or form name" )
+                  if @grammar.labels.member?(search_name) then
+                     current_row << @grammar.labels[search_name]
+                  else
+                     nyi( "error handling for missing precedence reference" )
+                  end
+               end
+            end
+         end
+      end
+      
+      
+      
 
 
 

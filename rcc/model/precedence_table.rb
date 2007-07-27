@@ -11,39 +11,46 @@
 require "rcc/environment.rb"
 
 module RCC
-module Plan
-module Actions
+module Model
 
  
  #============================================================================================================================
- # class Action
- #  - base class for Parser actions 
+ # class PrecedenceTable
+ #  - a table showing the precedence relationship between various forms and rules
 
-   class Action
+   class PrecedenceTable
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
-
+    
+      attr_reader :rows
+         
       def initialize()
+         @rows = []    # [ [Form|Rule] ], one inner array for each precedence level
       end
 
 
+
+      #
+      # create_row()
+      #  - creates or returns a new empty row that you can add Rules and Forms to
+      #  - use << on the returned row
       
-   end # Action
+      def create_row()
+         if @rows.empty? or !@rows[-1].empty? then
+            @rows << []
+         end
+         
+         return @rows[-1]
+      end
+      
+      
+      
+      
+   end # PrecedenceTable
    
 
 
-end  # module Actions
-end  # module Plan
+end  # module Model
 end  # module Rethink
-
-
-
-
-
-require "rcc/plan/actions/shift.rb"
-require "rcc/plan/actions/reduce.rb"
-require "rcc/plan/actions/goto.rb"
-require "rcc/plan/actions/accept.rb"
-require "rcc/plan/actions/attempt.rb"

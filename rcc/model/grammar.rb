@@ -11,6 +11,7 @@
 require "rcc/environment.rb"
 require "rcc/util/ordered_hash.rb"
 require "rcc/model/rule.rb"
+require "rcc/model/precedence_table.rb"
 require "rcc/plan/lexer_plan.rb"
 require "rcc/plan/parser_plan.rb"
 
@@ -52,23 +53,23 @@ module Model
     #---------------------------------------------------------------------------------------------------------------------
     
       attr_reader :descriptor           # Something that describes this grammar (might be a file path or anything else you want)
-      attr_reader :names                # A Hash of name => (Rule, Definition)
       attr_reader :definitions          # An OrderedHash of TerminalDefinitions and Strings defined in the Grammar
       attr_reader :rules                # An OrderedHash of every Rule in the Grammar
       attr_reader :forms                # An Array of every Form in the Grammar
+      attr_reader :labels               # A Hash of name => (Rule, Form)
       attr_reader :state_table          # An Array of States for all states in the Grammar
-      attr_reader :precedences          # A Hash of label => precedence
+      attr_reader :precedence_tables    # 0 or more PrecedenceTables, showing rule precedence for shift/reduce conflicts
       attr_reader :configuration        # A Hash of configuration flags
 
       def initialize( descriptor )
-         @descriptor    = descriptor
-         @configuration = {}
-         
-         @names         = {}
-         @definitions   = Util::OrderedHash.new()
-         @rules         = Util::OrderedHash.new()
-         @forms         = []
-         @precedences   = {}
+         @descriptor        = descriptor
+         @configuration     = {}
+                            
+         @definitions       = Util::OrderedHash.new()
+         @rules             = Util::OrderedHash.new()
+         @forms             = []
+         @labels            = {}
+         @precedence_tables = []
       end
       
       
@@ -81,7 +82,6 @@ module Model
          if descriptor.name then
             nyi( "error handling for duplicate descriptor name" ) if @definitions.member?(descriptor.name)
             @definitions[descriptor.name] = descriptor
-            @names[descriptor.name]       = descriptor
          else
             @definitions[@definitions.length] = descriptor
          end
@@ -94,43 +94,43 @@ module Model
    
       def create_rule( name )
          nyi( "error handling for duplicate rule name" ) if @rules.member?(name)
+         nyi( "error handling for duplicate rule name" ) if @labels.member?(name)
          nyi( "error handling for naming conflict"     ) if @definitions.member?(name)
          
-         @rules[name] = rule = Model::Rule.new( name, @rules.length, self )
+         @rules[name]  = rule = Model::Rule.new( name, @rules.length, self )
+         @labels[name] = rule
+         
          return rule
+      end
+      
+      
+      #
+      # create_precedence_table()
+      #  - creates a PrecedenceTable and returns it
+      
+      def create_precedence_table()
+         @precedence_tables << precedence_table = PrecedenceTable.new()
+         return precedence_table
       end
       
       
       #
       # add_form()
       #  - Forms are created via Rules, and then added here
-      #  - resolves precedence links
       
       def add_form( form )
+         nyi( "error handling for duplicate form labels" ) if !form.label.nil? and @labels.member?(form.label)
          
          #
          # Assign the form a unique number and add it to the Grammar.
          
          form.id_number = @forms.length
          @forms << form
-
+         
          #
-         # Set the Form precedence, either based on a reference to an existing Rule/Form, or
-         # by defaulting to the current Form id_number.
+         # Index the name, if there is one
          
-         if form.precedence_equivalent then
-            if number = @precedences[form.precedence_equivalent] then
-               form.precedence = number
-            else
-               nyi( "error handling for missing precedence name #{form.precedence_equivalent}" )
-            end
-         else
-            form.precedence = form.id_number
-         end
-         
-         unless @precedences.member?(form.label) 
-            @precedences[form.label] = form.precedence
-         end
+         @labels[form.label] = form unless form.label.nil?
       end
       
       

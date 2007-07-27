@@ -13,6 +13,7 @@ require "rcc/model/rule.rb"
 require "rcc/model/form.rb"
 require "rcc/plan/item.rb"
 require "rcc/plan/actions/action.rb"
+require "rcc/plan/explanations/explanation.rb"
 require "rcc/util/ordered_hash.rb"
 
 module RCC
@@ -356,72 +357,145 @@ module Plan
       #
       # generate_actions()
       #  - resolves conflicts and generates a list of actions for this State
+      #  - each action indicates what to do when a specific terminal is on lookahead
+      #  - returns any explanations generated
       
-      def generate_actions( production_sets, precedence_direction = -1 )
+      def generate_actions( production_sets, conflict_resolver, k_limit = 1, explain = false )
+         
+         explanations = (explain ? [] : nil)
          
          #
-         # First, generate lists of options: Items grouped by la(1) Symbol name
+         # First, sort into lists of options.  If the Item leader is a non-terminal, generate Goto actions immediately 
+         # (they're a no-brainer).  Otherwise, generate lists of options: Items grouped by la(1) terminal name.
          
          options = {}
          @items.each do |item|
-            determinants = item.determinants( production_sets )
-            determinants.each do |determinant|
-               options[determinant] = [] unless options.member?(determinant)
-               options[determinant] << item
+            if !item.complete? and item.leader.non_terminal? then
+               @actions[item.leader.name] = Actions::Goto.new( @transitions[item.leader.name] )
+            else
+               determinants = item.determinants( production_sets )
+               determinants.each do |determinant|
+                  options[determinant] = [] unless options.member?(determinant)
+                  options[determinant] << item
+               end
             end
          end
+
          
          #
-         # If there is only one option for an la(1) Symbol, life is good.  If there is more than one option, either we
-         # must increase the lookahead length, request backtracking, or do something arbitrary.  Associativity and
-         # precedence are the best "arbitrary" things to do.
+         # Select an action for each lookahead terminal.
          
          options.each do |symbol_name, items|
             
-            #
-            # Choose an action for la() terminal
+            actions               = nil
+            all_reductions        = []
+            eliminated_reductions = []
+            all_shifts            = []
+            valid_shifts          = []
+            explanations          = []
+            error_actions         = []
 
-            chosen_item = nil
+            #
+            # If there is only one option for an la(1) Symbol, life is good.  
+
             if items.length == 1 then
-               chosen_item = items[0]
+               item = items[0]
+               if item.complete? then
+                  all_reductions << item
+               else
+                  valid_shifts   << item
+               end
+               
+            #
+            # Otherwise, either we must increase the lookahead length, request backtracking, or do something arbitrary.  
+            # Associativity and precedence are the best "arbitrary" things to do.
+            
             else
                
                #
-               # Choose the winner first.  Precedence trumps everything.  Associativity resolves precedence
-               # ambiguities.
+               # Start by splitting the Items into reductions and shifts.
                
                items.each do |item|
-                  if chosen_item.nil? then 
-                     chosen_item = item
+                  if item.complete? then
+                     all_reductions << item
                   else
-                     if item.production.precedence * precedence_direction > chosen_item.production.precedence then
-                        
-                     
+                     all_shifts     << item
                   end
                end
-                  
-               
                
                #
-               # Then register the losers as conflicts.
+               # Sort the reductions by priority: lower Production numbers first.
                
+               all_reductions.sort!{|lhs, rhs| lhs.production.number <=> rhs.production.number }
+               explanations << Explanations::ReductionsSorted.new( all_reductions ) if explain
+               
+               #
+               # Use the conflict_resolver to arbitrate between shift/reduce conflicts by associativity and precedence.
+               #
+               # BUG: If a reduce is eliminated in favour of a shift by one precedence table, then that shift is
+               # eliminated by a reduce in another, should the first reduce be back in the running?
+               
+               all_shifts.each do |shift|
+                  reductions.each do |reduction|
+                     item = conflict_resolver.choose( shift, reduction )
+                     
+                     #
+                     # If the shift is chosen, then the reduce is eliminated.  
+                     
+                     if item.object_id == shift.object_id then
+                        valid_shifts          << shift
+                        eliminated_reductions << reduction
+                        
+                        explanations << Explanations::ShiftTrumpsReduce.new( shift, reduction ) if explain
+                        
+                     #
+                     # If the reduce is chosen, then the shift is eliminated.
+                     
+                     elsif item.object_id == reduce.object_id then
+                        explanations << Explanations::ReduceTrumpsShift.new( reduction, shift ) if explain
+                        
+                     #
+                     # Otherwise, nothing was chosen, and the lookahead is an error (as far as these two rules
+                     # are concerned).  We'll let the conflict_resolver explain.
+                     
+                     else
+                        error_actions         << conflict_resolver.create_error_action( shift, reduction )
+                        eliminated_reductions << reduction
+                        explanations          << conflict_resolver.explain_error( shift, reduction ) if explain
+                     end
+                  end
+               end
             end
+
             
             #
-            # Build the action.
+            # Produce actions for the set, in the following order: valid_shifts, valid_reductions, error_actions.
+            # If we end up with only one, we return it.  Otherwise, we we create an Attempt action to trigger 
+            # backtracking support.  
+            #
+            # BUG: At some point, k>1 could eliminate some backtracking, and would be especially useful for 
+            # reduce/reduce conflicts.
             
-            if chosen_item.complete? then
-               @actions[symbol_name] = Actions::Reduce.new( chosen_item.production.number )
+            valid_shifts.each do |shift|
+               actions << Actions::Shift.new( @transitions[symbol_name] )
+            end
+            
+            (all_reductions - eliminated_reductions).each do |reduction|
+               actions << Actions::Reduce.new( reduction.production )
+            end
+            
+            actions.concat( error_actions )
+            
+            if actions.length == 0 then
+               bug "what the hell does this mean?"
+            elsif actions.length == 1 then
+               @actions[symbol_name] = actions[0]
             else
-               if chosen_item.leader.terminal? then
-                  @actions[symbol_name] = Actions::Shift.new( @transitions[symbol_name].state_number )
-               else
-                  @actions[symbol_name] = Actions::Goto.new( @transitions[symbol_name].state_number )
-               end
+               @actions[symbol_name] = Actions::Attempt.new( actions )
             end
          end
          
-         
+         return explanations
       end
       
       

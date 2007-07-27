@@ -42,7 +42,7 @@ module Plan
          
          grammar.forms.each do |form|
             form.phrases.each do |phrase|
-               production = Production.new( productions.length + 1, form.rule.name, phrase, form.associativity, form.precedence, form.id_number, form )
+               production = Production.new( productions.length + 1, form.rule.name, phrase, form.associativity, form.id_number, form )
                
                productions << production
                

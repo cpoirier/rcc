@@ -22,18 +22,15 @@ module Model
    class Form 
       
       PROPERTY_NAMES = { 
-         "prec"  => :precedence,    "precedence"    => :precedence, 
          "assoc" => :associativity, "associativity" => :associativity 
       }
       
       PROPERTY_CONSTRAINTS = {
          :associativity => ["left", "right", "none"],
-         :precedence    => proc { |grammar, rule, value| grammar.precedences.member?(value) }
       }
       
       PROPERTY_ERRORS = {
          :associativity => "expected one of (#{PROPERTY_CONSTRAINTS[:associativity].join(", ")})",
-         :precedence    => "unrecognized rule/form name"
       }
       
       
@@ -83,22 +80,20 @@ module Model
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader   :rule            # The Rule we are a Form of
-      attr_reader   :number          # The number of the declaration of this form within the rule
-      attr_reader   :root_element    # The root SeriesElement in this Form
-      attr_accessor :id_number       # The id number of this number within the grammar
-      attr_accessor :precedence      # A number indicating the precedence of this Form in relation to other Forms
-      attr_reader   :label           # The Form label, if specified
+      attr_reader   :rule                # The Rule we are a Form of
+      attr_reader   :number              # The number of the declaration of this form within the rule
+      attr_reader   :root_element        # The root SeriesElement in this Form
+      attr_accessor :id_number           # The id number of this number within the grammar
+      attr_reader   :label               # The Form label, if specified
       
       def initialize( root_element, rule, number, label, properties )
-         @root_element = root_element
-         @rule         = rule
-         @number       = number
-         @id_number    = nil
-         @precedence   = nil
-         @label        = label
-         @properties   = properties
-         @phrases      = nil
+         @root_element         = root_element
+         @rule                 = rule
+         @number               = number
+         @id_number            = nil
+         @label                = label
+         @properties           = properties
+         @phrases              = nil
       end
 
 
@@ -125,14 +120,6 @@ module Model
       end
       
 
-      #
-      # precedence_equivalent()
-      
-      def precedence_equivalent()
-         return @properties[:precedence]
-      end
-      
-      
       #
       # phrases()
       #  - returns an array of Phrases of Symbols, one for each potential combination that would match
@@ -161,7 +148,6 @@ module Model
          properties = []
          properties << "label:#{@label}" if @label
          properties << "assoc:#{@properties[:associativity]}" if @properties.member?(:associativity)
-         properties << "prec:#{@precedence}"
          
          stream << indent << "#{@number} => " << @root_element.to_s.ljust(60) << "   {" << properties.join("; ") << "}\n"
       end

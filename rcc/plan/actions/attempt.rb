@@ -16,34 +16,23 @@ module Actions
 
  
  #============================================================================================================================
- # class Action
- #  - base class for Parser actions 
+ # class Attempt
+ #  - a Action that allows a set of Actions to be attempted, in sequence, until one of them succeeds
 
-   class Action
+   class Attempt
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
+      def initialize( actions )
+         @actions = actions
       end
-
-
       
-   end # Action
+   end # Attempt
    
 
 
 end  # module Actions
 end  # module Plan
 end  # module Rethink
-
-
-
-
-
-require "rcc/plan/actions/shift.rb"
-require "rcc/plan/actions/reduce.rb"
-require "rcc/plan/actions/goto.rb"
-require "rcc/plan/actions/accept.rb"
-require "rcc/plan/actions/attempt.rb"

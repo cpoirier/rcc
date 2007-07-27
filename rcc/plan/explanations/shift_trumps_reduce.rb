@@ -9,41 +9,37 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/explanations/explanation.rb"
 
 module RCC
 module Plan
-module Actions
+module Explanations
 
  
  #============================================================================================================================
- # class Action
- #  - base class for Parser actions 
+ # class ShiftTrumpsReduce
+ #  - explanation that indicates a shift action was chosen over a reduce action for precedence or associativity reasons
 
-   class Action
+   class ShiftTrumpsReduce < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
+      def initialize( shift, reduction )
+         @shift     = shift
+         @reduction = reduction
       end
-
-
       
-   end # Action
+      
+      
+   end # ShiftTrumpsReduce
    
 
 
-end  # module Actions
+
+end  # module Explanations
 end  # module Plan
 end  # module Rethink
 
 
-
-
-
-require "rcc/plan/actions/shift.rb"
-require "rcc/plan/actions/reduce.rb"
-require "rcc/plan/actions/goto.rb"
-require "rcc/plan/actions/accept.rb"
-require "rcc/plan/actions/attempt.rb"
