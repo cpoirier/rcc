@@ -26,11 +26,20 @@ module Explanations
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( shift, reduction )
-         @shift     = shift
-         @reduction = reduction
+      def initialize( shift, reduction, by_associativity = false )
+         @shift            = shift
+         @reduction        = reduction
+         @by_associativity = by_associativity
       end
       
+      
+      def to_s()
+         if @by_associativity then
+            return "Shift [ #{@shift.to_s}] beats Reduce [ #{@reduction.to_s}]; equal precedence, right-associative"
+         else
+            return "Shift [ #{@shift.to_s}] beats Reduce [ #{@reduction.to_s}]; higher precedence"
+         end
+      end
       
       
    end # ShiftTrumpsReduce

@@ -21,6 +21,21 @@ module Plan
 
    class Production
       
+      
+      def self.start_production( start_rule_name )
+         symbols = [Plan::Symbol.new(start_rule_name.intern, false), Plan::Symbol.end_of_input]
+         production = new( 0, start_rule_name, nil, "right", -1, nil )
+         production.instance_eval do
+            @symbols = symbols
+         end
+         
+         return production
+      end
+      
+      
+      
+      
+      
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
@@ -35,22 +50,20 @@ module Plan
       attr_reader :form_id
 
       def initialize( number, rule_name, symbol_phrase, associativity, form_id, form = nil )
-         type_check( symbol_phrase, "RCC::Model::Phrase" )
-         
          @number        = number
          @rule_name     = rule_name
          @name          = rule_name.intern
-         @symbols       = symbol_phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?) }
+         @symbols       = symbol_phrase.nil? ? [] : symbol_phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?) }
          @associativity = associativity
          @form_id       = form_id
          @form          = form
+         
       end
 
     
       def to_s()
-         return "#{@rule_name} => #{@inputs}"
+         return "#{@rule_name} => #{@symbols.join(" ")}"
       end
-
 
 
       

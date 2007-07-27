@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/actions/action.rb"
 
 module RCC
 module Plan
@@ -19,7 +20,7 @@ module Actions
  # class Goto
  #  - a Goto action for the ParserPlan
 
-   class Goto
+   class Goto < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization

@@ -25,7 +25,7 @@ module FormElements
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( )
+      def initialize( elements = [] )
          @elements = []         
       end
       

@@ -99,13 +99,13 @@ module Plan
       
       
       #
-      # determinant()
+      # determinants()
       #  - returns a list of tokens that will be used to decide what do to for this item
       #     - for a complete item, this is the next token on lookahead, calculated by asking our contexts 
       #       for the list of terminals that can follow their leader (we are the leader)
       #     - for an incomplete item, returns the next token
       
-      def determinant( k = 1, production_sets = nil )
+      def determinants( k = 1, production_sets = nil )
          assert( k == 1, "only k = 1 supported, presently" )
          
          production_sets = @production_sets if production_sets.nil?

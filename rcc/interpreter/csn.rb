@@ -38,12 +38,12 @@ module Interpreter
       
       
       def description()
-         return ":#{@root_symbol}"
+         return "#{@root_symbol}"
       end
       
       
       def display( stream, indent = "" )
-         stream << indent << ":#{@root_symbol} =>" << "\n"
+         stream << indent << "#{@root_symbol} =>" << "\n"
          
          child_indent = indent + "   "
          @component_symbols.each do |symbol|

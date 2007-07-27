@@ -9,38 +9,40 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/explanations/explanation.rb"
 
 module RCC
-module Interpreter
+module Plan
+module Explanations
 
  
  #============================================================================================================================
- # class Frame
- #  - a Frame on the Interpreter stack
+ # class SelectedAction
+ #  - explanation showing the final disposition for a lookahead symbol
 
-   class Frame
+   class SelectedAction < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :state
-      attr_reader :node
+      def initialize( action )
+         @action = action
+      end
       
-      def initialize( state, node )
-         @state = state
-         @node  = node
+      
+      def to_s()
+         return "Selected action: #{@action.to_s}"
       end
       
       
       
-      
-      
-      
-      
-   end # Frame
+   end # OnlyOneChoice
    
 
 
-end  # module Interpreter
+
+end  # module Explanations
+end  # module Plan
 end  # module Rethink
+

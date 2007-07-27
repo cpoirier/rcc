@@ -11,8 +11,7 @@
    $LOAD_PATH << File.expand_path( "#{File.dirname($0)}/../" )
       
    require "rcc/environment.rb"
-   require "rcc/grammar.rb"
-   require "rcc/model/loader.rb"
+   require "rcc/model/grammar.rb"
    require "rcc/interpreter/lexer.rb"
    require "rcc/interpreter/parser.rb"
 
@@ -26,14 +25,19 @@
    #
    # Load and compile the grammar.
    
-   grammar = RCC::Grammar.new( File.basename(ARGV[0]) )
-   File.open(ARGV[0]) do |file|
-      loader = RCC::Model::Loader.new( grammar )
-      loader.load( file.read(), ARGV[0] )
-   end
+   grammar     = RCC::Model::Grammar.load_from_file( File.basename(ARGV[0]), ARGV[0] )
+   grammar.display( STDOUT )
+
+
+   #
+   # Compile the parser plan.
    
-   grammar.compile()
-   grammar.display_states( STDOUT )
+   parser_plan = grammar.compile_plan()
+   parser_plan.compile_actions( true )
+   
+   STDOUT.puts ""
+   STDOUT.puts ""
+   STDOUT.puts ""
    
    
    #
@@ -51,8 +55,8 @@
    
    case mode
       when nil, "parse"
-         lexer  = RCC::Interpreter::Lexer.new( grammar, STDIN, "<stdin>" )
-         parser = RCC::Interpreter::Parser.new( grammar, lexer )
+         lexer  = RCC::Interpreter::Lexer.new( parser_plan.lexer_plan, STDIN, "<stdin>" )
+         parser = RCC::Interpreter::Parser.new( parser_plan, lexer )
          cst    = parser.parse( explain )
          
          if explain then
@@ -64,7 +68,7 @@
          
       when "lex"
          
-         lexer = RCC::Interpreter::Lexer.new( grammar, STDIN, "<stdin>" )
+         lexer = RCC::Interpreter::Lexer.new( parser_plan.lexer_plan, STDIN, "<stdin>" )
          while token = lexer.next_token( explain )
             puts "[#{token.gsub("\n", "\\n")}]#{token.type.is_a?(Symbol) ? ":" + token.type.to_s : "" } at #{token.line_number}:#{token.column_number}"  unless explain
          end

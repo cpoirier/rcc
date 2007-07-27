@@ -45,7 +45,7 @@ module Plan
          grammar_model.forms.each do |form|
             form.phrases.each do |phrase|
                phrase.symbols.each do |symbol|
-                  if symbol.name.is_a?(Model::FormElements::RawTerminal) then
+                  if symbol.is_a?(Model::FormElements::RawTerminal) then
                      literals[symbol.name] = true
                   end
                end

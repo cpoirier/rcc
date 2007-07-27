@@ -58,7 +58,7 @@ module Model
       attr_reader :forms                # An Array of every Form in the Grammar
       attr_reader :labels               # A Hash of name => (Rule, Form)
       attr_reader :state_table          # An Array of States for all states in the Grammar
-      attr_reader :precedence_tables    # 0 or more PrecedenceTables, showing rule precedence for shift/reduce conflicts
+      attr_reader :precedence_table     # A PrecedenceTable, showing rule precedence for shift/reduce conflicts
       attr_reader :configuration        # A Hash of configuration flags
 
       def initialize( descriptor )
@@ -69,7 +69,7 @@ module Model
          @rules             = Util::OrderedHash.new()
          @forms             = []
          @labels            = {}
-         @precedence_tables = []
+         @precedence_table  = PrecedenceTable.new()
       end
       
       
@@ -101,16 +101,6 @@ module Model
          @labels[name] = rule
          
          return rule
-      end
-      
-      
-      #
-      # create_precedence_table()
-      #  - creates a PrecedenceTable and returns it
-      
-      def create_precedence_table()
-         @precedence_tables << precedence_table = PrecedenceTable.new()
-         return precedence_table
       end
       
       
@@ -157,6 +147,11 @@ module Model
          end
       end
 
+
+      
+    
+    
+    
     
     
     

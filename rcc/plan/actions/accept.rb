@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/actions/action.rb"
 
 module RCC
 module Plan
@@ -19,13 +20,19 @@ module Actions
  # class Accept
  #  - an Accept action for the ParserPlan
 
-   class Accept
+   class Accept < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
+      def initialize( production )
+         @production = production
+      end
+      
+      
+      def to_s()
+         return "Accept #{@production.to_s}"
       end
       
    end # Accept

@@ -9,38 +9,39 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
-require "rcc/plan/actions/action.rb"
+require "rcc/plan/explanations/explanation.rb"
 
 module RCC
 module Plan
-module Actions
+module Explanations
 
  
  #============================================================================================================================
- # class Reduce
- #  - a Reduce action for the ParserPlan
+ # class OnlyOneChoice
+ #  - base class for things that explain why actions where produced the way they were
 
-   class Reduce < Action
+   class OnlyOneChoice < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :by_production
-      
-      def initialize( by_production )
-         @by_production = by_production
+      def initialize( item )
+         @item = item
       end
       
       
       def to_s()
-         return "Reduce #{@by_production.to_s}"
+         return "Only option: #{@item.to_s}"
       end
       
-   end # Reduce
+      
+   end # OnlyOneChoice
    
 
 
-end  # module Actions
+
+end  # module Explanations
 end  # module Plan
 end  # module Rethink
+

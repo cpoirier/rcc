@@ -10,6 +10,7 @@
 
 require "rcc/environment.rb"
 require "rcc/plan/sequence_set.rb"
+require "rcc/plan/production.rb"
 
 module RCC
 module Plan
@@ -20,6 +21,14 @@ module Plan
  #  - holds a related (in whatever way) set of Productions and provides useful services there-upon
 
    class ProductionSet < SequenceSet
+      
+      #
+      # ::start_set
+      
+      def self.start_set( start_rule_name )
+         return new( nil, [Production.start_production(start_rule_name)] )
+      end
+      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
@@ -38,6 +47,7 @@ module Plan
          super( production.symbols )
          @productions << production
       end
+      
       
 
 

@@ -31,35 +31,64 @@ module Plan
       # build()
       #  - builds a ParserPlan from a Model::Grammar and an optional LexerPlan
       
-      def self.build( grammar, lexer_plan )
+      def self.build( grammar, lexer_plan, start_rule_name = nil )
          
          #
          # Build our Productions from the Forms in the Grammar model.  We'll also build a hash of ProductionSets, one
          # for each rule name.
          
-         productions     = []
-         production_sets = {}
+         productions      = []
+         production_sets  = {}
+         form_lookup      = {}    # form id_number => Production
          
          grammar.forms.each do |form|
+            form_lookup[form.id_number] = []
+            
             form.phrases.each do |phrase|
                production = Production.new( productions.length + 1, form.rule.name, phrase, form.associativity, form.id_number, form )
                
                productions << production
+               form_lookup[form.id_number] << production
                
                production_sets[production.name] = ProductionSet.new(production.name) unless production_sets.member?(production.name)
                production_sets[production.name] << production
             end
          end
+
+         
+         #
+         # Build a precedence table from the Grammar model.  Production number => tier number.  The Model table can
+         # contain both Rules and Forms.  For Rules, we apply the precedence to all Forms, unless a higher precedence
+         # has already been set for a particular Form. 
+         
+         precedence_table = {}
+         grammar.precedence_table.rows.each_index do |index|
+            row = grammar.precedence_table.rows[index]
+            row.each do |form_or_rule|
+               if form_or_rule.is_a?(Model::Rule) then
+                  form_or_rule.forms.each do |form|
+                     form_lookup[form.id_number].each do |production|
+                        precedence_table[production.number] = index unless precedence_table.member?(production.number)
+                     end
+                  end
+               else 
+                  form_lookup[form_or_rule.id_number].each do |production|
+                     precedence_table[production.number] = index
+                  end
+               end
+            end
+         end
+         
          
          #
          # Next, get the Grammar's start rule and build it a State.  This will become the base of the complete state table.
          
-         start_productions = production_sets[grammar.start_rule_name.intern]
-         nyi "error handling for unknown start rule" if start_productions.nil?
-         
-         start_state = State.new( 1 )
-         start_state.add_productions( start_productions, nil, production_sets )
+         start_rule_name = grammar.start_rule_name if start_rule_name.nil?
+         nyi "error handling for unknown start rule #{start_rule_name}" if start_rule_name.nil? or !grammar.rules.member?(start_rule_name)
+
+         start_state = State.start_state( start_rule_name, production_sets )
          start_state.close( production_sets )
+
          
          #
          # From the start state, build new states, one for each follow symbol.  Repeat for each new state until all are complete.  
@@ -101,7 +130,7 @@ module Plan
             # current_state.display( STDOUT, "" )
          end
          
-         return new( state_table, productions, production_sets, lexer_plan )
+         return new( state_table, productions, production_sets, precedence_table, lexer_plan )
       end
       
       
@@ -112,12 +141,14 @@ module Plan
     
       attr_reader :model          # The Model from which this Plan was build (if available)
       attr_reader :lexer_plan     # A LexerState that describes how to lex the Grammar
+      attr_reader :state_table    # Our States, in convenient table form
 
-      def initialize( state_table, productions = nil, production_sets = nil, lexer_plan = nil )
-         @state_table     = state_table
-         @lexer_plan      = lexer_plan
-         @productions     = productions
-         @production_sets = production_sets
+      def initialize( state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil )
+         @state_table      = state_table
+         @lexer_plan       = lexer_plan
+         @productions      = productions
+         @production_sets  = production_sets    
+         @precedence_table = precedence_table    # Production number => tier (tier 0 is highest precedence)
       end
       
       
@@ -131,154 +162,16 @@ module Plan
 
 
       #
-      # build_parser()
-      #  - compiles the Grammar Rules to a State table
+      # compile_actions()
+      #  - runs through all our State tables and builds Actions that can drive a compiler
+      #  - optionally constructs explanations for conflict resolutions
       
-      def build_parser()
-         
-         #
-         # Build first-Symbol and first-Terminal lists for every NonTerminal in the Grammar.  
-         
-         # @leading_symbols = {}
-         # @productions_by_rule_name.each do |rule_name, productions|
-         #    @leader_symbols[rule_name] = productions.collect{|production| production.symbols[0].name }.uniq
-         # end
-         # 
-         # @leading_terminals = {}
-         # 
-         
-         
-         
-         # 
-         # 
-         # We'll need these when
-         # # constructing state tables.
-         # 
-         # @firsts_by_rule_name
-         # work_queue = []
-         # @productions_by_rule_name.each do |rule_name, productions|
-         #    unless @first_by_rule_name.member?(rule_name)
-         #       work_queue.concat( productions )
-         #       until work_queue.empty?
-         #          production = work_queue.shift
-         #          
-         #          
-         #       end
-         #    end
-         # end
-         # 
-         # 
-         # 
-         # 
-         # #
-         # # Next, find the start rule of the grammar.
-         # 
-         # start_rule_name = @configuration["StartRule"]
-         # nyi "error handling for missing start rule" if start_rule_name.nil?
-         # 
-         # start_productions = @productions_by_rule_name[start_rule_name]
-         # nyi "error handling for unknown start rule" if start_productions.nil?
-         # 
-         # 
-         # #
-         # # Build the start State from the start Rule.
-         # 
-         # start_state = allocate_state()
-         # start_state.add( start_productions )
-         # 
-         # 
-         # #
-         # # From the start state, build new states, one for each follow symbol.  Repeat for each new state
-         # # until all are complete.
-         # 
-         # unfinished_states = [start_state]
-         # until unfinished_states.empty?
-         #    current_state = unfinished_states.shift
-         #    
-         #    #
-         #    # Register the state as being created by it's start items (that's all that are 
-         #    # in there, right now).
-         #    
-         #    current_state.start_items.each do |item|
-         #       @states_by_start_productions[item.production.object_id] = [] unless @states_by_start_productions.member?(item.production.object_id)
-         #       @states_by_start_productions[item.production.object_id] << current_state
-         #    end
-         #    
-         #    #
-         #    # Complete the state and construct any target states it will need.
-         #    
-         #    current_state.complete()
-         #    current_state.enumerate_transitions do |symbol, items|               
-         #       to_state = find_state( items )
-         #       
-         #       if to_state.nil? then
-         #          to_state = current_state.add_transition( symbol, allocate_state() )
-         # 
-         #          items.each do |item|
-         #             to_state.add(item)
-         #          end
-         #       
-         #          unfinished_states << to_state
-         #       else
-         #          current_state.add_transition( symbol, to_state )
-         #       end
-         #    end
-         #    
-         #    #current_state.display( STDOUT, "" )
-         # end
-         # 
+      def compile_actions( explain = false, k_limit = 1 )
+         @state_table.each do |state|
+            state.compile_actions( @production_sets, @precedence_table, k_limit, explain )
+         end
       end
-      
-      
-      #
-      # find_state()
-      #  - looks for and returns any State that matches the supplied start Items
-      
-      def find_state( items )
-         
-         #
-         # Go through @states_by_start_production and find any State started by any of the items.
 
-         potential_states = nil
-         items.collect{|item| item.production.object_id}.collect{|id| @states_by_start_productions[id]}.each do |set|
-            if set.nil? then
-               
-               # If we are here, it indicates a rule is referenced but does not exist.  We'll let it pass, here,
-               # and will report it in State.add_item() instead.
-               
-            else
-               if potential_states.nil? then
-                  potential_states = set
-               else
-                  potential_states &= set
-               end
-            end
-         end
-         
-         #
-         # Of those, we'll now search for a State that has ALL the requested Items.  There really
-         # should only be one, so we'll return as soon as we find one.
-         
-         unless potential_states.nil?
-            potential_states.each do |state|
-               return state if state.matches?(items)
-            end
-         end
-         
-         return nil
-      end
-    
-    
-      #
-      # find_productions()
-      #  - returns a list of Productions that produce the specified rule name
-      
-      def find_productions( rule_name )
-         return @productions_by_rule_name[rule_name]
-      end
-    
-    
-    
 
 
     

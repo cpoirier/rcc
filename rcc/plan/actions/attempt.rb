@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/actions/action.rb"
 
 module RCC
 module Plan
@@ -19,7 +20,7 @@ module Actions
  # class Attempt
  #  - a Action that allows a set of Actions to be attempted, in sequence, until one of them succeeds
 
-   class Attempt
+   class Attempt < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization

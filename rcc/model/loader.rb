@@ -220,8 +220,9 @@ module Model
          load_rules() 
 
          skip_eos()
-         load_precedence_table() && skip_eos() while la() == "Precedence"
+         load_precedence_table() if la() == "Precedence"
 
+         skip_eos()
          nyi "error handling for trailing tokens" if la() != nil
       end
 
@@ -418,20 +419,21 @@ module Model
       
       def load_precedence_table()
          process_block( "Precedence" ) do
-            precedence_table = @grammar.create_precedence_table()
+            precedence_table = @grammar.precedence_table
             current_row      = precedence_table.create_row()
             
             until at_end_of_block()
-               if la() == :EOS then
-                  consume()
-                  current_row = precedence_table.create_row()
-               else
+               if la_type() == :WORD then
                   search_name = consume( :WORD, "expected rule or form name" )
                   if @grammar.labels.member?(search_name) then
                      current_row << @grammar.labels[search_name]
                   else
-                     nyi( "error handling for missing precedence reference" )
+                     nyi( "error handling for missing precedence reference [#{search_name}]" )
                   end
+               end
+               
+               if la_type() == :EOS then
+                  current_row = precedence_table.create_row()
                end
             end
          end

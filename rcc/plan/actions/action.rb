@@ -28,6 +28,14 @@ module Actions
       def initialize()
       end
 
+      def to_s()
+         return self.class.name
+      end
+      
+      def display( stream, indent = "" )
+         stream << indent << self.to_s << "\n"
+      end
+      
 
       
    end # Action

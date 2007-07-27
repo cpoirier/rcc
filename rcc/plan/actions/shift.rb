@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/actions/action.rb"
 
 module RCC
 module Plan
@@ -19,14 +20,21 @@ module Actions
  # class Shift
  #  - a Shift action for the ParserPlan
 
-   class Shift
+   class Shift < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( to_state )
-         @to_state = to_state
+      attr_reader :to_state
+      
+      def initialize( symbol_name, to_state )
+         @symbol_name = symbol_name
+         @to_state    = to_state
+      end
+      
+      def to_s()
+         return "Shift #{Plan::Symbol.describe(@symbol_name)}, then goto #{@to_state.state_number}"
       end
       
    end # Shift

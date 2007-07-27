@@ -58,9 +58,16 @@ module Plan
       end
       
       def to_s()
-         return "$"        if name.nil?
-         return "#{@name}" if name.is_a?(::Symbol)
-         return "'#{@name.gsub("\\", "\\\\").gsub("\n", "\\n").gsub("'", "''")}'"
+         return Symbol.describe(@name)
+         # return "$"        if name.nil?
+         # return "#{@name}" if name.is_a?(::Symbol)
+         # return "'#{@name.gsub("\\", "\\\\").gsub("\n", "\\n").gsub("'", "''")}'"
+      end
+      
+      def self.describe( name )
+         return "$"       if name.nil?
+         return "#{name}" if name.is_a?(::Symbol)
+         return "'#{name.gsub("\\", "\\\\").gsub("\n", "\\n").gsub("'", "''")}'"
       end
       
       

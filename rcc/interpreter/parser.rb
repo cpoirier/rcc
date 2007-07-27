@@ -26,10 +26,10 @@ module Interpreter
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( grammar, lexer )
-         @grammar   = grammar
-         @lexer     = lexer
-         @lookahead = []
+      def initialize( parser_plan, lexer )
+         @parser_plan = parser_plan
+         @lexer       = lexer
+         @lookahead   = []
       end
       
       
@@ -37,22 +37,24 @@ module Interpreter
       # parse()
       #  - applies the Grammar to the inputs and builds a generic AST
       
-      def parse( explain = false, start_state = nil )
+      def parse( explain = false, start_state_number = 0 )
          
-         state_stack = [ start_state.nil? ? @grammar.state_table[0] : start_state ]
+         start_state = @parser_plan.state_table[start_state_number]
+         state_stack = [ start_state ]
          node_stack  = []
+         action      = nil
          
          while true
             
             state = state_stack[-1]
             
             #
-            # Deterimine our options for shift and reduce.
+            # Determine our next action, based on lookahead.
             
-            next_token        = la()
-            shift_to_state    = next_token.nil? ? nil : state.transitions[next_token.type]
-            reduce_production = state.chosen_reduction.nil? ? nil : state.chosen_reduction.production
-
+            next_token = la()
+            token_type = (next_token.nil? ? nil : next_token.type)
+            action     = state.actions[token_type]
+            
             if explain then
                stack_description = node_stack.collect{|node| node.description}.join( ", " )
                la_description    = [1].collect{|i| t = la(i); t.nil? ? "" : t.description}.join( ", " )
@@ -64,83 +66,65 @@ module Interpreter
                STDOUT.puts "STACK: #{stack_description} |      LOOKAHEAD: #{la_description}"
                STDOUT.puts stack_bar
                state.display( STDOUT, "| " )
+            
+               STDOUT.puts "| Action analysis for lookahead #{la_description}"
+            
+               state.explanations[token_type].each do |explanation|
+                  STDOUT << "|    " << explanation.to_s << "\n"
+               end
             end
-
+            
             
             #
-            # If we can't shift and can't reduce, it's time for some error recovery, methinks.
+            # Process the action.
             
-            if shift_to_state.nil? and reduce_production.nil? then
-               STDOUT.puts "===> ERROR CORRECT" if explain
-               nyi "error correction"
+            case action
                
-            
-            #
-            # OTOH, if can can both shift and reduce, we have a conflict.  Time to engage backtracking
-            # support and try all the options, be decreasing precedence.
-               
-            elsif !shift_to_state.nil? and !reduce_production.nil? then
-               if explain
-                  STDOUT.puts "===> SHIFT/REDUCE CONFLICT"
-                  STDOUT.puts "===> SHIFT #{next_token.description} AND GOTO #{shift_to_state.number}"
-               end
-               
-               node_stack  << consume()
-               state_stack << shift_to_state
-             
-               
-            #
-            # There's no reduce, and we can shift.  Seems like a good plan.
+               when Plan::Actions::Shift
+                  STDOUT.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.state_number}" if explain
 
-            elsif !shift_to_state.nil? then
-               STDOUT.puts "===> SHIFT #{next_token.description} AND GOTO #{shift_to_state.number}" if explain
-
-               node_stack  << consume()
-               state_stack << shift_to_state
-
-               
-            #
-            # There's no shift, and we can reduce.  Let's do it.
-
-            else
-               
-               if explain
-                  STDOUT.puts "===> REDUCE/REDUCE conflict" if state.reductions.length > 1
-                  STDOUT.puts "===> REDUCE WITH #{reduce_production}"
-               end
-               
-               #
-               # First, collect enough nodes off the top of the stack to fill the CST.  Note also
-               # that we must discard any states that were pending for those nodes.
-               
-               nodes = []
-               reduce_production.symbols.length.times do 
-                  nodes.unshift node_stack.pop
-                  state_stack.pop
-               end
-               csn = CSN.new( reduce_production.output, nodes )
-               
-               #
-               # Get the goto state from the now-top-of-stack State.  If there is no goto state,
-               # we have reached the end of the line.  BUG: is that right?
-               
-               state      = state_stack[-1]
-               goto_state = state.transitions[reduce_production.output]
-               if goto_state.nil? then
-                  if state_stack.length == 1 then
-                     STDOUT.puts "===> ACCEPT" if explain
-                     node_stack << csn
-                     break
-                  else
-                     bug "why is there no goto state?"
+                  node_stack  << consume()
+                  state_stack << action.to_state
+                  
+                  
+               when Plan::Actions::Reduce
+                  if explain
+                     STDOUT.puts "===> REDUCE #{action.by_production.to_s}"
                   end
-               else
-                  STDOUT.puts "===> PUSH AND GOTO #{goto_state.number}" if explain
-
+                  
+                  production = action.by_production
+                  
+                  #
+                  # First, collect enough nodes off the top of the stack to fill the CST.  Note also
+                  # that we must discard any states that were pending for those nodes.
+                  
+                  nodes = []
+                  production.symbols.length.times do 
+                     nodes.unshift node_stack.pop
+                     state_stack.pop
+                  end
+                  csn = CSN.new( production.name, nodes )
+                  
+                  #
+                  # Get the goto state from the now-top-of-stack State.  If there is no goto state,
+                  # we have reached the end of the line.  BUG: is that right?
+                  
+                  state = state_stack[-1]
+                  goto_state = state.transitions[production.name]
+                  STDOUT.puts "===> PUSH AND GOTO #{goto_state.state_number}" if explain
+               
                   node_stack  << csn
                   state_stack << goto_state
-               end
+                  
+               when Plan::Actions::Accept
+                  STDOUT.puts "===> ACCEPT" if explain
+                  node_stack << csn
+                  break
+                                    
+               else
+                  nyi "support for #{action.class.name}"
             end
+
          end
          
          return node_stack[-1]

@@ -85,7 +85,7 @@ module Plan
          @start_terminals = nil
          
          sequences.each do |sequence|
-            self << sequence
+            add_sequence( sequence )
          end
       end
       
@@ -97,7 +97,7 @@ module Plan
          end
       end
       
-      def <<( sequence )
+      def add_sequence( sequence )
          if @signatures.nil? then
             @sequences << sequence
          else
@@ -109,6 +109,10 @@ module Plan
          end
          
          @start_terminals = nil
+      end
+      
+      def <<( sequence )
+         add_sequence( sequence )
       end
       
       

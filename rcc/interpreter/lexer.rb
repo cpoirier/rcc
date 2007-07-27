@@ -29,9 +29,8 @@ module Interpreter
       attr_reader :line_number
       attr_reader :column_number
       
-      def initialize( grammar, input, input_descriptor )
-         @grammar        = grammar
-         @master_state   = grammar.master_lexer_state
+      def initialize( lexer_plan, input, input_descriptor )
+         @lexer_plan     = lexer_plan
          @input          = input
          @descriptor     = input_descriptor
 
@@ -69,7 +68,7 @@ module Interpreter
       #  - runs the lexer against the input until one token is produced or the input is exhausted
       
       def next_token( explain = false )
-         token = lex( @master_state, explain )
+         token = lex( @lexer_plan, explain )
          
          if explain then
             if token.nil? then
@@ -98,7 +97,7 @@ module Interpreter
       
       #
       # lex()
-      #  - run a LexerState against the input
+      #  - run a LexerPlan against the input
       #  - returns a single token relevant to the supplied state
       #  - always takes the longest match possible
       

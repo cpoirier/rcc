@@ -34,6 +34,14 @@ module Plan
          return start_items.collect{|item| item.signature}.sort.join("\n")
       end
       
+      
+      def self.start_state( start_rule_name, production_sets )
+         state = new( 0 )
+         state.add_productions( ProductionSet.start_set(start_rule_name), nil, production_sets )
+         
+         return state
+      end
+      
 
 
 
@@ -47,7 +55,7 @@ module Plan
       attr_reader :transitions
       attr_reader :reductions
       attr_reader :actions
-      attr_reader :conflicts
+      attr_reader :explanations
       
       def initialize( state_number, start_items = [], context_state = nil  )
          @state_number = state_number    # The number of this State within the overall ParserPlan
@@ -58,8 +66,8 @@ module Plan
          @transitions  = {}              # Symbol.name => State
          @reductions   = []              # An array of complete? Items
          @queue        = []              # A queue of unclosed Items in this State
-         @actions      = {}              # Symbol.name => Action
-         @conflicts    = {}              # Symbol.name => ???
+         @actions      = nil             # Symbol.name => Action
+         @explanations = nil             # A set of Explanations for the Actions, if requested during creation
 
          @item_index   = {}              # An index used to avoid duplication of Items within the State
          start_items.each do |item|
@@ -70,7 +78,7 @@ module Plan
          @context_states[context_state.state_number] = true unless context_state.nil?
       end
       
-
+      
       #
       # add_productions( )
       #  - adds all Productions in a ProductionSet to this state, as 0 mark Items
@@ -266,6 +274,7 @@ module Plan
                @reductions << item
             elsif !item.leader.terminal?
                set_name_to_add = item.leader.name
+               nyi "error handling for missing reference name [#{set_name_to_add}]" unless production_sets.member?(set_name_to_add)
                add_productions( production_sets[set_name_to_add], item, production_sets )
             end
          end
@@ -355,14 +364,14 @@ module Plan
       
             
       #
-      # generate_actions()
+      # compile_actions()
       #  - resolves conflicts and generates a list of actions for this State
       #  - each action indicates what to do when a specific terminal is on lookahead
-      #  - returns any explanations generated
       
-      def generate_actions( production_sets, conflict_resolver, k_limit = 1, explain = false )
+      def compile_actions( production_sets, precedence_table, k_limit = 1, explain = false )
          
-         explanations = (explain ? [] : nil)
+         @explanations = (explain ? {} : nil)
+         @actions      = {}
          
          #
          # First, sort into lists of options.  If the Item leader is a non-terminal, generate Goto actions immediately 
@@ -373,37 +382,40 @@ module Plan
             if !item.complete? and item.leader.non_terminal? then
                @actions[item.leader.name] = Actions::Goto.new( @transitions[item.leader.name] )
             else
-               determinants = item.determinants( production_sets )
+               determinants = item.determinants( 1, production_sets )
                determinants.each do |determinant|
-                  options[determinant] = [] unless options.member?(determinant)
-                  options[determinant] << item
+                  options[determinant.name] = [] unless options.member?(determinant.name)
+                  options[determinant.name] << item
                end
             end
          end
-
+         
          
          #
          # Select an action for each lookahead terminal.
          
          options.each do |symbol_name, items|
             
-            actions               = nil
+            explanations          = []
+            all_accepts           = []
             all_reductions        = []
             eliminated_reductions = []
             all_shifts            = []
-            valid_shifts          = []
-            explanations          = []
+            eliminated_shifts     = []
             error_actions         = []
+
 
             #
             # If there is only one option for an la(1) Symbol, life is good.  
 
             if items.length == 1 then
                item = items[0]
+               explanations << Explanations::OnlyOneChoice.new( item )
+               
                if item.complete? then
                   all_reductions << item
                else
-                  valid_shifts   << item
+                  all_shifts     << item
                end
                
             #
@@ -412,6 +424,29 @@ module Plan
             
             else
                
+               #
+               # We'll use associativity-based conflict resolution a lot.  We'll make it a Proc to save duplicating 
+               # the code.  The decision is always on the associativity of the reduction Production:
+               #   left-associativity  -- perform the reduce
+               #   right-associativity -- perform the shift
+               #   no associativity    -- invalidate both ops, create an Error Action
+
+               process_associativity = lambda() do |shift, reduction|
+                  case reduction.production.associativity
+                     when "none"
+                        eliminated_reductions << reduction
+                        error_actions         << Actions::NonAssociativityViolation.new( shift, reduction )
+                        explanations          << Explanations::NonAssociativityViolation.new( shift, reduction ) if explain
+                     when "left"
+                        eliminated_shifts     << shift
+                        explanations          << Explanations::ReduceTrumpsShift.new( reduction, shift, true ) if explain
+                     else
+                        eliminated_reductions << reduction
+                        explanations          << Explanations::ShiftTrumpsReduce.new( shift, reduction, true ) if explain
+                  end
+               end
+
+
                #
                # Start by splitting the Items into reductions and shifts.
                
@@ -422,46 +457,60 @@ module Plan
                      all_shifts     << item
                   end
                end
+
                
                #
                # Sort the reductions by priority: lower Production numbers first.
                
                all_reductions.sort!{|lhs, rhs| lhs.production.number <=> rhs.production.number }
-               explanations << Explanations::ReductionsSorted.new( all_reductions ) if explain
+               explanations << Explanations::ReductionsSorted.new( all_reductions ) if explain and all_reductions.length > 1
+
                
                #
-               # Use the conflict_resolver to arbitrate between shift/reduce conflicts by associativity and precedence.
-               #
-               # BUG: If a reduce is eliminated in favour of a shift by one precedence table, then that shift is
-               # eliminated by a reduce in another, should the first reduce be back in the running?
+               # Arbitrate between shift/reduce conflicts by precedence and associativity, where available.
                
                all_shifts.each do |shift|
                   reductions.each do |reduction|
-                     item = conflict_resolver.choose( shift, reduction )
                      
                      #
-                     # If the shift is chosen, then the reduce is eliminated.  
+                     # If both items hold the same Production, we'll let associativity decide.
                      
-                     if item.object_id == shift.object_id then
-                        valid_shifts          << shift
-                        eliminated_reductions << reduction
-                        
-                        explanations << Explanations::ShiftTrumpsReduce.new( shift, reduction ) if explain
+                     if shift.production.number == reduction.production.number then
+                        process_associativity.call( shift, reduction )
                         
                      #
-                     # If the reduce is chosen, then the shift is eliminated.
+                     # Otherwise, if both items have precedence setings, we'll let it or associativity decide.
                      
-                     elsif item.object_id == reduce.object_id then
-                        explanations << Explanations::ReduceTrumpsShift.new( reduction, shift ) if explain
+                     elsif (shift_tier = precedence_table[shift.production.number]) and (reduction_tier = precedence_table[reduction.production.number]) then
+
+                        #
+                        # Lower tier numbers indicate higher precedence.  To make the math more intuitive,
+                        # we'll negate them.
+                     
+                        shift_precedence     = shift_tier * -1
+                        reduction_precedence = reduction_tier * -1
+                     
+                        #
+                        # If the shift precedence is higher, we shift.  The reduction is eliminated.
+                     
+                        if shift_precedence > reduction_precedence then
+                           eliminated_reductions << reduction
+                           explanations          << Explanations::ShiftTrumpsReduce.new( shift, reduction ) if explain
                         
-                     #
-                     # Otherwise, nothing was chosen, and the lookahead is an error (as far as these two rules
-                     # are concerned).  We'll let the conflict_resolver explain.
+                        #
+                        # If the reduction precedence is higher, we reduce.  The shift is eliminated.
+                        # Note that the lists are already arranged appropriately for this.
+                        
+                        elsif shift_precedence < reduction_precedence then
+                           eliminated_shifts << shift
+                           explanations      << Explanations::ReduceTrumpsShift.new( reduction, shift ) if explain
+                        
+                        #
+                        # Otherwise, we pick on associativity of the reduction.
                      
-                     else
-                        error_actions         << conflict_resolver.create_error_action( shift, reduction )
-                        eliminated_reductions << reduction
-                        explanations          << conflict_resolver.explain_error( shift, reduction ) if explain
+                        else 
+                           process_associativity.call( shift, reduction )
+                        end
                      end
                   end
                end
@@ -469,15 +518,23 @@ module Plan
 
             
             #
-            # Produce actions for the set, in the following order: valid_shifts, valid_reductions, error_actions.
+            # Produce actions for the set, in the following order: valid shifts, valid reductions, error actions.
             # If we end up with only one, we return it.  Otherwise, we we create an Attempt action to trigger 
             # backtracking support.  
             #
             # BUG: At some point, k>1 could eliminate some backtracking, and would be especially useful for 
             # reduce/reduce conflicts.
             
-            valid_shifts.each do |shift|
-               actions << Actions::Shift.new( @transitions[symbol_name] )
+            actions = []
+            
+            valid_shifts = (all_shifts - eliminated_shifts)
+            unless valid_shifts.empty? 
+               shift = valid_shifts[0]
+               if symbol_name.nil? then
+                  actions << Actions::Accept.new( shift.production )
+               else
+                  actions << Actions::Shift.new( symbol_name, @transitions[symbol_name] )
+               end
             end
             
             (all_reductions - eliminated_reductions).each do |reduction|
@@ -493,9 +550,12 @@ module Plan
             else
                @actions[symbol_name] = Actions::Attempt.new( actions )
             end
+            
+            if explain then
+               explanations << Explanations::SelectedAction.new( @actions[symbol_name] )
+               @explanations[symbol_name] = explanations 
+            end
          end
-         
-         return explanations
       end
       
       
@@ -512,7 +572,7 @@ module Plan
          return "State"
       end
 
-      def display( stream, indent = "" )
+      def display( stream, indent = "", complete = true )
          stream << indent << "State #{@state_number}\n"
          stream << indent << "   Context rules: #{@context_states.keys.sort.join(", ")}\n"
 
@@ -521,7 +581,7 @@ module Plan
          
          rows = []
          @items.each do |item|
-            rows << [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" "), item.complete? ? item.determinant.join(" | ") : nil ] # item.complete? ? item.determinant.join(" | ") : nil ]
+            rows << [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" "), item.complete? ? item.determinants.join(" | ") : nil ] # item.complete? ? item.determinants.join(" | ") : nil ]
          end
          
          #
@@ -551,24 +611,31 @@ module Plan
             end
          end
 
+
          #
-         # Display the transitions.
+         # Display transitions and reductions, but only if requested.
          
-         unless @transitions.empty?
-            width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
-            @transitions.each do |symbol_name, state|
-               stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.state_number) << "\n"
+         if complete then
+            
+            #
+            # Display the transitions.
+         
+            unless @transitions.empty?
+               width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
+               @transitions.each do |symbol_name, state|
+                  stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.state_number) << "\n"
+               end
             end
-         end
          
-         #
-         # Display the reductions.
+            #
+            # Display the reductions.
          
-         unless @reductions.empty?
-            @reductions.each do |item|
-               stream << indent << sprintf( "   Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" ) 
-               stream << " (*)" if item.object_id == @chosen_reduction.object_id
-               stream << "\n"
+            unless @reductions.empty?
+               @reductions.each do |item|
+                  stream << indent << sprintf( "   Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" ) 
+                  stream << " (*)" if item.object_id == @chosen_reduction.object_id
+                  stream << "\n"
+               end
             end
          end
          

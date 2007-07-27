@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/explanations/explanation.rb"
 
 module RCC
 module Plan
@@ -19,7 +20,7 @@ module Explanations
  # class ReductionsSorted
  #  - an explanation indicating the sort order for reductions
 
-   class ReductionsSorted
+   class ReductionsSorted < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
@@ -29,6 +30,9 @@ module Explanations
          @items = items
       end
       
+      def to_s()
+         return "Sorted reductions into declaration order: #{@items.collect{|item| item.to_s()}.join("; ")}"
+      end
       
       
    end # ReductionsSorted
