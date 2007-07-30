@@ -64,7 +64,8 @@ module Plan
                form_class = nil
                
                if form.label.nil? then
-                  base_class.catch_all_class.merge_slots( production, false )
+                  form_class = base_class.catch_all_class
+                  form_class.merge_slots( production, false )
                else
                   bug( "duplicate name in AST" ) if ast_classes.member?(form.label)
                   form_class = ASTClass.new( form.label, base_class )
@@ -72,7 +73,7 @@ module Plan
                   ast_classes[form.label] = form_class
                end
                   
-               production.ast_class = base_class.catch_all_class
+               production.ast_class = form_class
             end
          end
          

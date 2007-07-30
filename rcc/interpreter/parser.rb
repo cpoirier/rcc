@@ -10,6 +10,7 @@
 
 require "rcc/environment.rb"
 require "rcc/interpreter/csn.rb"
+require "rcc/interpreter/asn.rb"
 
 module RCC
 module Interpreter
@@ -26,10 +27,11 @@ module Interpreter
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( parser_plan, lexer )
+      def initialize( parser_plan, lexer, build_ast = true )
          @parser_plan = parser_plan
          @lexer       = lexer
          @lookahead   = []
+         @build_ast   = build_ast
       end
       
       
@@ -108,7 +110,13 @@ module Interpreter
                      nodes.unshift node_stack.pop
                      state_stack.pop
                   end
-                  csn = CSN.new( production.name, nodes )
+                  
+                  csn = nil
+                  if @build_ast then
+                     csn = ASN.new( production, nodes )
+                  else
+                     csn = CSN.new( production.name, nodes )
+                  end
                   
                   #
                   # Get the goto state from the now-top-of-stack State.  If there is no goto state,

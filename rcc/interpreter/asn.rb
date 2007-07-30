@@ -21,7 +21,6 @@ module Interpreter
    class ASN
       
       
-      
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
@@ -31,8 +30,8 @@ module Interpreter
       
       alias :symbol :root_symbol
       
-      def initialize( production, root_symbol, component_symbols )
-         @root_symbol = root_symbol
+      def initialize( production, component_symbols )
+         @root_symbol = production.name
          @ast_class   = production.ast_class
          @slots       = {}
          
@@ -48,16 +47,18 @@ module Interpreter
       
       
       def display( stream, indent = "" )
-         stream << indent << "#{@root_symbol} =>" << "\n"
+         stream << indent << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"
          
-         child_indent = indent + "   "
-         @component_symbols.each do |symbol|
-            symbol.display( stream, child_indent )
+         indent1 = indent + "   "
+         indent2 = indent1 + "   "
+         @slots.each do |slot_name, symbol|
+            stream << indent1 << slot_name << ":\n"
+            symbol.display( stream, indent2 )
          end
       end
       
       
-   end # CSN
+   end # ASN
    
 
 

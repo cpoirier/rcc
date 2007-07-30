@@ -25,7 +25,8 @@
    #
    # Load and compile the grammar.
    
-   grammar     = RCC::Model::Grammar.load_from_file( File.basename(ARGV[0]), ARGV[0] )
+   grammar_path = ARGV.shift
+   grammar      = RCC::Model::Grammar.load_from_file( File.basename(grammar_path), grammar_path )
    grammar.display( STDOUT )
 
 
@@ -41,20 +42,23 @@
    
    
    #
-   # Process the input.  If ARGV[1] is "lex", we will run the lexer over the input and do no parsing.
+   # Process the input.  If mode is "lex", we will run the lexer over the input and do no parsing.
    # Otherwise, we parse.
    
    explain = false
-   if ARGV[1] == "explain" then
+   if ARGV[0] == "explain" then
+      ARGV.shift
       explain = true
-      mode    = ARGV[2]
+      mode    = ARGV.shift
    else
-      mode    = ARGV[1]
+      mode    = ARGV.shift
    end
       
-   
+
    case mode
       when nil, "parse"
+         parser_plan.display( STDOUT, "", true, ARGV[0].nil? ? :reduce_determinants : ARGV[0].intern ) if explain
+
          lexer  = RCC::Interpreter::Lexer.new( parser_plan.lexer_plan, STDIN, "<stdin>" )
          parser = RCC::Interpreter::Parser.new( parser_plan, lexer )
          cst    = parser.parse( explain )
@@ -67,7 +71,6 @@
          cst.display( STDOUT, "" )
          
       when "lex"
-         
          lexer = RCC::Interpreter::Lexer.new( parser_plan.lexer_plan, STDIN, "<stdin>" )
          while token = lexer.next_token( explain )
             puts "[#{token.gsub("\n", "\\n")}]#{token.type.is_a?(Symbol) ? ":" + token.type.to_s : "" } at #{token.line_number}:#{token.column_number}"  unless explain
@@ -80,6 +83,6 @@
          end
          
       else
-         puts "Supported modes: parse, lex"
+         puts "Unsuppored mode: #{mode}; Supported modes: parse, lex"
          exit 10
    end
