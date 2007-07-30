@@ -67,10 +67,15 @@ module Interpreter
                STDOUT.puts stack_bar
                state.display( STDOUT, "| " )
             
-               STDOUT.puts "| Action analysis for lookahead #{la_description}"
+               STDOUT.puts "| #{state.lookahead_explanations}"
+               STDOUT.puts "| Action analysis for lookahead #{la_description} (#{state.actions[token_type].class.name})"
             
-               state.explanations[token_type].each do |explanation|
-                  STDOUT << "|    " << explanation.to_s << "\n"
+               if state.explanations.nil? then
+                  bug( "no explanations found -- wtf?" )
+               else
+                  state.explanations[token_type].each do |explanation|
+                     STDOUT << "|    " << explanation.to_s << "\n"
+                  end
                end
             end
             
@@ -120,6 +125,10 @@ module Interpreter
                   STDOUT.puts "===> ACCEPT" if explain
                   node_stack << csn
                   break
+                  
+               when NilClass
+                  STDOUT.puts "===> ERROR: unexpected token: #{next_token}"
+                  exit
                                     
                else
                   nyi "support for #{action.class.name}"

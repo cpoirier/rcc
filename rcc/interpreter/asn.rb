@@ -9,55 +9,57 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
-require "rcc/model/form.rb"
-require "rcc/model/form_elements/terminal.rb"
-
 
 module RCC
-module Model
-module FormElements
+module Interpreter
 
  
  #============================================================================================================================
- # class RawTerminal
- #  - a raw Terminal described directly inline
+ # class ASN
+ #  - a Node in an Abstract Syntax Tree produced by the Interpreter
 
-   class RawTerminal < Terminal
+   class ASN
+      
+      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( symbol )
-         super( symbol, symbol )
-         @label = "ignore"
+      attr_reader :root_symbol    # The Symbol this CSN represents
+      attr_reader :slots          # The named Symbols that comprise it
+      
+      alias :symbol :root_symbol
+      
+      def initialize( production, root_symbol, component_symbols )
+         @root_symbol = root_symbol
+         @ast_class   = production.ast_class
+         @slots       = {}
+         
+         production.slot_mappings.each do |index, slot|
+            @slots[slot] = component_symbols[index]
+         end
       end
       
-
-
       
-      
-      
-    #---------------------------------------------------------------------------------------------------------------------
-    # Conversion and formatting
-    #---------------------------------------------------------------------------------------------------------------------
-
-      def to_s()
-         return "'" + @name.gsub("'", "''") + "'" 
+      def description()
+         return "#{@root_symbol}"
       end
-
+      
+      
       def display( stream, indent = "" )
-         stream << indent << "RawTerminal #{@name}\n"
+         stream << indent << "#{@root_symbol} =>" << "\n"
+         
+         child_indent = indent + "   "
+         @component_symbols.each do |symbol|
+            symbol.display( stream, child_indent )
+         end
       end
-
-
-
-
-
-   end # RawTerminal
+      
+      
+   end # CSN
    
 
 
-end  # module FormElements
-end  # module Model
+end  # module Interpreter
 end  # module Rethink

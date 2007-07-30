@@ -34,10 +34,12 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :name
+      attr_reader :slot_name
       
-      def initialize( name, terminal_indicator )
-         @name     = name
-         @terminal = terminal_indicator
+      def initialize( name, terminal_indicator, slot_name = nil )
+         @name      = name
+         @terminal  = terminal_indicator
+         @slot_name = slot_name
       end
       
       def terminal?()
@@ -57,11 +59,12 @@ module Plan
          return @name == rhs.name
       end
       
-      def to_s()
-         return Symbol.describe(@name)
-         # return "$"        if name.nil?
-         # return "#{@name}" if name.is_a?(::Symbol)
-         # return "'#{@name.gsub("\\", "\\\\").gsub("\n", "\\n").gsub("'", "''")}'"
+      def to_s( include_slot_names = false )
+         if @slot_name.nil? or !include_slot_names then
+            return Symbol.describe(@name) 
+         else
+            return Symbol.describe(@name) + ":" + @slot_name
+         end
       end
       
       def self.describe( name )

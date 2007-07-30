@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/util/recursion_loop_detector.rb"
 
 module RCC
 module Plan
@@ -26,14 +27,16 @@ module Plan
 
       attr_reader   :production           # The Production for this Item 
       attr_reader   :at                   # The mark in the Form at which this Item is working
-      attr_reader   :follow_contexts      # The Items from which we inherit our follow terminals
+      attr_reader   :follow_sources       # The Items from which we ihherit additional follow contexts
       attr_accessor :start_item           # Indicates if the Item is a start item in its State
       attr_reader   :signature            # A signature for this Item's primary data (production and mark) 
+      attr_reader   :shifted_from_item
                                   
-      def initialize( production, at = 0, follow_contexts = [], production_sets = nil )
+      def initialize( production, at = 0, follow_contexts = [], production_sets = nil, shifted_from_item = nil )
          @production       = production
          @at               = at
-         @follow_contexts  = []
+         @follow_contexts  = []               # Items that provide follow symbols to us
+         @follow_sources   = []               # Itmes that provide late-bound follow contexts to us (anything that created us or an equivalent with shift())
          @followers        = nil
          @follow_sequences = nil
          @start_item       = false
@@ -43,29 +46,33 @@ module Plan
          follow_contexts.each do |item|
             add_follow_context( item )
          end
-
-         #
-         # BUG: verify this:
          
-         assert( @signature.index("\n").nil?, "you aren't handling newlines in signatures" )
+         @follow_sources = [ shifted_from_item ] unless shifted_from_item.nil?
+         
+         #
+         # Caching support
+         
+         @closed                    = false
+         @follow_contexts_finalized = false
       end       
       
       def hash()
-         return @production.hash
+         return @signature.hash
       end
-      
       
       def eql?( rhs )
          return false unless rhs.is_a?(Item)
          return self.signature == rhs.signature
       end
       
+      # 
+      # rule_name()
+      #  - returns the name of the underlying rule
       
       def rule_name
          return @production.rule_name
       end
-      
-      
+    
 
       #
       # complete?()
@@ -77,6 +84,25 @@ module Plan
 
       
       #
+      # leader()
+      #  - returns the next Symbol from the mark
+      
+      def leader()
+         return @production.symbols[@at]
+      end
+      
+      
+
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Operations and Context Discovery
+    #---------------------------------------------------------------------------------------------------------------------
+
+    
+      #
       # shift()
       #  - returns an Item like this one, but shifted one position to the right
       
@@ -84,17 +110,62 @@ module Plan
          if complete? then
             return nil
          else
-            return Item.new( @production, @at + 1, [] + @follow_contexts, @production_sets )
+            return Item.new( @production, @at + 1, [] + @follow_contexts, @production_sets, self )
          end
       end
       
       
       #
-      # leader()
-      #  - returns the next Symbol from the mark
+      # close()
+      #  - closes the Item for changes to context information
+      #  - enables caching of context data
+      #  - don't do this until all States in the Grammar are closed
       
-      def leader()
-         return @production.symbols[@at]
+      def close()
+         @closed = true
+      end
+      
+      
+      #
+      # follow_contexts()
+      #  - returns the list of Items which provide context to us
+      #  - avoid calling this before close(), as it is expensive; nor is it likely to be accurate
+      
+      def follow_contexts( loop_detector = nil )
+         return @follow_contexts if @follow_contexts_finalized or !@closed
+         
+         #
+         # Collect additional follow contexts from our sources.
+
+         contexts_index = nil
+         loop_detector  = Util::RecursionLoopDetector.new() if loop_detector.nil?
+         complete = loop_detector.monitor(self.object_id) do
+            
+            #
+            # We can't afford to reject signature-equivalent follow contexts, here, as they may have different 
+            # follow contexts.  So, we eliminate duplicates on object_id.
+
+            contexts_index = @follow_contexts.to_hash( :value_is_element ) { |item| item.object_id }
+            @follow_sources.each do |follow_source|
+               sourced_items = follow_source.follow_contexts( loop_detector )
+               sourced_items.each do |sourced_item|
+                  contexts_index[sourced_item.object_id] = sourced_item
+               end
+            end
+         end
+
+         #
+         # Take additional actions as indicated by the monitor() result.  If complete is nil, we just looped.
+         
+         return [] if complete.nil?
+         
+         follow_contexts = contexts_index.values
+         if @closed and complete then
+            @follow_contexts = follow_contexts
+            @follow_contexts_finalized = true
+         end
+         
+         return follow_contexts
       end
       
       
@@ -166,39 +237,55 @@ module Plan
       #    from the mark and flowing into the lookahead, as necessary
       #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
       
-      def sequences_after_mark( length = 1, production_sets = nil, loop_detection = [] )
+      def sequences_after_mark( length = 1, production_sets = nil, loop_detector = nil )
          return @sequences_after_mark unless @sequences_after_mark.nil? or @sequences_after_mark.length < length
-         return SequenceSet.empty_set() if loop_detection.member?(self.object_id)
          
          production_sets = @production_sets if production_sets.nil?
          assert( !production_sets.nil?, "you must supply a hash of ProductionSets to sequences_after_mark() when it is calculated" )
 
+         loop_detector = Util::RecursionLoopDetector.new() if loop_detector.nil?
+
          #
-         # Satisfy as much of the request as possible locally.  If the request is fully satisfied without going
-         # to our follow contexts, all the better.
+         # Tools in hand, build the set.
+
+         sequences_after_mark = nil
+         complete = loop_detector.monitor(self.object_id) do
+
+            #
+            # Satisfy as much of the request as possible locally.  If the request is fully satisfied without going
+            # to our follow contexts, all the better.
          
-         local_symbols = rest()
-         if local_symbols.length >= length then
-            @sequences_after_mark = SequenceSet.single( local_symbols )
+            local_symbols = rest()
+            if local_symbols.length >= length then
+               sequences_after_mark = SequenceSet.single( local_symbols )
             
-         #
-         # Otherwise, we have to go to our follow contexts for additional symbols.  We don't want the
-         # leader symbol from our contexts, as we ARE that leader symbol.
+            #
+            # Otherwise, we have to go to our follow contexts for additional symbols.  We don't want the leader from
+            # our contexts, as we ARE that leader symbol.
          
-         else
-            loop_detection = [self.object_id] + loop_detection
-            sequence_sets = @follow_contexts.collect do |context|
-               if context.nil? then
-                  SequenceSet.end_of_input_set
-               else
-                  set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detection )
+            else
+               sequence_sets = self.follow_contexts().collect do |context|
+                  if context.nil? then
+                     SequenceSet.end_of_input_set
+                  else
+                     set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detector )
+                  end
                end
-            end
             
-            @sequences_after_mark = SequenceSet.merge( sequence_sets ).prefix( local_symbols )
+               sequences_after_mark = SequenceSet.merge( sequence_sets ).prefix( local_symbols )
+            end
          end
          
-         return @sequences_after_mark
+         #
+         # Return appropriately, based on complete.  Note that complete.nil? indicates we tried to call ourselves.
+         
+         return SequenceSet.empty_set() if complete.nil?
+         
+         if complete and @closed then
+            @sequences_after_mark = sequences_after_mark
+         end
+         
+         return sequences_after_mark
       end
       
       
@@ -207,8 +294,8 @@ module Plan
       #  - similar to sequences_after_mark, but skips the leader 
       #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
       
-      def sequences_after_leader( length = 1, production_sets = nil, loop_detection = [] )
-         sequences = sequences_after_mark( length + 1, production_sets, loop_detection )
+      def sequences_after_leader( length = 1, production_sets = nil, loop_detector = nil )
+         sequences = sequences_after_mark( length + 1, production_sets, loop_detector )
          return sequences.slice( 1..-1 )
       end
       
@@ -249,12 +336,30 @@ module Plan
       
       
       #
+      # add_follow_source()
+      #  - adds a follow source, which indicates an Item from which to include follow contexts at calculation time
+      
+      def add_follow_source( item )
+         type_check( item, Item, true )
+         
+         unless @follow_sources.member?(item)
+            @follow_sources << item
+         end
+      end
+      
+      
+      #
       # add_follow_contexts_from( )
-      #  - adds the follow contexts from another Item
+      #  - adds the follow contexts and follow sources from another Item
+      #  - generally, this is used just before the other Item is trashed so as not to duplicate us
       
       def add_follow_contexts_from( item )
          item.follow_contexts.each do |context_item|
             add_follow_context( context_item )
+         end
+         
+         item.follow_sources.each do |source_item|
+            add_follow_source( source_item )
          end
       end
       

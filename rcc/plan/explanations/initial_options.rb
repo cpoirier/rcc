@@ -9,55 +9,39 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
-require "rcc/model/form.rb"
-require "rcc/model/form_elements/terminal.rb"
-
+require "rcc/plan/explanations/explanation.rb"
 
 module RCC
-module Model
-module FormElements
+module Plan
+module Explanations
 
  
  #============================================================================================================================
- # class RawTerminal
- #  - a raw Terminal described directly inline
+ # class InitialOptions
+ #  - base class for things that explain why actions where produced the way they were
 
-   class RawTerminal < Terminal
+   class InitialOptions < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( symbol )
-         super( symbol, symbol )
-         @label = "ignore"
+      def initialize( options )
+         @options = options
       end
       
-
-
       
-      
-      
-    #---------------------------------------------------------------------------------------------------------------------
-    # Conversion and formatting
-    #---------------------------------------------------------------------------------------------------------------------
-
       def to_s()
-         return "'" + @name.gsub("'", "''") + "'" 
+         return "Option summary: #{@options.keys.collect{|symbol_name| @options[symbol_name].length.to_s + " for " + Symbol.describe(symbol_name) }.join("; ")}"
       end
-
-      def display( stream, indent = "" )
-         stream << indent << "RawTerminal #{@name}\n"
-      end
-
-
-
-
-
-   end # RawTerminal
+      
+      
+   end # InitialOptions
    
 
 
-end  # module FormElements
-end  # module Model
+
+end  # module Explanations
+end  # module Plan
 end  # module Rethink
+

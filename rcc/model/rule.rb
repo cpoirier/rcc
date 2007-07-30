@@ -10,6 +10,7 @@
 
 require "rcc/environment.rb"
 require "rcc/model/form_elements/element.rb"
+require "rcc/util/recursion_loop_detector.rb"
 
 module RCC
 module Model
@@ -32,11 +33,11 @@ module Model
       attr_reader :forms      # The Forms in this Rule (this is where the real data is)
 
       def initialize( name, number, grammar )
-         @name        = name
-         @symbol      = FormElements::NonTerminal.new( name )
-         @number      = number
-         @grammar     = grammar
-         @forms       = []
+         @name    = name
+         @symbol  = FormElements::NonTerminal.new( name )
+         @number  = number
+         @grammar = grammar
+         @forms   = []
       end
       
       
@@ -45,6 +46,8 @@ module Model
       #  - creates one a Form in the rule
       
       def create_form( root_element, label = nil, properties = {} )
+         bug( "you cannot create new Forms after calling first_and_follow_sets()!" ) unless @first_and_follow_sets.nil?
+         
          form = Form.new( root_element, self, @forms.length, label, properties )
          @forms << form
          
@@ -64,6 +67,9 @@ module Model
          @root_element.assign_slots( slot_counts, slot_tracks )
       end
 
+
+
+      
 
 
 

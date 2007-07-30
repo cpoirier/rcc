@@ -16,7 +16,7 @@ module Interpreter
  
  #============================================================================================================================
  # class CSN
- #  - a Node in an Abstract Syntax Tree produced by the Interpreter
+ #  - a Node in a Concrete Syntax Tree produced by the Interpreter
 
    class CSN
       

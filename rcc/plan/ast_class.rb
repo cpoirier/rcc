@@ -9,55 +9,56 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
-require "rcc/model/form.rb"
-require "rcc/model/form_elements/terminal.rb"
-
 
 module RCC
-module Model
-module FormElements
+module Plan
 
  
  #============================================================================================================================
- # class RawTerminal
- #  - a raw Terminal described directly inline
+ # class ASTClass
+ #  - plan for an AST classes that can be built from our Rules and Forms
 
-   class RawTerminal < Terminal
+   class ASTClass
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( symbol )
-         super( symbol, symbol )
-         @label = "ignore"
+      def initialize( name, parent_class = nil )
+         @name         = name
+         @parent_class = parent_class
+         @slots        = []
+         @catch_all    = nil
       end
       
-
-
       
-      
-      
-    #---------------------------------------------------------------------------------------------------------------------
-    # Conversion and formatting
-    #---------------------------------------------------------------------------------------------------------------------
-
-      def to_s()
-         return "'" + @name.gsub("'", "''") + "'" 
+      def catch_all_class()
+         bug( "get the catchall class from the root class" ) unless @parent_class.nil?
+         return @catch_all unless @catch_all.nil?
+         @catch_all = ASTClass.new( @name, self )
       end
-
-      def display( stream, indent = "" )
-         stream << indent << "RawTerminal #{@name}\n"
+      
+      
+      def define_slot( name, bug_if_duplicate = true )
+         bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
+         @slots << name
       end
-
-
-
-
-
-   end # RawTerminal
+      
+      
+      def merge_slots( production, bug_if_duplicate = true )
+         production.slot_mappings.values.each do |slot|
+            define_slot( slot, bug_if_duplicate )
+         end
+      end
+      
+      
+      
+   end # ASTClass
    
 
 
-end  # module FormElements
-end  # module Model
+
+
+
+end  # module Plan 
 end  # module Rethink

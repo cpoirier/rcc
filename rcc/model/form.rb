@@ -94,6 +94,23 @@ module Model
          @label                = label
          @properties           = properties
          @phrases              = nil
+         
+         #
+         # Assign Slots to our Symbols.
+         
+         label_counts = {}
+         slot_counts  = {}
+         @root_element.prep_slots( label_counts, slot_counts )
+         
+         label_counts.keys.each do |key|
+            if label_counts[key] > 1 then
+               nyi "error handling for duplicate label in rule"
+            elsif slot_counts[key] > label_counts[key] then
+               nyi "error handling for label/symbol naming conflict"
+            end
+         end
+         
+         @root_element.assign_slots( slot_counts, {} )
       end
 
 

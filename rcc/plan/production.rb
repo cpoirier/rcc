@@ -24,12 +24,7 @@ module Plan
       
       def self.start_production( start_rule_name )
          symbols = [Plan::Symbol.new(start_rule_name.intern, false), Plan::Symbol.end_of_input]
-         production = new( 0, start_rule_name, nil, "right", -1, nil )
-         production.instance_eval do
-            @symbols = symbols
-         end
-         
-         return production
+         return new( 0, start_rule_name, symbols, "right", -1, nil )
       end
       
       
@@ -40,24 +35,36 @@ module Plan
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :number
-      attr_reader :rule_name
-      attr_reader :name
-      attr_reader :symbols
-      attr_reader :associativity
-      attr_reader :precedence
-      attr_reader :ignore_conflicts
-      attr_reader :form_id
+      attr_reader   :number
+      attr_reader   :rule_name
+      attr_reader   :name
+      attr_reader   :symbols
+      attr_reader   :associativity
+      attr_reader   :precedence
+      attr_reader   :ignore_conflicts
+      attr_reader   :form_id
+      attr_reader   :slot_mappings
+      attr_accessor :ast_class
 
-      def initialize( number, rule_name, symbol_phrase, associativity, form_id, form = nil )
+      def initialize( number, rule_name, symbols, associativity, form_id, form = nil )
          @number        = number
          @rule_name     = rule_name
          @name          = rule_name.intern
-         @symbols       = symbol_phrase.nil? ? [] : symbol_phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?) }
+         @symbols       = symbols
          @associativity = associativity
          @form_id       = form_id
          @form          = form
+         @slot_mappings = {}
+         @ast_class     = nil
          
+         #
+         # Map the slots for our Symbols.
+         
+         @symbols.each_index do |index|
+            unless (slot = symbols[index].slot_name).nil?
+               @slot_mappings[index] = slot
+            end
+         end
       end
 
     

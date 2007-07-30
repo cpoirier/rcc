@@ -56,6 +56,7 @@ module Plan
       attr_reader :reductions
       attr_reader :actions
       attr_reader :explanations
+      attr_reader :lookahead_explanations
       
       def initialize( state_number, start_items = [], context_state = nil  )
          @state_number = state_number    # The number of this State within the overall ParserPlan
@@ -68,6 +69,7 @@ module Plan
          @queue        = []              # A queue of unclosed Items in this State
          @actions      = nil             # Symbol.name => Action
          @explanations = nil             # A set of Explanations for the Actions, if requested during creation
+         @lookahead_explanations = nil   # An InitialOptions Explanation, if requested
 
          @item_index   = {}              # An index used to avoid duplication of Items within the State
          start_items.each do |item|
@@ -368,7 +370,7 @@ module Plan
       #  - resolves conflicts and generates a list of actions for this State
       #  - each action indicates what to do when a specific terminal is on lookahead
       
-      def compile_actions( production_sets, precedence_table, k_limit = 1, explain = false )
+      def compile_actions( production_sets, precedence_table, k_limit = 1, use_backtracking = false, explain = false )
          
          @explanations = (explain ? {} : nil)
          @actions      = {}
@@ -390,12 +392,13 @@ module Plan
             end
          end
          
-         
          #
          # Select an action for each lookahead terminal.
          
+         @lookahead_explanations = Explanations::InitialOptions.new(options) if explain
+         
          options.each do |symbol_name, items|
-            
+
             explanations          = []
             all_accepts           = []
             all_reductions        = []
@@ -471,9 +474,11 @@ module Plan
                
                all_shifts.each do |shift|
                   reductions.each do |reduction|
+                     shift_tier     = precedence_table[shift.production.number]
+                     reduction_tier = precedence_table[reduction.production.number]
                      
                      #
-                     # If both items hold the same Production, we'll let associativity decide.
+                     # If both items hold the same Production, we'll let associativity decide.  
                      
                      if shift.production.number == reduction.production.number then
                         process_associativity.call( shift, reduction )
@@ -481,7 +486,7 @@ module Plan
                      #
                      # Otherwise, if both items have precedence setings, we'll let it or associativity decide.
                      
-                     elsif (shift_tier = precedence_table[shift.production.number]) and (reduction_tier = precedence_table[reduction.production.number]) then
+                     elsif !shift_tier.nil? and !reduction_tier.nil? then
 
                         #
                         # Lower tier numbers indicate higher precedence.  To make the math more intuitive,
@@ -511,6 +516,14 @@ module Plan
                         else 
                            process_associativity.call( shift, reduction )
                         end
+                        
+                     #
+                     # Actually, if both items lack precedence, and are different forms of the same rule, we'll
+                     # let associativity decide.  Seems reasonable.
+                     
+                     elsif shift_tier.nil? and reduction_tier.nil? and shift.production.rule_name == reduction.production.rule_name then
+                        process_associativity.call( shift, reduction )
+                     
                      end
                   end
                end
@@ -548,8 +561,15 @@ module Plan
             elsif actions.length == 1 then
                @actions[symbol_name] = actions[0]
             else
-               @actions[symbol_name] = Actions::Attempt.new( actions )
+               if use_backtracking then
+                  @actions[symbol_name] = Actions::Attempt.new( actions )
+               else
+                  explanations << Explanations::FavouriteChosen.new( actions ) if explain
+                  @actions[symbol_name] = actions[0]
+               end
             end
+            
+            assert( !@actions[symbol_name].nil?, "wtf?" )
             
             if explain then
                explanations << Explanations::SelectedAction.new( @actions[symbol_name] )
@@ -558,6 +578,17 @@ module Plan
          end
       end
       
+      
+      #
+      # close_items()
+      #  - marks all Items as closed
+      #  - call this after you have constructed all States, but before you expect correct follow sequences
+      
+      def close_items()
+         @items.each do |item|
+            item.close()
+         end
+      end
       
       
    
@@ -572,7 +603,7 @@ module Plan
          return "State"
       end
 
-      def display( stream, indent = "", complete = true )
+      def display( stream, indent = "", complete = true, show_context = :reduce_determinants )
          stream << indent << "State #{@state_number}\n"
          stream << indent << "   Context rules: #{@context_states.keys.sort.join(", ")}\n"
 
@@ -581,7 +612,26 @@ module Plan
          
          rows = []
          @items.each do |item|
-            rows << [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" "), item.complete? ? item.determinants.join(" | ") : nil ] # item.complete? ? item.determinants.join(" | ") : nil ]
+            rows << row = [ item.start_item ? "*" : " ", item.object_id.to_s + ":" + item.shifted_from_item.object_id.to_s + ":" + item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" ") ]
+            
+            case show_context
+               when nil, :reduce_determinants
+                  tail = item.complete? ? item.determinants.join(" | ") : nil
+               when :all_determinants
+                  tail = item.complete? ? item.determinants.join(" | ") : item.sequences_after_mark(3).sequences.collect{|sequence| sequence.join(" ")}.join(" | ")
+               when :follow_contexts
+                  tail = item.follow_contexts.collect{|context| context.object_id.to_s + ":" + context.to_s}.join(" | ")
+               when :raw_follow_contexts
+                  tail = ""
+                  item.instance_eval do
+                     tail = item.follow_contexts.collect{|context| context.object_id.to_s}.join( " | " ) +
+                            "Sources: " + item.follow_sources.collect{|source| source.object_id.to_s}.join( " | " )
+                  end
+               else
+                  bug( "what were you looking for? [#{show_context.to_s}]" )
+            end
+            
+            row << tail
          end
          
          #
@@ -607,7 +657,7 @@ module Plan
             if row[3].nil? then
                stream << indent << output << "\n"
             else
-               stream << indent << output << "   >>> Reduce if >>> " << row[3] << "\n"
+               stream << indent << output << "   >>> Context >>> " << row[3] << "\n"
             end
          end
 

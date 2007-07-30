@@ -57,7 +57,7 @@ module FormElements
     
     
       #
-      # phrases()
+      # phrases( label = nil )
       #  - produce an array of Forms representing all the forms of this Series
       
       def phrases()
@@ -79,7 +79,7 @@ module FormElements
          
          raw_forms = []
          @elements.each do |element|
-            raw_forms << element.phrases()
+            raw_forms << element.phrases( @label.nil? ? label : @label )
          end
          
          #

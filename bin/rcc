@@ -30,5 +30,5 @@
    puts()
    
    plan = grammar.compile_plan()
-   plan.display( STDOUT )
+   plan.display( STDOUT, "", true, ARGV[1].nil? ? :reduce_determinants : ARGV[1].intern )
    

@@ -25,8 +25,12 @@ module FormElements
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      attr_accessor :label
+      
       def initialize()         
+         @label = nil
       end
+      
       
       
       #
@@ -45,21 +49,21 @@ module FormElements
 
       
       #
-      # count_slots()
-      #  - maps out the slot names we'll be using
+      # prep_slots()
+      #  - maps out the slots that have been assigned or that we will be assigning
 
-      def count_slots( slot_counts )
+      def prep_slots( label_counts, slot_counts )
          each_element() do |element|
-            element.count_slots( slot_counts )
+            element.prep_slots( label_counts, slot_counts )
          end
       end
       
       
       #
       # assign_slots()
-      #  - assign slot names to the NonTerminals in the Rule
-      #  - slot_counts contains a map of NonTerminal names to total use of the name in the Rule
-      #  - slot_tracks contains a map of NonTerminal names to last used index for that name
+      #  - assign slot names to the Symbols in the Rule
+      #  - slot_counts contains a map of slot names to total use of the slot in the Rule
+      #  - slot_tracks contains a map of slot names to last used index for that slot
       
       def assign_slots( slot_counts, slot_tracks )
          each_element() do |element|
@@ -79,7 +83,7 @@ module FormElements
       # phrases()
       #  - produce an array of Forms representing all the forms of this Series
       
-      def phrases()
+      def phrases( label = nil )
          bug "you must override Element::phrases()"
       end
 

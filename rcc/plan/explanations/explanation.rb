@@ -54,4 +54,6 @@ require "rcc/plan/explanations/only_one_choice.rb"
 require "rcc/plan/explanations/reductions_sorted.rb"
 require "rcc/plan/explanations/shift_trumps_reduce.rb"
 require "rcc/plan/explanations/reduce_trumps_shift.rb"
+require "rcc/plan/explanations/initial_options.rb"
+require "rcc/plan/explanations/favourite_chosen.rb"
 

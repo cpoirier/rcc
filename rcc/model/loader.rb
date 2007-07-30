@@ -369,14 +369,16 @@ module Model
                element = load_fork_element()
             when :LITERAL
                element = Model::FormElements::RawTerminal.new( consume() )
+               element.label = consume() if la_type() == :SPECIAL
             when :WORD
                if @grammar.definitions.member?(la()) then
                   element = Model::FormElements::NamedTerminal.new( consume() )
                else
                   element = Model::FormElements::NonTerminal.new( consume() )
                end
+               element.label = consume() if la_type() == :SPECIAL
             else
-               nyi "error handling for bad parse for rule element"
+               nyi "error handling for bad parse for rule element [#{la()} #{la_type()}]"
          end
 
          if la() == "?" then
@@ -662,12 +664,14 @@ module Model
                   token.locate( @current_line_number, nil, @source_location, :REGEX )
                   
                when ':'
-                  if @source =~/^:[a-zA-Z]+/ then
+                  if @source =~/^:([a-zA-Z]+)/ then
                      raw     = $&
+                     value   = $1
                      @source = $'
 
-                     token = Token.new( raw )
-                     token.locate( @current_line_number, nil, @source_location, :SPECIAL )
+                     token = Token.new( value )
+                     token.locate( @current_line_number, nil, @source_location, :SPECIAL, raw
+                      )
                   else
                      nyi "exception handling for a bad symbol"
                   end

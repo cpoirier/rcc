@@ -9,55 +9,45 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
-require "rcc/model/form.rb"
-require "rcc/model/form_elements/terminal.rb"
-
+require "rcc/plan/explanations/explanation.rb"
 
 module RCC
-module Model
-module FormElements
+module Plan
+module Explanations
 
  
  #============================================================================================================================
- # class RawTerminal
- #  - a raw Terminal described directly inline
+ # class FavouriteChosen
+ #  - explanation that indicates a shift was chosen over a reduce or an earlier reduce over another reduce
+ #  - only used if backtracking is disabled
 
-   class RawTerminal < Terminal
+   class FavouriteChosen < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( symbol )
-         super( symbol, symbol )
-         @label = "ignore"
+      def initialize( actions )
+         @actions = actions
       end
       
-
-
       
-      
-      
-    #---------------------------------------------------------------------------------------------------------------------
-    # Conversion and formatting
-    #---------------------------------------------------------------------------------------------------------------------
-
       def to_s()
-         return "'" + @name.gsub("'", "''") + "'" 
+         if @actions[0].is_a?(Actions::Shift) then
+            return "Shift beats Reduce in general shift/reduce conflicts; Enable backtracking for better results"
+         else
+            return "Earliest stated rule wins in reduce/reduce conflicts; Enable backtracking for better results"
+         end
       end
-
-      def display( stream, indent = "" )
-         stream << indent << "RawTerminal #{@name}\n"
-      end
-
-
-
-
-
-   end # RawTerminal
+      
+      
+   end # FavouriteChosen
    
 
 
-end  # module FormElements
-end  # module Model
+
+end  # module Explanations
+end  # module Plan
 end  # module Rethink
+
+

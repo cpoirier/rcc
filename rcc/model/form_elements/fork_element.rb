@@ -58,7 +58,7 @@ module FormElements
       # phrases()
       #  - produce an array of Forms representing all the forms of this Series
       
-      def phrases()
+      def phrases( label = nil )
          forms = []
          
          #
@@ -66,7 +66,7 @@ module FormElements
          # all our potential forms.
          
          @choices.each do |element|
-            forms.concat element.phrases()
+            forms.concat element.phrases( @label.nil? ? label : @label )
          end
 
          return forms

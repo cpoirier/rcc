@@ -51,12 +51,12 @@ module FormElements
       # phrases()
       #  - produce an array of Forms representing all the forms of this Series
       
-      def phrases()
+      def phrases( label = nil )
          
          #
          # Our Forms are our child forms plus an empty Form.
          
-         return [ Model::Phrase.new() ].concat( @element.phrases() )
+         return [ Model::Phrase.new() ].concat( @element.phrases(@label.nil? ? label : @label) )
       end
          
     
