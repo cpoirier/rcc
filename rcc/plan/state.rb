@@ -605,7 +605,7 @@ module Plan
 
       def display( stream, indent = "", complete = true, show_context = :reduce_determinants )
          stream << indent << "State #{@state_number}\n"
-         stream << indent << "   Context rules: #{@context_states.keys.sort.join(", ")}\n"
+         stream << indent << "   Context states: #{@context_states.keys.sort.join(", ")}\n"
 
          #
          # We'd like our Item descriptors to be output in nice columns, so we will bypass the Item.display() routine.
