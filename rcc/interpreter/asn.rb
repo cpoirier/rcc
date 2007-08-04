@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/util/ordered_hash.rb"
 
 module RCC
 module Interpreter
@@ -33,7 +34,7 @@ module Interpreter
       def initialize( production, component_symbols )
          @root_symbol = production.name
          @ast_class   = production.ast_class
-         @slots       = {}
+         @slots       = Util::OrderedHash.new()
          
          production.slot_mappings.each do |index, slot|
             @slots[slot] = component_symbols[index]
