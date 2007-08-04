@@ -54,6 +54,7 @@ module Plan
       attr_reader :items
       attr_reader :transitions
       attr_reader :reductions
+      attr_reader :lookahead
       attr_reader :actions
       attr_reader :explanations
       attr_reader :lookahead_explanations
@@ -67,6 +68,7 @@ module Plan
          @transitions  = {}              # Symbol.name => State
          @reductions   = []              # An array of complete? Items
          @queue        = []              # A queue of unclosed Items in this State
+         @lookahead    = []              # The names of the Terminals we expect on lookahead
          @actions      = nil             # Symbol.name => Action
          @explanations = nil             # A set of Explanations for the Actions, if requested during creation
          @lookahead_explanations = nil   # An InitialOptions Explanation, if requested
@@ -392,6 +394,8 @@ module Plan
             end
          end
          
+         @lookahead = options.keys
+         
          #
          # Select an action for each lookahead terminal.
          
@@ -612,7 +616,7 @@ module Plan
          
          rows = []
          @items.each do |item|
-            rows << row = [ item.start_item ? "*" : " ", item.object_id.to_s + ":" + item.shifted_from_item.object_id.to_s + ":" + item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" ") ]
+            rows << row = [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" ") ]
             
             case show_context
                when nil, :reduce_determinants
@@ -620,7 +624,7 @@ module Plan
                when :all_determinants
                   tail = item.complete? ? item.determinants.join(" | ") : item.sequences_after_mark(3).sequences.collect{|sequence| sequence.join(" ")}.join(" | ")
                when :follow_contexts
-                  tail = item.follow_contexts.collect{|context| context.object_id.to_s + ":" + context.to_s}.join(" | ")
+                  tail = item.follow_contexts.collect{|context| context.to_s}.join(" | ")
                when :raw_follow_contexts
                   tail = ""
                   item.instance_eval do

@@ -52,7 +52,7 @@ module Plan
             end
          end
 
-         return new( literals.keys, "", other, grammar_model.configuration["IgnoreTerminals"].to_s.split(" ").collect{|name| name.intern} )
+         return new( literals.keys, "", other, grammar_model.ignore_terminals.collect{|name| name.intern} )
       end
       
       

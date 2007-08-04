@@ -188,11 +188,9 @@ module Model
     # Public interface
     #---------------------------------------------------------------------------------------------------------------------
     
-      attr_reader :grammar            # The Grammar we are loading
-
-      def initialize( grammar )
-         @grammar = grammar
-         @source  = nil
+      def initialize()
+         @grammar             = nil
+         @source              = nil
          @source_location     = nil
          @current_line_number = 1
          @lookahead           = []
@@ -201,7 +199,7 @@ module Model
     
       #
       # load()
-      #  - loads the grammar from a descriptor
+      #  - loads the Grammar from a descriptor and returns it
       #  - optionally accepts a location name/description which will be included in error messages
       
       def load( source, location = nil )
@@ -211,20 +209,37 @@ module Model
          @lookahead            = []
          
          skip_eos()
-         load_configuration()
+         process_block( "Grammar", true ) do |name|
+            @grammar = Grammar.new( name )
+
+            skip_eos()
+            load_configuration()
+
+            skip_eos()
+            if la() == "Group" then
+               while la() == "Group" 
+                  load_group()
+                  skip_eos()
+               end
+            else
+               load_terminals() if la() == "Terminals"
+
+               skip_eos()
+               load_rules() 
+
+               skip_eos()
+               load_precedence_table() if la() == "Precedence"
+
+               skip_eos()
+            end
+         end
 
          skip_eos()
-         load_terminals() if la() == "Terminals"
-
-         skip_eos()
-         load_rules() 
-
-         skip_eos()
-         load_precedence_table() if la() == "Precedence"
-
-         skip_eos()
-         nyi "error handling for trailing tokens" if la() != nil
+         nyi "error handling for trailing tokens #{la_type()}" if la() != nil
+         
+         return @grammar
       end
+
 
 
 
@@ -237,24 +252,53 @@ module Model
     
     protected
     
+      @@configuration_done_at = [ "Group", "Terminals", "Rules", "Precedence" ]
+      
       
       #
       # load_configuration()
       #  - parses the configuration section and builds the model
       
       def load_configuration()
-         process_block( "Configuration" ) do 
-            until at_end_of_block() 
-               name  = consume()
-               value = consume()
-               consume( :EOS )
+         until @@configuration_done_at.member?(token = la())
+            case token
+               when "StartRule"
+                  consume()
+                  start_rule_name = consume(:WORD)
+                  @grammar.start_rule_name = start_rule_name if @grammar.start_rule_name.nil?
+
+               when "IgnoreTerminal"
+                  consume()
+                  ignore_terminal = consume(:WORD)
+                  @grammar.ignore_terminals << ignore_terminal unless @grammar.ignore_terminals.member?(la())
             
-               @grammar.configuration[name] = value
+               else
+                  nyi "error handling for unrecognized configuration parameter #{token}"
             end
+         
+            consume( :EOS )
+            skip_eos()
          end
       end
       
+            
+      #
+      # load_group()
+      #  - parse a Group section
       
+      def load_group()
+         process_block( "Group", nil ) do |name|
+            load_terminals() if la() == "Terminals"
+            
+            skip_eos()
+            load_rules()
+            
+            skip_eos()
+            load_precedence_table() if la() == "Precedence"
+         end
+      end
+      
+            
       #
       # load_terminals()
       #  - parses the terminals section and builds the model
@@ -465,12 +509,20 @@ module Model
       # process_block( name )
       #  - eats the named block header and footer, calling your block between
       
-      def process_block( name )
+      def process_block( name, expect_name = false )
          consume( name )
+         
+         name = nil
+         if expect_name.nil? then
+            name = consume( :WORD ) if la_type() != :EOS
+         elsif expect_name then
+            name = consume( :WORD )
+         end
+
          consume( :EOS )
          skip_eos()
          
-         yield()
+         yield( name )
          
          skip_eos()
          consume( "end" )
@@ -570,7 +622,7 @@ module Model
                   token.locate( @current_line_number, nil, @source_location, :EOS )
                   @current_line_number += 1
                   
-               when /^\s/
+               when /\A\s/
                   c = @source.slice!(0..0)
                   
                when "#"
@@ -664,7 +716,7 @@ module Model
                   token.locate( @current_line_number, nil, @source_location, :REGEX )
                   
                when ':'
-                  if @source =~/^:([a-zA-Z]+)/ then
+                  if @source =~/\A:([a-zA-Z]+)/ then
                      raw     = $&
                      value   = $1
                      @source = $'
@@ -677,7 +729,7 @@ module Model
                   end
                   
                else
-                  if @source =~ /^[a-zA-Z]\w*/ then
+                  if @source =~ /\A[a-zA-Z]\w*/ then
                      word    = $&
                      @source = $'
                      

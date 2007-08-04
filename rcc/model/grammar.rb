@@ -34,12 +34,11 @@ module Model
       #  - loads the Grammar from a file on disk
       
       def self.load_from_file( descriptor, path )
-         grammar = new( descriptor )
+         grammar = nil
          
          require "rcc/model/loader.rb"
          File.open(path) do |file|
-            loader = Loader.new( grammar )
-            loader.load( file.read(), path )
+            grammar = Loader.new().load( file.read(), path )
          end
          
          return grammar
@@ -52,18 +51,20 @@ module Model
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
     
-      attr_reader :descriptor           # Something that describes this grammar (might be a file path or anything else you want)
+      attr_reader :name                 # Something that describes this grammar (might be a file path or anything else you want)
       attr_reader :definitions          # An OrderedHash of TerminalDefinitions and Strings defined in the Grammar
       attr_reader :rules                # An OrderedHash of every Rule in the Grammar
       attr_reader :forms                # An Array of every Form in the Grammar
       attr_reader :labels               # A Hash of name => (Rule, Form)
       attr_reader :state_table          # An Array of States for all states in the Grammar
       attr_reader :precedence_table     # A PrecedenceTable, showing rule precedence for shift/reduce conflicts
-      attr_reader :configuration        # A Hash of configuration flags
+      attr_writer :start_rule_name      # The name of the first rule in this Grammar
+      attr_reader :ignore_terminals     # The names of any Terminals the lexer should eat
 
-      def initialize( descriptor )
-         @descriptor        = descriptor
-         @configuration     = {}
+      def initialize( name )
+         @name              = name
+         @start_rule_name   = nil
+         @ignore_terminals  = []
                             
          @definitions       = Util::OrderedHash.new()
          @rules             = Util::OrderedHash.new()
@@ -140,10 +141,11 @@ module Model
       #  - returns the name of the start rule for the Grammar
       
       def start_rule_name()
-         if @configuration.member?("StartRule") then
-            return @configuration["StartRule"]
-         else
+         if @start_rule_name.nil? then
+            return nil if @rules.empty?
             return @rules[0].name
+         else
+            return @start_rule_name
          end
       end
 
