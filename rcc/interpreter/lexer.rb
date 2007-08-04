@@ -10,6 +10,7 @@
 
 require "rcc/environment.rb"
 require "rcc/interpreter/token.rb"
+require "rcc/interpreter/line_reader.rb"
 
 
 module RCC
@@ -18,7 +19,7 @@ module Interpreter
  
  #============================================================================================================================
  # class Lexer
- #  - a simple interpreter for LexerStates
+ #  - an reversible interpreter for LexerPlans sourced from LexerPlan States
 
    class Lexer
       
@@ -29,15 +30,15 @@ module Interpreter
       attr_reader :line_number
       attr_reader :column_number
       
-      def initialize( lexer_plan, input, input_descriptor )
-         @lexer_plan     = lexer_plan
-         @input          = input
-         @descriptor     = input_descriptor
-
-         @lines          = []
-         @line_number    = 1
-         @column_number  = 1 
-         @last_consumed  = nil
+      def initialize( input, descriptor )
+         @line_reader   = LineReader.new( input, descriptor )    # The input stream from which we'll draw input
+         @descriptor    = descriptor                             # A descriptor of the input, used during Token production
+                                                                 
+         @pending_lines = []     # Lines ahead of the lex() point in the @input (or @text)
+         @position      = 0      # The @line_reader position at the lex() point
+         @line_number   = 1      # The current line number, at the lex() point
+         @column_number = 1      # The current column number, at the lex() point
+         @last_consumed = nil    # The last Token consumed() (used for updating line and column numbers)
       end
       
       
@@ -47,7 +48,7 @@ module Interpreter
       #  - returns true if there is input still to be processed
       
       def input_remaining?()
-         return true unless @lines.empty?
+         return true unless @pending_lines.empty?
          return update_position()
       end
       
@@ -58,7 +59,7 @@ module Interpreter
       
       def sample_unconsumed( count = 40 )
          update_position()
-         return @lines[0].slice(0, count) unless @lines.empty?
+         return @pending_lines[0].slice(0, count) unless @pending_lines.empty?
          return ""
       end
       
@@ -67,24 +68,34 @@ module Interpreter
       # next_token()
       #  - runs the lexer against the input until one token is produced or the input is exhausted
       
-      def next_token( explain = false )
-         token = lex( @lexer_plan, explain )
+      def next_token( lexer_plan, explain = false )
+         token = lex( lexer_plan, explain )
          
          if explain then
             if token.nil? then
                if input_remaining?() then
-                  puts "===> ERROR LEXING: #{prep(@lines[0])}"
+                  puts "===> ERROR LEXING: #{prep(@pending_lines[0])}"
                else
                   puts "===> DONE"
                end
             else
-               puts "===> PRODUCING #{prep(token)}"
+               puts "===> PRODUCING #{prep(token)} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
             end
          end
          
          return token
       end
+
+
+      #
+      # reset()
+      #  - resets the position of the lexer
       
+      def reset( to_position )
+         @line_reader.seek( to_position )
+         @pending_lines.clear()
+         @last_consumed = nil
+      end
 
 
 
@@ -116,7 +127,7 @@ module Interpreter
                elsif state.accepted.member?(c) then
                   puts "     la() is #{prep(c)}, which is accepted by this state; producing #{built+c}" if explain
                   token = Token.new( built + consume() )
-                  token.locate( @line_number, @column_number, @descriptor )
+                  token.locate( @position, @line_number, @column_number, @descriptor )
                   
                end
             end
@@ -139,7 +150,7 @@ module Interpreter
                   when Model::TerminalDefinitions::Pattern
                      if match = consume_match(definition.regexp) then
                         token = Token.new( match )
-                        token.locate( @line_number, @column_number, @descriptor, definition.name.intern )
+                        token.locate( @position, @line_number, @column_number, @descriptor, definition.name.intern )
                         puts "     matched #{definition.definition}" if explain
                         break
                      else
@@ -180,8 +191,8 @@ module Interpreter
          if update_position() then
             line = 0
             while c.nil?
-               if count <= @lines[line].length then
-                  c = @lines[line].slice(count-1, 1)
+               if count <= @pending_lines[line].length then
+                  c = @pending_lines[line].slice(count-1, 1)
                else
                   line += 1
                   read_ahead( line ) or break
@@ -200,7 +211,7 @@ module Interpreter
       def consume()
          c = nil
          if c = la() then 
-            @last_consumed = @lines[0].slice!(0, 1)
+            @last_consumed = @pending_lines[0].slice!(0, 1)
          end
          
          return c
@@ -217,8 +228,8 @@ module Interpreter
          match = nil
          
          if update_position() then
-            if @lines[0] =~ regexp and $`.length == 0 then
-               match = @lines[0].slice!(0, $&.length)
+            if @pending_lines[0] =~ regexp and $`.length == 0 then
+               match = @pending_lines[0].slice!(0, $&.length)
                @last_consumed = match
             end
          end
@@ -229,23 +240,25 @@ module Interpreter
       
       #
       # update_position()
-      #  - ensures the line buffer is full and adjust the position markers to account for
-      #    the last data consumed (if not already done)
+      #  - ensures the line buffer is full and adjusts the position markers to account for the last data consumed 
+      #    (if not already done)
 
       def update_position()
          unless @last_consumed.nil?
-            if @lines[0].empty? then
-               @lines.shift
+            @position += @last_consumed.length
+            
+            if @pending_lines[0].empty? then
+               @pending_lines.shift
                @column_number = 1
                @line_number  += 1
             else
                @column_number += @last_consumed.length
             end
-            
+
             @last_consumed = nil
          end
 
-         if @lines.empty?() then
+         if @pending_lines.empty?() then
             read_ahead() or return false
          end
 
@@ -258,9 +271,15 @@ module Interpreter
       #  - reads the next line from the input until a certain number of lines are in the buffer
       
       def read_ahead( lines = 1 )
-         while @lines.length < lines
-            if line = @input.gets then
-               @lines << line
+         if @pending_lines.empty? then
+            @position      = @line_reader.position
+            @line_number   = @line_reader.line_number
+            @column_number = @line_reader.column_number
+         end
+            
+         while @pending_lines.length < lines
+            if line = @line_reader.gets then
+               @pending_lines << line
             else
                return false
             end
@@ -268,7 +287,7 @@ module Interpreter
          
          return true
       end
-      
+   
       
       # 
       # prep()
@@ -287,3 +306,55 @@ module Interpreter
 
 end  # module Interpreter
 end  # module Rethink
+
+
+
+
+
+#
+# If called directly, run a simple character-at-a-time lexer at user command.  Useful for testing basic lexer functionality.
+
+if __FILE__ == $0 then
+   
+   class TestLexer < RCC::Interpreter::Lexer
+      def lex( *ignored )
+         token = nil   
+
+         if c = la() then
+            token = RCC::Interpreter::Token.new( consume() )
+            token.locate( @position, @line_number, @column_number, @descriptor )
+         end
+
+         return token
+      end
+   end
+   
+   
+   
+   File.open(ARGV[0]) do |file|
+      lexer = TestLexer.new( file, nil )
+      
+      print "> "
+      while line = STDIN.gets()
+         command_tokens = line.chomp.split(/\s+/)
+         begin
+            case command_tokens[0]
+               when nil, "lex"
+                  (command_tokens.length < 2 ? 1 : command_tokens[1].to_i).times do |index|
+                     lexed = lexer.next_token( nil, true )
+                  end
+               when "reset"
+                  lexer.reset( command_tokens[1].to_i )
+               else
+                  puts "unrecognized command; try: lex <number>; reset <position>"
+            end
+         rescue Exception => e
+            puts "encountered an error [#{e.message}]"
+            puts "   " + e.backtrace.join("\n   ")
+         end
+         print "\n> "
+      end
+   end
+   
+   
+end

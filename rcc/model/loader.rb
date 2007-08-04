@@ -316,8 +316,6 @@ module Model
                      @grammar.add_terminal_definition( Model::TerminalDefinitions::Simple.new(value, name) )
                   when :REGEX
                      @grammar.add_terminal_definition( Model::TerminalDefinitions::Pattern.new(value, name) )
-                  when :SPECIAL
-                     @grammar.add_terminal_definition( Model::TerminalDefinitions::Special.new(value, name) )
                   else 
                      nyi "exception handling for bad Terminal descriptor"
                end

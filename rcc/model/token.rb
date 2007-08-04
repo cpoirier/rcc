@@ -25,9 +25,9 @@ module Model
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
     
-      attr_reader :line_number          # The line number within the source this token came from
-      attr_reader :column_number        # The column on which this token starts (if known)
-      attr_reader :source_descriptor    # Some string that describes the source of this token
+      attr_reader   :line_number          # The line number within the source this token came from
+      attr_reader   :column_number        # The column on which this token starts (if known)
+      attr_reader   :source_descriptor    # Some string that describes the source of this token
       
       def locate( line_number, column_number, source_descriptor, type = nil, raw_text = nil )
          @line_number       = line_number

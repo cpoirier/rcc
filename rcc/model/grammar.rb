@@ -131,8 +131,7 @@ module Model
       #  - returns a Plan::ParserPlan version of this Grammar
       
       def compile_plan()
-         lexer_plan = Plan::LexerPlan.build( self )
-         return Plan::ParserPlan.build( self, lexer_plan )
+         return Plan::ParserPlan.build( self )
       end
       
       

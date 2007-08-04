@@ -58,6 +58,7 @@ module Plan
       attr_reader :actions
       attr_reader :explanations
       attr_reader :lookahead_explanations
+      attr_reader :lexer_plan
       
       def initialize( state_number, start_items = [], context_state = nil  )
          @state_number = state_number    # The number of this State within the overall ParserPlan
@@ -72,6 +73,7 @@ module Plan
          @actions      = nil             # Symbol.name => Action
          @explanations = nil             # A set of Explanations for the Actions, if requested during creation
          @lookahead_explanations = nil   # An InitialOptions Explanation, if requested
+         @lexer_plan   = nil             # A LexerPlan that gives our lookahead requirements precedence
 
          @item_index   = {}              # An index used to avoid duplication of Items within the State
          start_items.each do |item|
@@ -594,6 +596,14 @@ module Plan
          end
       end
       
+      
+      #
+      # compile_customized_lexer_plan()
+      #  - produces/returns a LexerPlan that prioritizes the lookahead for this State's actions
+      
+      def compile_customized_lexer_plan( base_plan )
+         @lexer_plan = base_plan.prioritize( @lookahead )
+      end
       
    
 

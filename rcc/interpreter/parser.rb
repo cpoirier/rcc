@@ -157,6 +157,14 @@ module Interpreter
     
     private
     
+    
+      #
+      # rewind()
+      #  - rewinds the lexer to where it was when it produced the specified token
+      
+      def rewind( before_token )
+      end
+    
           
       #
       # la()

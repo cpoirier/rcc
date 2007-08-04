@@ -30,9 +30,11 @@ module Plan
       
       #
       # build()
-      #  - builds a ParserPlan from a Model::Grammar and an optional LexerPlan
+      #  - builds a ParserPlan from a Model::Grammar 
       
-      def self.build( grammar, lexer_plan, start_rule_name = nil )
+      def self.build( grammar, start_rule_name = nil, base_lexer_plan = nil )
+         
+         base_lexer_plan = LexerPlan.build( grammar ) if base_lexer_plan.nil?
          
          #
          # Build our Productions from the Forms in the Grammar model.  We'll also build a hash of ProductionSets, one
@@ -164,7 +166,7 @@ module Plan
          #
          # Return the new ParserPlan.
          
-         return new( state_table, productions, production_sets, precedence_table, lexer_plan )
+         return new( state_table, productions, production_sets, precedence_table, base_lexer_plan )
       end
       
       
@@ -174,7 +176,7 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
     
       attr_reader :model          # The Model from which this Plan was build (if available)
-      attr_reader :lexer_plan     # A LexerState that describes how to lex the Grammar
+      attr_reader :lexer_plan     # A LexerState that describes how to lex the Grammar; note that each State can produce a customization on this one
       attr_reader :state_table    # Our States, in convenient table form
 
       def initialize( state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil )
@@ -203,6 +205,7 @@ module Plan
       def compile_actions( explain = false, k_limit = 1, use_backtracking = false )
          @state_table.each do |state|
             state.compile_actions( @production_sets, @precedence_table, k_limit, use_backtracking, explain )
+            state.compile_customized_lexer_plan( @lexer_plan )
          end
       end
 
