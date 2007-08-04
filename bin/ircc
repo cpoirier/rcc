@@ -59,7 +59,7 @@
       when nil, "parse"
          parser_plan.display( STDOUT, "", true, ARGV[0].nil? ? :reduce_determinants : ARGV[0].intern ) if explain
 
-         lexer  = RCC::Interpreter::Lexer.new( parser_plan.lexer_plan, STDIN, "<stdin>" )
+         lexer  = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )
          parser = RCC::Interpreter::Parser.new( parser_plan, lexer )
          cst    = parser.parse( explain )
          
@@ -71,9 +71,13 @@
          cst.display( STDOUT, "" )
          
       when "lex"
-         lexer = RCC::Interpreter::Lexer.new( parser_plan.lexer_plan, STDIN, "<stdin>" )
-         while token = lexer.next_token( explain )
-            puts "[#{token.gsub("\n", "\\n")}]#{token.type.is_a?(Symbol) ? ":" + token.type.to_s : "" } at #{token.line_number}:#{token.column_number}"  unless explain
+         lexer = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )
+         while token = lexer.next_token( parser_plan.lexer_plan, explain )
+            if explain then
+               puts "\n"
+            else
+               puts "[#{token.gsub("\n", "\\n")}]#{token.type.is_a?(Symbol) ? ":" + token.type.to_s : "" } at #{token.line_number}:#{token.column_number}"
+            end
          end
          
          if lexer.input_remaining? then

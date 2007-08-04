@@ -68,7 +68,7 @@ module Plan
 
       attr_reader :context
       attr_reader :accepted
-      attr_reader :child_states
+      attr_reader :child_plans
       attr_reader :patterns
       attr_reader :tail_processing
       attr_reader :ignore_list
@@ -86,7 +86,7 @@ module Plan
          # list.  We are done when any single-letter choice is matched.
          
          @accepted     = {}
-         @child_states = {}
+         @child_plans = {}
          
          follow_by_firsts = {}
          literals.keys.each do |literal|
@@ -102,7 +102,7 @@ module Plan
          end
          
          follow_by_firsts.each do |first, follows|
-            @child_states[first] = self.class.new( follows, nil, nil, nil, @context + first )
+            @child_plans[first] = self.class.new( follows, nil, nil, nil, @context + first )
          end
       end
       

@@ -32,6 +32,7 @@ module Interpreter
          @lexer       = lexer
          @lookahead   = []
          @build_ast   = build_ast
+         @lexer_plan  = nil  
       end
       
       
@@ -49,6 +50,7 @@ module Interpreter
          while true
             
             state = state_stack[-1]
+            set_lexer_plan( state.lexer_plan )
             
             #
             # Determine our next action, based on lookahead.
@@ -163,7 +165,30 @@ module Interpreter
       #  - rewinds the lexer to where it was when it produced the specified token
       
       def rewind( before_token )
+         @lexer.reset( before_token.start_position )
+         @lookahead.clear
       end
+      
+      
+      #
+      # set_lexer_plan()
+      #  - swaps in a new LexerPlan for use with la() and consume()
+      #  - takes the appropriate action to ensure the next token is from that new plan
+      #  - doesn't do unecessary work
+      
+      def set_lexer_plan( plan )
+         assert( !plan.nil?, "why is your LexerPlan nil?" )
+         
+         unless plan.object_id == @lexer_plan.object_id
+            unless @lookahead.empty?
+               rewind( @lookahead[0] )
+               @lookahead.clear
+            end
+            
+            @lexer_plan = plan
+         end
+      end
+      
     
           
       #
@@ -172,7 +197,7 @@ module Interpreter
       
       def la( count = 1 )
          until @lookahead.length >= count
-            if token = @lexer.next_token() then
+            if token = @lexer.next_token(@lexer_plan) then
                @lookahead << token
             else
                nyi "error handling for lexer error" if @lexer.input_remaining?

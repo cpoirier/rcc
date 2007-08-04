@@ -99,6 +99,8 @@ module Interpreter
 
 
 
+
+
     #---------------------------------------------------------------------------------------------------------------------
     # Token production
     #---------------------------------------------------------------------------------------------------------------------
@@ -112,7 +114,7 @@ module Interpreter
       #  - returns a single token relevant to the supplied state
       #  - always takes the longest match possible
       
-      def lex( state, explain, built = "" )
+      def lex( lexer_plan, explain, built = "" )
          token = nil   
          while token.nil? and input_remaining?()
             
@@ -120,47 +122,59 @@ module Interpreter
             # First, try to read by character lookahead.
             
             if c = la() then
-               if state.child_states.member?(c) then
+               if lexer_plan.child_plans.member?(c) then
                   puts "     la() is #{prep(c)}, which matches a child state; recursing" if explain
-                  token = lex( state.child_states[c], explain, built + consume() )
+                  token = lex( lexer_plan.child_plans[c], explain, built + consume() )
                   
-               elsif state.accepted.member?(c) then
-                  puts "     la() is #{prep(c)}, which is accepted by this state; producing #{built+c}" if explain
+               elsif lexer_plan.accepted.member?(c) then
+                  puts "     la() is #{prep(c)}, which is accepted by this state; producing #{built+c} as #{lexer_plan.accepted[c]}" if explain
                   token = Token.new( built + consume() )
-                  token.locate( @position, @line_number, @column_number, @descriptor )
+                  token.locate( @position, @line_number, @column_number, @descriptor, lexer_plan.accepted[c] )
                   
                end
+            else
+               puts "     la() is #{prep(c)}, which means we are done"
             end
 
-            if token.nil? and explain then
-               if state.tail_processing.nil? or state.tail_processing.empty? then
-                  puts "     la() is #{prep(c)}, which does not match this state"
-               else
-                  puts "     la() is #{prep(c)}, which does not match this state; attempting tail processing"
-               end
+            if token.nil? and !c.nil? then
+               puts "     la() is #{prep(c)}, which does not match any literal options" if explain
             end
-            
+
+
             #
-            # If we got nothing, and we have tail_processing, try then in order until something
-            # matches.
+            # Next, try pattern matching.
             
-            if token.nil? and !state.tail_processing.nil? then
-               state.tail_processing.each do |definition|
-                  case definition
-                  when Model::TerminalDefinitions::Pattern
-                     if match = consume_match(definition.regexp) then
+            if token.nil? and !c.nil? then
+               if lexer_plan.patterns.empty? then
+                  puts "     there are no pattern matching options in this state" if explain
+               else
+                  puts "     attempting pattern matches:" if explain
+                  lexer_plan.patterns.each do |pattern, symbol_name|
+                     if match = consume_match(pattern) then
                         token = Token.new( match )
-                        token.locate( @position, @line_number, @column_number, @descriptor, definition.name.intern )
-                        puts "     matched #{definition.definition}" if explain
+                        token.locate( @position, @line_number, @column_number, @descriptor, symbol_name )
+                        puts "     matched #{symbol_name}" if explain
                         break
                      else
-                        puts "     did not match #{definition.definition}" if explain
+                        puts "     did not match #{symbol_name}" if explain
                      end
-                  when Model::TerminalDefinitions::Special
-                     nyi "special terminal definitions"
                   end
                end
             end
+            
+            
+            #
+            # Finally, try tail processing, if available.
+            
+            if token.nil? and !c.nil? then
+               if lexer_plan.tail_processing.nil? then
+                  puts "     there is no tail processing for this state" if explain
+               else
+                  puts "     attempting tail processing" if explain
+                  token = lex( lexer_plan.tail_processing, explain, built )
+               end
+            end
+
             
             #
             # If we got something, and it is on the ignore list, ignore it.  We'll then try again, unless
@@ -169,8 +183,8 @@ module Interpreter
             if token.nil? then
                break
             else
-               if !state.ignore_list.nil? and state.ignore_list.member?(token.type) then
-                  puts "     IGNORING #{prep(token)}" if explain
+               if !lexer_plan.ignore_list.nil? and lexer_plan.ignore_list.member?(token.type) then
+                  puts "===> IGNORING #{prep(token)}" if explain
                   token = nil
                end
             end
@@ -294,6 +308,7 @@ module Interpreter
       #  - formats a String/Token for explain output
       
       def prep( data )
+         return "<end of input>" if data.nil?
          return "[#{data.gsub("\n", "\\n")}]"
       end
       
