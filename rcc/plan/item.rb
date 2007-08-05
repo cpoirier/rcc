@@ -244,6 +244,7 @@ module Plan
          assert( !production_sets.nil?, "you must supply a hash of ProductionSets to sequences_after_mark() when it is calculated" )
 
          loop_detector = Util::RecursionLoopDetector.new() if loop_detector.nil?
+         completable = true
 
          #
          # Tools in hand, build the set.
@@ -295,11 +296,15 @@ module Plan
                relevant_follow_contexts = our_follow_contexts - skip_contexts
                skip_contexts            = skip_contexts + relevant_follow_contexts
 
+               completable = false unless relevant_follow_contexts.length == our_follow_contexts.length
+               
                sequence_sets = relevant_follow_contexts.collect do |context|
                   if context.nil? then
                      SequenceSet.end_of_input_set
                   else
                      set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detector, skip_contexts )
+                     completable = false unless context.sequences_after_mark_complete?
+                     set
                   end
                end
 
@@ -312,7 +317,7 @@ module Plan
          
          return SequenceSet.empty_set() if complete.nil?
          
-         if complete and @closed and skip_contexts.empty? then
+         if @closed and completable and complete then
             @sequences_after_mark = sequences_after_mark
          end
          
