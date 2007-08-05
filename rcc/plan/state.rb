@@ -393,7 +393,7 @@ module Plan
                   determinants = item.determinants( 1, production_sets )
                end
                
-               STDERR.puts "Determinants calculation for state #{@state_number} item [#{item.signature}] duration: #{duration}s" if $show_statistics #  and duration > 0.1
+               STDERR.puts "Determinants calculation for state #{@state_number} item [#{item.signature}] duration: #{duration}s" if $show_statistics and duration > 0.1
 
                determinants.each do |determinant|
                   options[determinant.name] = [] unless options.member?(determinant.name)
