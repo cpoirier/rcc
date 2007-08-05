@@ -27,12 +27,18 @@ module Plan
       attr_reader :name
       attr_reader :parent_class
       
-      def initialize( name, parent_class = nil )
+      def initialize( name, parent_class = nil, is_catch_all = false )
          @name         = name
          @parent_class = parent_class
          @slots        = []
          @catch_all    = nil
+         @is_catch_all = is_catch_all
       end
+      
+      def catch_all?()
+         return @is_catch_all
+      end
+      
       
       def parent_name()
          if @parent_class.nil? then
@@ -46,7 +52,7 @@ module Plan
       def catch_all_class()
          bug( "get the catchall class from the root class" ) unless @parent_class.nil?
          return @catch_all unless @catch_all.nil?
-         @catch_all = ASTClass.new( @name + "_", self )
+         @catch_all = ASTClass.new( @name + "_", self, true )
       end
       
       

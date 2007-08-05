@@ -28,6 +28,8 @@ module Interpreter
 
       attr_reader :root_symbol    # The Symbol this CSN represents
       attr_reader :slots          # The named Symbols that comprise it
+      attr_reader :ast_class 
+      
       
       alias :symbol :root_symbol
       
@@ -47,7 +49,7 @@ module Interpreter
       end
       
       
-      def display( stream, indent = "" )
+      def display( stream, indent = "", inline_candidate = false )
          stream << indent << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"
          
          indent1 = indent + "   "
@@ -56,8 +58,64 @@ module Interpreter
             stream << indent1 << slot_name << ":\n"
             symbol.display( stream, indent2 )
          end
+         
+         
+         return inline_candidate
       end
       
+      
+      def format( top = true )
+
+         #
+         # Assemble our child charts.
+         
+         child_lines = []
+         @slots.each do |slot_name, child|
+            if child.is_a?(ASN) then
+               if child.ast_class.catch_all? and child.slots.length == 1 then
+                  leader = slot_name + "."
+                  child.format(false).each do |line|
+                     child_lines << leader + line
+                     leader = "  "
+                  end
+               else
+                  child_lines << slot_name + ":"
+                  child.format(false).each do |line|
+                     child_lines << "  " + line 
+                  end
+               end
+            else
+               child_lines << slot_name + ": " + child.description
+            end
+         end
+         
+         #
+         # Assemble our chart from our child data.
+
+         chart = []
+         if !top and @ast_class.catch_all? and @slots.length == 1 then
+            chart.concat child_lines
+         else
+            child_width = 0
+            child_lines.each do |child_line|
+               child_width = max( child_line.length, child_width )
+            end
+         
+            class_name = @ast_class.catch_all? ? @ast_class.parent_class.name : @ast_class.name
+            width      = max( child_width, class_name.length ) + 3
+            horizontal = "+" + ("-" * width) + "+"
+         
+            chart << horizontal
+            chart << ("| " + class_name + (" " * (width - class_name.length - 1)) + "|")
+            chart << horizontal
+            child_lines.each do |child_line|
+               chart << ("| " + child_line.ljust(width - 3) + "  |")
+            end
+            chart << horizontal
+         end
+         
+         return chart
+      end
       
    end # ASN
    

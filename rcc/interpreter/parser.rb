@@ -61,7 +61,7 @@ module Interpreter
             
             if explain then
                stack_description = node_stack.collect{|node| node.description}.join( ", " )
-               la_description    = [1].collect{|i| t = la(i); t.nil? ? "" : t.description}.join( ", " )
+               la_description    = [1].collect{|i| t = la(i); t.nil? ? "$" : t.description}.join( ", " )
                stack_bar         = "=" * (stack_description.length + 9)
 
                STDOUT.puts ""
@@ -72,7 +72,8 @@ module Interpreter
                state.display( STDOUT, "| " )
             
                STDOUT.puts "| #{state.lookahead_explanations}"
-               STDOUT.puts "| Action analysis for lookahead #{la_description} (#{state.actions[token_type].class.name})"
+               STDOUT.puts "| Lexer prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
+               STDOUT.puts "| Action analysis for lookahead #{la_description}" # (#{state.actions[token_type]})"
             
                if state.explanations.nil? then
                   bug( "no explanations found -- wtf?" )

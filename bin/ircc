@@ -61,14 +61,20 @@
 
          lexer  = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )
          parser = RCC::Interpreter::Parser.new( parser_plan, lexer )
-         cst    = parser.parse( explain )
+         ast    = parser.parse( explain )
          
          if explain then
             STDOUT.puts ""
             STDOUT.puts ""
+            STDOUT.puts ""
          end
-            
-         cst.display( STDOUT, "" )
+           
+         STDOUT.puts "ABSTRACT SYNTAX TREE" 
+         STDOUT.puts "===================="
+         STDOUT.puts ""
+         ast.format().each do |line|
+            STDOUT.puts line
+         end
          
       when "lex"
          lexer = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )

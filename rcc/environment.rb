@@ -10,6 +10,14 @@
 
    require "rcc/util/quality.rb"
    
+   def max( a, b )
+      a > b ? a : b
+   end
+   
+   def min( a, b )
+      a < b ? a : b
+   end
+   
    class Array
       
       #
