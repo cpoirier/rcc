@@ -79,7 +79,7 @@ module Interpreter
                   puts "===> DONE"
                end
             else
-               puts "===> PRODUCING #{prep(token)} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
+               puts "===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
             end
          end
          

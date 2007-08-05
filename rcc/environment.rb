@@ -70,3 +70,18 @@
       def each()
       end
    end
+   
+   
+   class Time
+      
+      #
+      # Time.measure()
+      #  - returns the duration of the supplied block in seconds (floating point)
+
+      def Time.measure()
+         start = Time.now
+         yield()
+         return Time.now - start
+      end
+      
+   end

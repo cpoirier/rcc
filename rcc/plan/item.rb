@@ -237,7 +237,7 @@ module Plan
       #    from the mark and flowing into the lookahead, as necessary
       #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
       
-      def sequences_after_mark( length = 1, production_sets = nil, loop_detector = nil )
+      def sequences_after_mark( length = 1, production_sets = nil, loop_detector = nil, skip_contexts = [] )
          return @sequences_after_mark unless @sequences_after_mark.nil? or @sequences_after_mark.length < length
          
          production_sets = @production_sets if production_sets.nil?
@@ -264,14 +264,93 @@ module Plan
             # our contexts, as we ARE that leader symbol.
          
             else
-               sequence_sets = self.follow_contexts().collect do |context|
+
+               #
+               # Given the following grammar fragment:
+               #    expression  => id                                 
+               #                => number                       
+               #                => '(' expression ')'            
+               #                => '-' expression                {negation_expression}       {assoc=none}
+               #                => expression '*' eol:ignore? expression     {multiplication_expression} {assoc=left}       
+               #                => expression '/' expression     {division_expression}       {assoc=left}  
+               #                => expression '+' expression     {addition_expression}       {assoc=left}  
+               #                => expression '-' expression     {subtraction_expression}    {assoc=left}  
+               #                => expression '^' expression     {something_expression}      {assoc=left}       
+               #                => expression '%' expression     {modulus_expression}        {assoc=left}  
+               #                => string                        {string_expression}         {assoc=none}
+               #    
+               # calculating the sequences_after_mark got incredibly expensive on Item:
+               #   expression => id .
+               #
+               # This happened because that Item had 112 follow contexts, most of which had the same 112 follow contexts.
+               # Because we don't store anything in any one of those mutually recursive contexts until they are all complete,
+               # it was taking a very long time (200s) to calculate the set.  However, a lot of the individual items to 
+               # quickly get resolved, so it is really a waste of time going into them so many times.
+               #
+               # The first optimization will cache the follow context and partial results sets we are accumulating, and will, 
+               # as follow contexts complete, do less and less work on behalf of our callers.  Hopefully, this will create a 
+               # significant time savings.
+               #
+               # ORIGINAL BEFORE OPTIMIZATION ATTEMPT:
+               # sequence_sets = self.follow_contexts().collect do |context|
+               #    if context.nil? then
+               #       SequenceSet.end_of_input_set
+               #    else
+               #       # STDERR.puts "getting after_leader for #{context.signature}"
+               #       set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detector )
+               #    end
+               # end
+
+               # if @unsequenced_follow_contexts.nil? or @unsequenced_follow_contexts_k < length then
+               #    @unsequenced_follow_contexts_k = length
+               #    @unsequenced_follow_contexts = self.follow_contexts
+               #    @completed_sets = []
+               # end
+               # 
+               # fcs = @unsequenced_follow_contexts
+               # STDERR.puts "Item [#{signature()}] has #{fcs.length} follow contexts left:"
+               # fcs.each do |fc|
+               #    STDERR.puts "   #{fc.signature} and SAM is #{fc.sequences_after_mark_complete? ? "set" : "nil"}"
+               # end
+               # 
+               # retiring_follow_contexts = {}
+               # sequence_sets = ([] + @completed_sets) + @unsequenced_follow_contexts.collect do |context|
+               #    if context.nil? then
+               #       SequenceSet.end_of_input_set
+               #    else
+               #       set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detector )
+               #       
+               #       if context.sequences_after_mark_complete? then
+               #          retiring_follow_contexts[context.object_id] = true
+               #          @completed_sets << set
+               #       end
+               #       
+               #       set
+               #    end
+               # end
+               # 
+               # @unsequenced_follow_contexts.delete_if do |follow_context|
+               #    retiring_follow_contexts.member?(follow_context.object_id)
+               # end
+
+               our_follow_contexts      = self.follow_contexts()
+               relevant_follow_contexts = our_follow_contexts - skip_contexts
+               skip_contexts            = skip_contexts + relevant_follow_contexts
+
+               # STDERR.puts "Item [#{signature()}] has #{relevant_follow_contexts.length} follow contexts left:"
+               # relevant_follow_contexts.each do |fc|
+               #    STDERR.puts "   #{fc.signature} and SAM is #{fc.sequences_after_mark_complete? ? "set" : "nil"}"
+               # end
+               # 
+               sequence_sets = relevant_follow_contexts.collect do |context|
                   if context.nil? then
                      SequenceSet.end_of_input_set
                   else
-                     set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detector )
+                     # STDERR.puts "getting after_leader for #{context.signature}"
+                     set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detector, skip_contexts )
                   end
                end
-            
+
                sequences_after_mark = SequenceSet.merge( sequence_sets ).prefix( local_symbols )
             end
          end
@@ -281,11 +360,16 @@ module Plan
          
          return SequenceSet.empty_set() if complete.nil?
          
-         if complete and @closed then
+         if complete and @closed and skip_contexts.empty? then
             @sequences_after_mark = sequences_after_mark
          end
          
          return sequences_after_mark
+      end
+      
+      
+      def sequences_after_mark_complete?()
+         return !@sequences_after_mark.nil?
       end
       
       
@@ -294,8 +378,8 @@ module Plan
       #  - similar to sequences_after_mark, but skips the leader 
       #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
       
-      def sequences_after_leader( length = 1, production_sets = nil, loop_detector = nil )
-         sequences = sequences_after_mark( length + 1, production_sets, loop_detector )
+      def sequences_after_leader( length = 1, production_sets = nil, loop_detector = nil, skip_contexts = [] )
+         sequences = sequences_after_mark( length + 1, production_sets, loop_detector, skip_contexts )
          return sequences.slice( 1..-1 )
       end
       

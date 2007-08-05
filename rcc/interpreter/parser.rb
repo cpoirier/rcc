@@ -55,7 +55,16 @@ module Interpreter
             #
             # Determine our next action, based on lookahead.
             
-            next_token = la()
+            if explain then
+               lexer_explanation = "Lexing with prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
+               
+               STDOUT.puts ""
+               STDOUT.puts ""
+               STDOUT.puts "-" * lexer_explanation.length 
+               STDOUT.puts lexer_explanation 
+            end
+            
+            next_token = la(1, explain)
             token_type = (next_token.nil? ? nil : next_token.type)
             action     = state.actions[token_type]
             
@@ -72,7 +81,6 @@ module Interpreter
                state.display( STDOUT, "| " )
             
                STDOUT.puts "| #{state.lookahead_explanations}"
-               STDOUT.puts "| Lexer prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
                STDOUT.puts "| Action analysis for lookahead #{la_description}" # (#{state.actions[token_type]})"
             
                if state.explanations.nil? then
@@ -196,9 +204,9 @@ module Interpreter
       # la()
       #  - looks ahead one or more tokens
       
-      def la( count = 1 )
+      def la( count = 1, explain = false )
          until @lookahead.length >= count
-            if token = @lexer.next_token(@lexer_plan) then
+            if token = @lexer.next_token(@lexer_plan, explain) then
                @lookahead << token
             else
                nyi "error handling for lexer error" if @lexer.input_remaining?
@@ -214,8 +222,8 @@ module Interpreter
       # consume()
       #  - shifts the next token off the lookahead and returns it
       
-      def consume()
-         la(1)
+      def consume( explain = false )
+         la(1, explain)
          return @lookahead.shift
       end
       

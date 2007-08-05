@@ -33,6 +33,8 @@
    #
    # Compile the parser plan.
    
+   $show_statistics = true
+   
    parser_plan = grammar.compile_plan()
    parser_plan.compile_actions( true )
    

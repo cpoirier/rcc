@@ -48,6 +48,25 @@ module Plan
          grammar.forms.each do |form|
             form_lookup[form.id_number] = []
             
+            #
+            # Prep an AST plan for our Productions for this Form.
+
+            ast_classes[form.rule.name] = ASTClass.new( form.rule.name ) unless ast_classes.member?(form.rule.name)
+            base_class = ast_classes[form.rule.name]
+            form_class = nil
+            
+            if form.label.nil? then
+               form_class = base_class.catch_all_class
+            else
+               bug( "duplicate name in AST" ) if ast_classes.member?(form.label)
+               form_class = ASTClass.new( form.label, base_class )
+               ast_classes[form.label] = form_class
+            end
+            
+            
+            #
+            # Build our Productions.
+            
             form.phrases.each do |phrase|
                symbols    = phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?, model.slot) }
                production = Production.new( productions.length + 1, form.rule.name, symbols, form.associativity, form.id_number, form )
@@ -59,22 +78,9 @@ module Plan
                production_sets[production.name] << production
                
                #
-               # Build an AST plan for our Productions.
+               # Register our slots with the AST plan.
                
-               ast_classes[form.rule.name] = ASTClass.new( form.rule.name ) unless ast_classes.member?(form.rule.name)
-               base_class = ast_classes[form.rule.name]
-               form_class = nil
-               
-               if form.label.nil? then
-                  form_class = base_class.catch_all_class
-                  form_class.merge_slots( production, false )
-               else
-                  bug( "duplicate name in AST" ) if ast_classes.member?(form.label)
-                  form_class = ASTClass.new( form.label, base_class )
-                  form_class.merge_slots( production )
-                  ast_classes[form.label] = form_class
-               end
-                  
+               form_class.merge_slots( production, false )
                production.ast_class = form_class
             end
          end
@@ -122,45 +128,53 @@ module Plan
          state_table = [ start_state ]
          state_index = { start_state.signature => start_state }
          
-         work_queue = [start_state]
-         until work_queue.empty?
-            current_state = work_queue.shift
+         duration = Time.measure do
+            work_queue = [start_state]
+            until work_queue.empty?
+               current_state = work_queue.shift
             
-            current_state.enumerate_transitions do |symbol_name, shifted_items|
+               current_state.enumerate_transitions do |symbol_name, shifted_items|
                
-               #
-               # If a matching state is already is in the index, all we need to do is merge in the lookahead from 
-               # the new contexts.  
+                  #
+                  # If a matching state is already is in the index, all we need to do is merge in the lookahead from 
+                  # the new contexts.  
                
-               if transition_state = state_index[State.signature(shifted_items)] then
-                  transition_state.add_contexts( shifted_items, current_state )    
+                  if transition_state = state_index[State.signature(shifted_items)] then
+                     transition_state.add_contexts( shifted_items, current_state )    
                   
-               #
-               # Otherwise, we need to create a new State from the shifted_items.
+                  #
+                  # Otherwise, we need to create a new State from the shifted_items.
                
-               else
-                  transition_state = State.new( state_table.length, shifted_items, current_state )
-                  transition_state.close( production_sets )
+                  else
+                     transition_state = State.new( state_table.length, shifted_items, current_state )
+                     transition_state.close( production_sets )
                   
-                  state_table << transition_state
-                  state_index[transition_state.signature] = transition_state
+                     state_table << transition_state
+                     state_index[transition_state.signature] = transition_state
                   
-                  work_queue << transition_state
+                     work_queue << transition_state
+                  end
+               
+                  current_state.add_transition( symbol_name, transition_state )
                end
-               
-               current_state.add_transition( symbol_name, transition_state )
-            end
 
-            # current_state.display( STDOUT, "" )
+               # current_state.display( STDOUT, "" )
+            end
          end
+         
+         STDERR.puts "State generation duration: #{duration}s" if $show_statistics
          
          
          #
          # Close the State Items.
-         
-         state_table.each do |state|
-            state.close_items()
+
+         duration = Time.measure do
+            state_table.each do |state|
+               state.close_items()
+            end
          end
+         
+         STDERR.puts "Follow context propagation duration: #{duration}s" if $show_statistics
          
          
          #
@@ -203,10 +217,18 @@ module Plan
       #  - optionally constructs explanations for conflict resolutions
       
       def compile_actions( explain = false, k_limit = 1, use_backtracking = false )
-         @state_table.each do |state|
-            state.compile_actions( @production_sets, @precedence_table, k_limit, use_backtracking, explain )
-            state.compile_customized_lexer_plan( @lexer_plan )
+         duration = Time.measure do 
+            @state_table.each do |state|
+               duration = Time.measure do
+                  state.compile_actions( @production_sets, @precedence_table, k_limit, use_backtracking, explain )
+                  state.compile_customized_lexer_plan( @lexer_plan )
+               end
+               
+               STDERR.puts "Action compilation for state #{state.state_number}: #{duration}s" if $show_statistics and duration > 0.25
+            end
          end
+         
+         STDERR.puts "Action compilation duration: #{duration}s" if $show_statistics
       end
 
 

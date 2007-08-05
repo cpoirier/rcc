@@ -388,7 +388,13 @@ module Plan
             if !item.complete? and item.leader.non_terminal? then
                @actions[item.leader.name] = Actions::Goto.new( @transitions[item.leader.name] )
             else
-               determinants = item.determinants( 1, production_sets )
+               determinants = nil
+               duration = Time.measure do
+                  determinants = item.determinants( 1, production_sets )
+               end
+               
+               STDERR.puts "Determinants calculation for state #{@state_number} item [#{item.signature}] duration: #{duration}s" if $show_statistics #  and duration > 0.1
+
                determinants.each do |determinant|
                   options[determinant.name] = [] unless options.member?(determinant.name)
                   options[determinant.name] << item
@@ -696,7 +702,7 @@ module Plan
          
             unless @reductions.empty?
                @reductions.each do |item|
-                  stream << indent << sprintf( "   Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" ) 
+                  stream << indent << "   Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" 
                   stream << " (*)" if item.object_id == @chosen_reduction.object_id
                   stream << "\n"
                end

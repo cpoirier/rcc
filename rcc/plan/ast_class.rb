@@ -58,7 +58,7 @@ module Plan
       
       def define_slot( name, bug_if_duplicate = true )
          bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
-         @slots << name
+         @slots << name unless @slots.member?(name)
       end
       
       
