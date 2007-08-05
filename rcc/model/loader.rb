@@ -23,36 +23,106 @@ module Model
  # class Loader
  #  - loads a Grammar from a description on disk
  #----------------------------------------------------------------------------------------------------------------------------
- # Grammar files are arranged in four sections: configuration, terminals, rules, and a precedence table.  All four sections 
- # follow the same general form.
+ # Grammar files are arranged in four sections: configuration, terminals, rules, and a precedence table.  The latter three
+ # can optionally be arranged inside multiple groups, if it helps clarify your grammar.
  #
- #
- # Configuration
- # -------------
- # The configuration section includes directives that control how the code is generated.  These settings are defaults, and 
- # can be overridden on the command line.  
- #
- # Example:
- #    Configuration
- #       Mode AST
+ # Quick example:
+ #    Grammar <name>
+ #       StartRule string
+ #    
+ #       Group strings
+ #          Terminals 
+ #             escape_sequence => /\\./
+ #             general_text    => /[^"\\{]+/
+ #          end
+ #       
+ #          Rules
+ #             string          => '"' string_body '"'
+ #             
+ #             string_body     => string_element
+ #                             => string_body string_element
+ #                             
+ #             string_element  => escape_sequence
+ #                             => general_text
+ #                             => '{' expression '}'
+ #          end
+ #       end
  #    end
  #
+ #
+ # Grammar
+ # -------
+ # The Grammar section wraps the whole grammar and gives it a name.  At the top of the Grammar, you can specify configuration
+ # settings that control how rcc does its work.  These settings are defaults, and can be overridden on the command line
+ # (generally). 
+ #
+ # Example:
+ #    Grammar <name>
+ #       StartRule <rule name>
+ #       
+ #       Terminals
+ #       end
+ #   
+ #       Rules
+ #       end
+ #  
+ #       Precedence
+ #       end
+ #    end
+ #
+ # Current configuration directives:
+ #    StartRule <rule name>          -- provides name of the rule that starts the grammar
+ #    IgnoreTerminal <terminal name> -- specifies the name of a Terminal that should be discarded by the lexer
+ #                                   -- useful for getting rid of whitespace and comments, for instance
+ #                                   -- include as many IgnoreTerminal directives as necessary
+ #
+ #
+ # Group
+ # -----
+ # The Group section can be used if you'd like to divide your grammar up into multiple sets of Terminals/Rules/Precedence 
+ # sections.  Groups are for documentation purposes only, and do not affect how your grammar works.  If you don't use a Group,
+ # you can use only one each of the Terminals/Rules/Precedence declaration sections.
+ #
+ # Example:
+ #    Grammar <name>
+ #       Group code
+ #          Terminals
+ #          end
+ #         
+ #          Rules
+ #          end
+ #       
+ #          Precedence
+ #          end
+ #       end
+ #
+ #       Group strings
+ #          Terminals
+ #          end
+ #         
+ #          Rules
+ #          end
+ #       
+ #          Precedence
+ #          end
+ #       end
+ #    end
+ #    
  #
  # Terminals
  # ---------
  # Simple terminals (literal symbols that appear in the text of your program) can be defined directly in the rules.  However,
  # for more complicated things (identifiers, numbers, etc.), you'll need to specify them here.  You can use regular 
- # expressions, strings, or Ruby-style symbol declarations that reference built-in patterns.
+ # expressions or literal strings, and the name you assign them will be used as the generated Token type.
  #
- # Built-in patterns:
- #    :identifier - the standard C-style identifier
- #    :number     - the standard C-style floating-point number
- #    :integer    - the standard C-style integer
+ # As a rule, the lexer will search for literal strings first, then try your patterns, in the declaration order.  However,
+ # the parser will automatically prioritize those literals and patterns it expects to find on the lookahead for the current
+ # state, so you can have, for instance, two or more overlapping regular expressions, and the parser will choose the 
+ # appropriate one for the context (where possible).
  #
  # Example:
  #    Terminals
- #       id  => :identifier
- #       id2 => /[a-zA-Z]\w+/
+ #       id  => /[a-zA-Z]\w+/
  #       eos => "\n"
  #    end
  #
@@ -75,16 +145,16 @@ module Model
  #
  # Example:
  #    Rules
- #       statement => expression eos
+ #       statement => expression eos:ignore
  #    
  #       expression 
- #          => expression '+' eos? expression     {addition_expression}       {assoc=left}
- #          => expression '-' eos? expression     {subtraction_expression}    {assoc=left}
- #          => expression '*' eos? expression     {multiplication_expression} {assoc=left} 
- #          => expression '/' eos? expression     {division_expression}       {assoc=left}
- #          => '-' expression                     {negation_expression}
- #          => relation                           {relation_expression}
- #          => predicate                          {predicate_expression}
+ #          => expression:lhs '+' eos:ignore? expression:rhs     {addition_expression}       {assoc=left}
+ #          => expression '-' eos? expression                    {subtraction_expression}    {assoc=left}
+ #          => expression '*' eos? expression                    {multiplication_expression} {assoc=left} 
+ #          => expression '/' eos? expression                    {division_expression}       {assoc=left}
+ #          => '-' expression                                    {negation_expression}
+ #          => relation                                          {relation_expression}
+ #          => predicate                                         {predicate_expression}
  #          => id
  #    end
  #
@@ -104,6 +174,24 @@ module Model
  # Also in this example, the "eos" terminal has been marked as optional.  This means that it can be included immediately 
  # after the operator without terminating the statement, but will not generate an error if it is missing.  You can mark any 
  # rule element as optional.  In an rcc-produced AST, any missing slots will be nil.
+ #
+ #
+ # AST Construction and Term Labels
+ # --------------------------------
+ # In the above example, you will notice that some of the Rule terms include a : label.  This label is used when assigning the
+ # data to a slot in the AST.  For instance, in the first "expression" form above, the first expression will be available in
+ # slot "lhs" and the second in slot "rhs" on AST class "addition_expression".
+ #
+ # If you don't specify labels for any of your terms, rcc will assign labels for you.  Generally speaking, these labels will
+ # be based on the terms themselves.  For instance, in the second "expression" form above, the first expression will be 
+ # available in slot "expression1" and the second in slot "expression2" on AST class "subtraction_expression".  For the 
+ # "negation_expression", the expression term will be available in slot "expression", as there is no contention for the name
+ # in that form.  
+ #
+ # rcc automatically assigns labels to any unlabeled non-terminals in your rules.  It does not automatically supply labels 
+ # for literals, as they are assumed to be uninteresting in the AST.  You can override this behaviour by supplying an explicit
+ # label of your own.  The "ignore" label is special, and has the opposite effect: any term labelled "ignore" will not get
+ # a slot in the AST class.
  #
  #
  # Conflicts and Associativity
