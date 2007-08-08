@@ -180,7 +180,7 @@ module Plan
          #
          # Return the new ParserPlan.
          
-         return new( state_table, productions, production_sets, precedence_table, base_lexer_plan )
+         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan )
       end
       
       
@@ -189,11 +189,12 @@ module Plan
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
     
-      attr_reader :model          # The Model from which this Plan was build (if available)
-      attr_reader :lexer_plan     # A LexerState that describes how to lex the Grammar; note that each State can produce a customization on this one
-      attr_reader :state_table    # Our States, in convenient table form
+      attr_reader :name              # The name of the Grammar from which this Plan was built
+      attr_reader :lexer_plan        # A LexerState that describes how to lex the Grammar; note that each State can produce a customization on this one
+      attr_reader :state_table       # Our States, in convenient table form
 
-      def initialize( state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil )
+      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil )
+         @name             = name
          @state_table      = state_table
          @lexer_plan       = lexer_plan
          @productions      = productions

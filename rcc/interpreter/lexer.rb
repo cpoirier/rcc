@@ -88,10 +88,10 @@ module Interpreter
 
 
       #
-      # reset()
+      # reset_position()
       #  - resets the position of the lexer
       
-      def reset( to_position )
+      def reset_position( to_position )
          @line_reader.seek( to_position )
          @pending_lines.clear()
          @last_consumed = nil
@@ -106,7 +106,6 @@ module Interpreter
     #---------------------------------------------------------------------------------------------------------------------
     
     protected
-          
       
       #
       # lex()
@@ -114,37 +113,20 @@ module Interpreter
       #  - returns a single token relevant to the supplied state
       #  - always takes the longest match possible
       
-      def lex( lexer_plan, explain, built = "" )
+      def lex( lexer_plan, explain )
          token = nil   
          while token.nil? and input_remaining?()
-            
-            #
-            # First, try to read by character lookahead.
-            
-            if c = la() then
-               if lexer_plan.child_plans.member?(c) then
-                  puts "     la() is #{prep(c)}, which matches a child state; recursing" if explain
-                  token = lex( lexer_plan.child_plans[c], explain, built + consume() )
-                  
-               elsif lexer_plan.accepted.member?(c) then
-                  puts "     la() is #{prep(c)}, which is accepted by this state; producing #{built+c} as #{lexer_plan.accepted[c]}" if explain
-                  token = Token.new( built + consume() )
-                  token.locate( @position, @line_number, @column_number, @descriptor, lexer_plan.accepted[c] )
-                  
-               end
-            else
-               puts "     la() is #{prep(c)}, which means we are done"
-            end
 
-            if token.nil? and !c.nil? then
-               puts "     la() is #{prep(c)}, which does not match any literal options" if explain
-            end
+            #
+            # First, try to lex a literal token.
+            
+            token = lex_literal( lexer_plan.literal_processor, explain )
 
 
             #
             # Next, try pattern matching.
             
-            if token.nil? and !c.nil? then
+            if token.nil? and !la().nil? then
                if lexer_plan.patterns.empty? then
                   puts "     there are no pattern matching options in this state" if explain
                else
@@ -166,12 +148,12 @@ module Interpreter
             #
             # Finally, try tail processing, if available.
             
-            if token.nil? and !c.nil? then
-               if lexer_plan.tail_processing.nil? then
-                  puts "     there is no tail processing for this state" if explain
+            if token.nil? and !la().nil? then
+               if lexer_plan.fallback_plan.nil? then
+                  puts "     there is no fallback plan for this lexer" if explain
                else
-                  puts "     attempting tail processing" if explain
-                  token = lex( lexer_plan.tail_processing, explain, built )
+                  puts "     attempting fallback plan" if explain
+                  token = lex( lexer_plan.fallback_plan, explain )
                end
             end
 
@@ -193,6 +175,39 @@ module Interpreter
          return token
       end
       
+      
+      #
+      # lex_literal()
+      #  - processes a LexerState against the current lookahead
+      
+      def lex_literal( state, explain = false, base_la = 1 )
+         token = nil
+         
+         #
+         # First, try to read by character lookahead.  Note that for "+" and "++", "+" will match both
+         # a child_plan and an accepted entry.  So we try the child_plan first.  If it fails, we'll try
+         # accept instead.  In other words, we take the longest match we can.  
+         
+         if c = la(base_la) then
+            if state.child_states.member?(c) then
+               puts "     la(#{base_la}) is #{prep(c)}, which matches a child state; recursing" if explain
+               token = lex_literal( state.child_states[c], explain, base_la + 1 )
+            end
+      
+            if token.nil? and state.accepted.member?(c) then
+               puts "     la(#{base_la}) is #{prep(c)}, which is accepted by this state; producing type #{state.accepted[c]}" if explain
+               token = Token.new( consume(base_la) )
+               token.locate( @position, @line_number, @column_number, @descriptor, state.accepted[c] )
+            end
+         end
+
+         if token.nil? and !c.nil? then
+            puts "     la(#{base_la}) is #{prep(c)}, which does not match any literal options in this state" if explain
+         end
+         
+         return token
+      end
+            
       
       #
       # la()
@@ -220,12 +235,12 @@ module Interpreter
       
       #
       # consume()
-      #  - shifts the next character off the lookahead and returns it
+      #  - shifts some number of characters off the lookahead and returns it
       
-      def consume()
+      def consume( count = 1 )
          c = nil
-         if c = la() then 
-            @last_consumed = @pending_lines[0].slice!(0, 1)
+         if c = la(count) then 
+            @last_consumed = @pending_lines[0].slice!(0, count)
          end
          
          return c
@@ -359,7 +374,7 @@ if __FILE__ == $0 then
                      lexed = lexer.next_token( nil, true )
                   end
                when "reset"
-                  lexer.reset( command_tokens[1].to_i )
+                  lexer.reset_position( command_tokens[1].to_i )
                else
                   puts "unrecognized command; try: lex <number>; reset <position>"
             end

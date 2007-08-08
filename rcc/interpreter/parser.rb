@@ -174,7 +174,7 @@ module Interpreter
       #  - rewinds the lexer to where it was when it produced the specified token
       
       def rewind( before_token )
-         @lexer.reset( before_token.start_position )
+         @lexer.reset_position( before_token.start_position )
          @lookahead.clear
       end
       

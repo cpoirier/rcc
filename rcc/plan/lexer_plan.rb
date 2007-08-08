@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/plan/lexer_state.rb"
 
 module RCC
 module Plan
@@ -16,7 +17,7 @@ module Plan
  
  #============================================================================================================================
  # class LexerPlan
- #  - a representation of a single decision state of a lexer for the Grammar's Terminals
+ #  - a representation of the overall plan for lexing the Grammar's terminals
 
    class LexerPlan
 
@@ -66,52 +67,26 @@ module Plan
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :context
-      attr_reader :accepted
-      attr_reader :child_plans
+      attr_reader :literal_processor
       attr_reader :patterns
-      attr_reader :tail_processing
+      attr_reader :fallback_plan
       attr_reader :ignore_list
       
       
-      def initialize( literals, patterns = nil, ignore_list = nil, tail_processing = nil, context = "" )
-         @context         = context            # The String that would have already been lexed before getting here
-         @literals        = literals           # literal => symbol_name, for literal symbols
-         @patterns        = patterns           # OrderedHash of Regexp => symbol_name, for pattern-defined symbols (tried after literals)
-         @ignore_list     = ignore_list        # A list of produced tokens to discard as irrelevant (causing a return to lexing)
-         @tail_processing = tail_processing    # Another LexerPlan to be tried if this one generates no token
-         
-         #
-         # Build the state data.  We will transition to another state for every first character in the choice
-         # list.  We are done when any single-letter choice is matched.
-         
-         @accepted     = {}
-         @child_plans = {}
-         
-         follow_by_firsts = {}
-         literals.keys.each do |literal|
-            if literal.length == 1 then
-               @accepted[literal] = literals[literal]
-            else
-               first  = literal.slice( 0, 1 )
-               follow = literal.slice( 1..-1 )
-               
-               follow_by_firsts[first] = {} unless follow_by_firsts.member?(first)
-               follow_by_firsts[first][follow] = literals[literal]
-            end
-         end
-         
-         follow_by_firsts.each do |first, follows|
-            @child_plans[first] = self.class.new( follows, nil, nil, nil, @context + first )
-         end
+      def initialize( literals, patterns = nil, ignore_list = nil, fallback_plan = nil, context = "" )
+         @context       = context            # The String that would have already been lexed before getting here
+         @literals      = literals           # literal => symbol_name, for literal symbols
+         @patterns      = patterns           # OrderedHash of Regexp => symbol_name, for pattern-defined symbols (tried after literals)
+         @ignore_list   = ignore_list        # A list of produced tokens to discard as irrelevant (causing a return to lexing)
+         @fallback_plan = fallback_plan      # Another LexerPlan to be tried if this one generates no token
+
+         @literal_processor = LexerState.new( literals )
       end
-      
       
       
       #
       # prioritize()
       #  - returns a copy of this LexerPlan in which the named symbols will be identified first
-      #  - you should probably only call this on the top LexerPlan
       
       def prioritize( symbol_names, maintain_ordering = true )
          
@@ -133,7 +108,7 @@ module Plan
          
          #
          # Pick those symbols we'll need to prioritize.  We don't really care about literals order, but unless asked not
-         # to, we keep the pattern subset in the original order.
+         # to, we keep the pattern subset in the declaration order.
          
          literals = {}
          patterns = Util::OrderedHash.new()

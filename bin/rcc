@@ -12,6 +12,7 @@
       
    require "rcc/environment.rb"
    require "rcc/model/grammar.rb"
+   require "rcc/code_generation/ruby/generator.rb"
 
    if ARGV.empty? then
       puts "USAGE: #{File.basename($0)} <grammar file>"
@@ -29,6 +30,21 @@
    puts()
    puts()
    
-   plan = grammar.compile_plan()
-   plan.display( STDOUT, "", true, ARGV[1].nil? ? :reduce_determinants : ARGV[1].intern )
+   parser_plan = grammar.compile_plan()
+   # parser_plan.display( STDOUT, "", true, ARGV[1].nil? ? :reduce_determinants : ARGV[1].intern )
+   # 
+   # puts()
+   # puts()
+   # puts()
+   # puts()
+   # puts()
+   # puts()
+   
+   $show_statistics = true
+   parser_plan.compile_actions( true )
+   
+   generator = RCC::CodeGeneration::Ruby::Generator.new({:module_contexts => ["Rethink", "CommandLanguage"]})
+   generator.generate( parser_plan )
+   
+   
    
