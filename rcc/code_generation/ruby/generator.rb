@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
+require "rcc/code_generation/formatter.rb"
 
 module RCC
 module CodeGeneration
@@ -36,7 +37,8 @@ module Ruby
       #  - generates to STDOUT if output_directory is nil
       
       def generate( parser_plan, output_directory = nil )
-         generate_lexer( parser_plan, output_directory )
+         # generate_lexer( parser_plan, output_directory )
+         generate_parser( parser_plan, output_directory )
       end
    
    
@@ -44,9 +46,68 @@ module Ruby
    
    
 
-
     #---------------------------------------------------------------------------------------------------------------------
-    # Generators
+    # Parser Generation
+    #---------------------------------------------------------------------------------------------------------------------
+    
+    private
+    
+      #
+      # generate_parser()
+      #  - generates a Parser and all the related machinery
+      
+      def generate_parser( parser_plan, output_directory )
+         fill_template("parser.rb", STDOUT, parser_plan) do |macro_name, formatter|
+            case macro_name
+               when "PRODUCTIONS"
+                  parser_plan.productions.each do |production|
+                     generate_reduce_function( production, formatter )
+                  end
+               else
+                  formatter << macro_name
+            end
+         end
+      end
+      
+      
+      
+      #
+      # generate_reduce_function()
+      #  - generates the reduce function on the Parser for a single Plan::Production
+      
+      def generate_reduce_function( production, formatter )
+         generate_function( "reduce_by_production_#{production.number}", "Reducer for:\n   #{production.to_s}", formatter ) do
+            symbols_to_pop = production.symbols.length
+            
+            formatter << ""
+            formatter << "#"
+            formatter << "# First up, pop off the requisite number of objects from the node stack.  We also discard the"
+            formatter << "# same number of items from the state stack.  Note that, for production purposes, we want the"
+            formatter << "# nodes in oldest-to-newest order. "
+            formatter << ""
+            formatter << "nodes = @node_stack.slice!(  -#{symbols_to_pop}..-1 )"
+            formatter << "        @state_stack.slice!( -#{symbols_to_pop}..-1 )"
+            formatter << ""
+            
+            
+            # csn = nil
+            # if @build_ast then
+            #    csn = ASN.new( production, nodes )
+            # else
+            #    csn = CSN.new( production.name, nodes )
+            # end
+            
+         end
+      end
+      
+      
+      
+      
+    
+    
+      
+    #---------------------------------------------------------------------------------------------------------------------
+    # Lexer Generation
     #---------------------------------------------------------------------------------------------------------------------
     
     private
@@ -60,7 +121,7 @@ module Ruby
          #
          # Output the lexers.
          
-         fill_template("lexer.rb", STDOUT, parser_plan) do |output_file, macro_name, prefix, suffix|
+         fill_template("lexer.rb", STDOUT, parser_plan) do |macro_name, formatter|
             case macro_name
                when "LEXERS"
                   
@@ -89,15 +150,23 @@ module Ruby
                      end
                      
                      #
-                     # Generate the state lexer.
+                     # Generate the state lexer.  Note that some of the states don't need any prioritization, and so will use
+                     # a fallback lexer directly.  We'll need to deal with those, or the generator will generate two (or more)
+                     # identical functions.
                      
                      description = "Lexer for "
                      state.display( description, "", true )
                      description << "\n"
                      description << "Prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
                      
-                     
-                     process_lexer_plan( "lex_for_state_#{state.state_number}", lexer_plan, pattern_registry, fallback_registry, output_file, prefix, suffix, description )
+                     lexer_name = "lex_for_state_#{state.state_number}"
+                     if fallback_registry.member?(lexer_plan.object_id) then
+                        generate_function( lexer_name, description, formatter ) do 
+                           formatter << %[return #{fallback_registry[lexer_plan.object_id]}()]
+                        end
+                     else
+                        process_lexer_plan( lexer_name, lexer_plan, pattern_registry, fallback_registry, formatter, description )
+                     end
                      
                   end
                   
@@ -126,7 +195,7 @@ module Ruby
                      #
                      # Generate the lexer.
                      
-                     process_lexer_plan( lexer_name, lexer_plan, pattern_registry, fallback_registry, output_file, prefix, suffix )
+                     process_lexer_plan( lexer_name, lexer_plan, pattern_registry, fallback_registry, formatter )
                   end
                   
                   
@@ -134,124 +203,107 @@ module Ruby
                   # Finally, output the pattern registry.
                   
                   unless pattern_registry.empty?
-                     width = pattern_registry.keys.inject(0){|width, name| max(width, name.to_s.length)}
+                     name_width    = pattern_registry.keys.inject(0)  {|width, name | max(width, name.to_s.length )}
+                     pattern_width = pattern_registry.values.inject(0){|width, regex| max(width, regex.to_s.length)}
 
-                     output_file.puts %[#{prefix}]
-                     output_file.puts %[#{prefix}# ]
-                     output_file.puts %[#{prefix}# Terminal patterns ]
-                     output_file.puts %[#{prefix}]
+                     formatter << %[#{prefix}]
+                     formatter << %[#{prefix}# ]
+                     formatter << %[#{prefix}# Terminal patterns ]
+                     formatter << %[#{prefix}]
                      
                      pattern_registry.keys.sort.each do |name|
-                        output_file.puts %[#{prefix}@@#{name.to_s.ljust(width)} = Regexp.compile( #{quote_pattern(pattern_registry[name])} )]
+                        formatter << %[@@#{name.to_s.ljust(name_width)} = Regexp.compile( #{quote_pattern(pattern_registry[name]).ljust(pattern_width+2)} )]
                      end
                   end
                   
                   
                else
-                  # do nothing
+                  formatter << macro_name
             end
          end
          
       end
 
-      
+
       #
       # process_lexer_plan()
       #  - generates the body of a lexer routine, based on a LexerPlan
       
-      def process_lexer_plan( name, plan, pattern_registry, fallback_registry, output_file, prefix, suffix, description = nil )
-         out = lambda() do |string|
-            output_file.puts( "#{prefix}#{string}#{suffix}")
-         end
-         
-         out.call %[]
-         out.call %[# ]
-         if description.nil? then
-            out.call %[# #{name}()]
-         else
-            description.split("\n").each do |line|
-               out.call %[# #{line}]
-            end
-         end
-         out.call %[]
-         out.call %[def #{name}()]
-         out.call %[   token = nil]
-         out.call %[   while token.nil? and input_remaining?()]
-
-         #
-         # Generate an FSA for the literals in this plan.
-      
-         unless plan.literal_processor.nil?
-            out.call %[      ]
-            out.call %[      # ]
-            out.call %[      # Try for a literal first.  We take the longest possible match.]
-            out.call %[      ]
-            process_lexer_state( plan.literal_processor, output_file, prefix + "      ", suffix )
-         end
-      
-         #
-         # After all literals are attempted, we move on to patterns (if any).
-      
-         unless plan.patterns.empty?
-            out.call %[      ]
-            out.call %[      # ]
-            out.call %[      # If we didn't get a literal, try our patterns, in order. ]
-            out.call %[      ]
+      def process_lexer_plan( name, plan, pattern_registry, fallback_registry, formatter, description = nil )
+         generate_function( name, description, formatter ) do
             
-            width = plan.patterns.values.inject(0){|width, name| max(width, name.to_s.length)}
-            plan.patterns.each do |pattern, name|
-               pattern_variable = "#{name}_pattern"
-               pattern_registry[pattern_variable] = pattern unless pattern_registry.member?(pattern_variable)
-               
-               out.call %[      string = consume_match( @@#{pattern_variable.ljust(width + "_pattern".length)} ) and token = make_token( string, #{quote_symbol(name).ljust(width+1)} ) if token.nil?]
-            end
-         end
+            formatter << %[token = nil]
+            formatter << %[while token.nil? and input_remaining?()]
+            
+            formatter.indent do 
+            
+               #
+               # Generate an FSA for the literals in this plan.
       
-         #
-         # After all patterns are attempted, we try the fallback lexer, if present.
+               unless plan.literal_processor.nil?
+                  formatter << %[]
+                  formatter << %[# ]
+                  formatter << %[# Try for a literal first.  We take the longest possible match.]
+                  formatter << %[]
+                  process_lexer_state( plan.literal_processor, formatter )
+               end
+      
+               #
+               # After all literals are attempted, we move on to patterns (if any).
+      
+               unless plan.patterns.empty?
+                  formatter << %[]
+                  formatter << %[# ]
+                  formatter << %[# If we didn't get a literal, try our patterns, in order. ]
+                  formatter << %[]
+                  
+                  pattern_variable = plan.patterns.collect{|pattern, name| "#{name}_pattern"  }
+                  symbol_name      = plan.patterns.collect{|pattern, name| quote_symbol(name) }
+                  
+                  formatter.columnate( %[string = consume_match( @@], pattern_variable, %[ ) and token = make_token( string, ], symbol_name, %[ ) if token.nil?] )
+               end
+      
+               #
+               # After all patterns are attempted, we try the fallback lexer, if present.
          
-         unless plan.fallback_plan.nil?
-            out.call %[      ]
-            out.call %[      # ]
-            out.call %[      # If we still don't have a token, try the fallback lexer.]
-            out.call %[      ]
-            out.call %[      token = #{fallback_registry[plan.fallback_plan.object_id]}()]
-         end
+               unless plan.fallback_plan.nil?
+                  formatter << %[]
+                  formatter << %[# ]
+                  formatter << %[# If we still don't have a token, try the fallback lexer.]
+                  formatter << %[]
+                  formatter << %[token = #{fallback_registry[plan.fallback_plan.object_id]}() if token.nil?]
+               end
 
-         #
-         # Drop the token if it is in the ignore list.
+               #
+               # Drop the token if it is in the ignore list.
          
-         unless plan.ignore_list.empty?
-            out.call %[      ]
-            out.call %[      # ]
-            out.call %[      # If we got a token, and it is on the discard list for this lexer, discard it.]
-            out.call %[      ]
-            if plan.ignore_list.length == 1 then
-               out.call %[      token = nil if token.type == #{quote_symbol(plan.ignore_list[0])}]
-            else
-               out.call %[      token = nil if [#{plan.ignore_list.collect{|name| quote_symbol(name)}.join(", ")}].member?(token.type)]
+               unless plan.ignore_list.empty?
+                  formatter << %[]
+                  formatter << %[# ]
+                  formatter << %[# If we got a token, and it is on the discard list for this lexer, discard it.]
+                  formatter << %[]
+                  if plan.ignore_list.length == 1 then
+                     formatter << %[token = nil if token.type == #{quote_symbol(plan.ignore_list[0])}]
+                  else
+                     formatter << %[token = nil if [#{plan.ignore_list.collect{|name| quote_symbol(name)}.join(", ")}].member?(token.type)]
+                  end
+               end
+               
             end
-         end
          
-         out.call %[   end]
-         out.call %[   ]
-         out.call %[   return token]
-         out.call %[end]
-         out.call %[]
-         out.call %[]
-
+            formatter << %[end]
+            formatter << %[]
+            formatter << %[return token]
+         end
       end
+      
       
       
       #
       # process_lexer_state()
       #  - generates a fragment of the literal lexer, based on a LexerState
       
-      def process_lexer_state( state, output_file, prefix, suffix, base_la = 1, else_case = nil )
-         child_prefix = prefix + "   "
-         out = lambda() do |string|
-            output_file.puts( "#{prefix}#{string}#{suffix}")
-         end
+      def process_lexer_state( state, formatter, base_la = 1, else_case = nil )
          
          #
          # state.accepted contains a hash of la() characters that we accept.  state.child_states contains a hash of la() 
@@ -262,23 +314,26 @@ module Ruby
             c = "c"
             c = c + base_la.to_s if base_la > 1
             
-            out.call %[case #{c} = la(#{base_la})]
+            formatter << %[case #{c} = la(#{base_la})]
             order.each do |literal|
-               out.call %[when #{quote_literal(literal)}]
-               
-               if state.child_states.member?(literal) then
-                  process_lexer_state( state.child_states[literal], output_file, child_prefix, suffix, base_la + 1, state.accepted[literal] )
-               else
-                  out.call %[   token = make_token( consume(#{base_la}), #{quote_symbol(state.accepted[literal])} )]
+               formatter << %[when #{quote_literal(literal)}]
+               formatter.indent do 
+                  if state.child_states.member?(literal) then
+                     process_lexer_state( state.child_states[literal], formatter, base_la + 1, state.accepted[literal] )
+                  else
+                     formatter << %[token = make_token( consume(#{base_la}), #{quote_symbol(state.accepted[literal])} )]
+                  end
                end
             end
             
             unless else_case.nil?
-               out.call %[else]
-               out.call %[   token = make_token( consume(#{base_la-1}), #{quote_symbol(else_case)} )]
+               formatter << %[else]
+               formatter.indent do
+                  formatter << %[token = make_token( consume(#{base_la-1}), #{quote_symbol(else_case)} )]
+               end
             end
             
-            out.call %[end]
+            formatter << %[end]
          end
       end
 
@@ -307,41 +362,80 @@ module Ruby
                line.chomp!
                
                if line =~ /%%(\w+)%%/ then
-                  before = $`
-                  after  = $'
+                  formatter = Formatter.new( output_file, $`, $' )
                   
                   case $1
                      when "MODULE_HEADER"
                         if @configuration.member?(:module_contexts) then
                            @configuration[:module_contexts].each do |module_context|
-                              output_file.puts "#{before}module #{module_context}#{after}"
+                              formatter << %[module #{module_context}]
                            end
                         end
                         
                      when "MODULE_FOOTER"
                         if @configuration.member?(:module_contexts) then
                            @configuration[:module_contexts].reverse.each do |module_context|
-                              output_file.puts "#{before}end   # module #{module_context}#{after}"
+                              formatter << %[end   # module #{module_context}]
                            end
                         end
 
                      when "GRAMMAR_NAME"
-                        output_file.puts "#{before}#{parser_plan.name}#{after}"
+                        formatter << %[#{parser_plan.name}]
                         
                      when "GRAMMAR_CLASS_NAME"
-                        output_file.puts "#{before}#{make_camel_case(parser_plan.name)}#{after}"
+                        formatter << make_camel_case(parser_plan.name)
                         
                      when "GENERATION_DATE"
-                        output_file.puts "#{before}#{Time.now.strftime("%Y-%m-%d at %H:%M")}#{after}"
+                        formatter << Time.now.strftime("%Y-%m-%d at %H:%M")
                         
                      else
-                        yield( output_file, $1, $`, $' )
+                        yield( $1, formatter )
                   end
                else
                   output_file.puts line
                end
             end
          end
+      end
+      
+      
+      #
+      # generate_function()
+      #  - outputs the header and footer for a function and calls your block in between
+      #  - passes your block the formatter
+      
+      def generate_function( name, description, formatter, display_name_and_description = false ) 
+            
+         #
+         # Output the header.
+         
+         formatter << ""
+         formatter << "# "
+
+         formatter.indent( "# " ) do
+            formatter << "#{name}()" if description.nil? or display_name_and_description
+            
+            unless description.nil?
+               formatter << description
+            end
+         end
+         
+         formatter << ""
+         formatter << "def #{name}()"
+
+         #
+         # Yield to the body generator.
+
+         formatter.indent do 
+            yield( formatter )
+         end
+         
+         #
+         # Output the footer.
+         
+         formatter << "end"
+         formatter << ""
+         formatter << ""
       end
       
    

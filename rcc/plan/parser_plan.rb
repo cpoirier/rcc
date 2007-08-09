@@ -192,6 +192,7 @@ module Plan
       attr_reader :name              # The name of the Grammar from which this Plan was built
       attr_reader :lexer_plan        # A LexerState that describes how to lex the Grammar; note that each State can produce a customization on this one
       attr_reader :state_table       # Our States, in convenient table form
+      attr_reader :productions       # Our Productions, in declaration order
 
       def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil )
          @name             = name
