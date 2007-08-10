@@ -114,8 +114,8 @@ require "#{File.dirname(__FILE__)}/token.rb"
       # make_token()
       #  - build a new Token from the current data
       
-      def make_token( string, type = nil, raw_text = nil )
-         return Token.new( string, @position, @line_number, @column_number, @descriptor, type, raw_text )
+      def make_token( string, type = nil )
+         return Token.new( string, type, @position, @line_number, @column_number, @descriptor )
       end
       
       

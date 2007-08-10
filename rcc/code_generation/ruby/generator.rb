@@ -57,11 +57,27 @@ module Ruby
       #  - generates a Parser and all the related machinery
       
       def generate_parser( parser_plan, output_directory )
+         
+         #
+         # We only build an AST-producing Parser if requested.
+         
+         asn_lookup = nil
+         if @configuration.member?(:build_ast) and @configuration[:build_ast] then
+            asn_lookup = {}
+            parser_plan.productions.each do |production|
+               asn_lookup[production.label] = make_class_name(production.label)
+            end
+         end
+         
+         
+         #
+         # Process the template.
+            
          fill_template("parser.rb", STDOUT, parser_plan) do |macro_name, formatter|
             case macro_name
                when "PRODUCTIONS"
                   parser_plan.productions.each do |production|
-                     generate_reduce_function( production, formatter )
+                     generate_reduce_function( production, formatter, asn_lookup )
                   end
                else
                   formatter << macro_name
@@ -75,27 +91,74 @@ module Ruby
       # generate_reduce_function()
       #  - generates the reduce function on the Parser for a single Plan::Production
       
-      def generate_reduce_function( production, formatter )
+      def generate_reduce_function( production, formatter, asn_lookup = nil )
          generate_function( "reduce_by_production_#{production.number}", "Reducer for:\n   #{production.to_s}", formatter ) do
             symbols_to_pop = production.symbols.length
             
-            formatter << ""
-            formatter << "#"
-            formatter << "# First up, pop off the requisite number of objects from the node stack.  We also discard the"
-            formatter << "# same number of items from the state stack.  Note that, for production purposes, we want the"
-            formatter << "# nodes in oldest-to-newest order. "
-            formatter << ""
-            formatter << "nodes = @node_stack.slice!(  -#{symbols_to_pop}..-1 )"
-            formatter << "        @state_stack.slice!( -#{symbols_to_pop}..-1 )"
-            formatter << ""
+            formatter << %[produced_node = nodes = nil]
+            formatter << %[]
+            formatter << %[#]
+            formatter << %[# First up, pop off the requisite number of objects from the node stack.  We also discard the]
+            formatter << %[# same number of items from the other stacks.  Note that, for production purposes, we want the]
+            formatter << %[# nodes in oldest-to-newest order. ]
+            formatter << %[]
+            formatter << %[nodes = @node_stack.slice!(  -#{symbols_to_pop}..-1  )]
+            formatter << %[        @state_stack.slice!( -#{symbols_to_pop}..-1  )]
+            
+            asn_processor_name = "process_#{production.label}"
             
             
-            # csn = nil
-            # if @build_ast then
-            #    csn = ASN.new( production, nodes )
-            # else
-            #    csn = CSN.new( production.name, nodes )
-            # end
+            #
+            # If ast_lookup is nil, we are not building an AST.  Instead, we collect a user-supplied value in 
+            # Tokens and Nodes only.  
+            
+            if asn_lookup.nil? then
+               processor_name = "process_#{make_general_name(production.label)}__production_#{production.label_number}"
+               fallback_name  = "process_#{make_general_name(production.label)}"
+               
+               formatter << %[]
+               formatter << %[#]
+               formatter << %[# Build the production Node.]
+               formatter << %[]
+               formatter << %[produced_node = Node.new( #{quote_symbol(production.name)} )]
+               formatter << %[]
+               formatter << %[#]
+               formatter << %[# If the user has defined a processor for this production, call it and save the result in the Node.]
+               formatter << %[]
+               formatter << %[if method_defined?(#{quote_literal(processor_name)}) then]
+               formatter << %[   produced_node.value = #{processor_name}( *nodes )]
+               formatter << %[elsif method_defined?(#{quote_literal(fallback_name)})]
+               formatter << %[   produced_node.value = #{fallback_name}( *nodes )]
+               formatter << %[end]
+               
+            #
+            # Otherwise, we are building an AST.  
+            
+            else
+               asn_name        = asn_lookup[production.label]
+               processor_name  = "process_#{make_general_name(production.label)}"
+               node_references = production.slot_mappings.keys.sort.collect{ |index| "nodes[#{index}]" }
+               
+               formatter << %[]
+               formatter << %[#]
+               formatter << %[# Build the production Node.]
+               formatter << %[]
+               formatter << %[produced_node = #{asn_name}.new( #{node_references.join(", ")} )]
+               formatter << %[]
+               formatter << %[#]
+               formatter << %[# If the user has defined a processor for this ASN, call it.]
+               formatter << %[]
+               formatter << %[if method_defined?(#{quote_literal(processor_name)}) then]
+               formatter << %[   #{processor_name}( produced_node )]
+               formatter << %[end]
+            end
+            
+
+            formatter << %[]
+            formatter << %[#]
+            formatter << %[# Return the produced Node.]
+            formatter << %[]
+            formatter << %[return produced_node]
             
          end
       end
@@ -383,7 +446,7 @@ module Ruby
                         formatter << %[#{parser_plan.name}]
                         
                      when "GRAMMAR_CLASS_NAME"
-                        formatter << make_camel_case(parser_plan.name)
+                        formatter << make_class_name(parser_plan.name)
                         
                      when "GENERATION_DATE"
                         formatter << Time.now.strftime("%Y-%m-%d at %H:%M")
@@ -471,11 +534,20 @@ module Ruby
       
       
       #
-      # make_camel_case()
-      #  - given a name, produces a Ruby class name
+      # make_class_name()
+      #  - given a general name, produces a Ruby class name
       
-      def make_camel_case( name )
-         return name.gsub(/(?:\A|_)([a-z])/){|letter| letter.slice(-1..-1).upcase}
+      def make_class_name( name )
+         return name.gsub(/(?:\A|_)(\w)/){|letter| letter.slice(-1..-1).upcase}
+      end
+      
+      
+      #
+      # make_general_name()
+      #  - given a Ruby class name, produces a general name
+      
+      def make_general_name( name )
+         return name.gsub(/(?:\A|[a-z])([A-Z0-9])/){|match| match.length == 1 ? match.downcase : "_" + match.downcase}
       end
       
       

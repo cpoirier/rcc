@@ -24,7 +24,7 @@ module Plan
       
       def self.start_production( start_rule_name )
          symbols = [Plan::Symbol.new(start_rule_name.intern, false), Plan::Symbol.end_of_input]
-         return new( 0, start_rule_name, symbols, "right", -1, nil )
+         return new( 0, start_rule_name, start_rule_name, 0, symbols, "right", -1, nil )
       end
       
       
@@ -38,24 +38,30 @@ module Plan
       attr_reader   :number
       attr_reader   :rule_name
       attr_reader   :name
+      attr_reader   :label                  # The label by which this Production is known for CST/AST purposes
+      attr_reader   :label_number           # The number within all Productions that share this label
       attr_reader   :symbols
       attr_reader   :associativity
       attr_reader   :precedence
       attr_reader   :ignore_conflicts
-      attr_reader   :form_id
+      attr_reader   :form_id                # Unique within the Grammar
+      attr_reader   :form_number            # Unique within the Form
       attr_reader   :slot_mappings
       attr_accessor :ast_class
 
-      def initialize( number, rule_name, symbols, associativity, form_id, form = nil )
-         @number        = number
-         @rule_name     = rule_name
-         @name          = rule_name.intern
-         @symbols       = symbols
-         @associativity = associativity
-         @form_id       = form_id
-         @form          = form
-         @slot_mappings = {}
-         @ast_class     = nil
+      def initialize( number, rule_name, label, label_number, symbols, associativity, form_id, form = nil )
+         @number         = number
+         @rule_name      = rule_name
+         @name           = rule_name.intern
+         @label          = label
+         @label_number   = label_number
+         @symbols        = symbols
+         @associativity  = associativity
+         @form_id        = form_id
+         @form_number    = form_number
+         @form           = form
+         @slot_mappings  = {}
+         @ast_class      = nil
          
          #
          # Map the slots for our Symbols.

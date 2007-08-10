@@ -40,10 +40,11 @@ module Plan
          # Build our Productions from the Forms in the Grammar model.  We'll also build a hash of ProductionSets, one
          # for each rule name.  Finally, we'll construct an ASTClass hierarchy.
          
-         productions      = []
-         production_sets  = {}
-         ast_classes      = {}
-         form_lookup      = {}    # form id_number => Production
+         productions       = []
+         production_sets   = {}
+         production_labels = {}    # label => [Production]
+         ast_classes       = {}
+         form_lookup       = {}    # form id_number => Production
          
          grammar.forms.each do |form|
             form_lookup[form.id_number] = []
@@ -68,11 +69,20 @@ module Plan
             # Build our Productions.
             
             form.phrases.each do |phrase|
+               label        = form.label.nil? ? form.rule.name : form.label
+               label_number = production_labels.member?(label) ? production_labels[label].length + 1 : 1
+               
                symbols    = phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?, model.slot) }
-               production = Production.new( productions.length + 1, form.rule.name, symbols, form.associativity, form.id_number, form )
+               production = Production.new( productions.length + 1, form.rule.name, label, label_number, symbols, form.associativity, form.id_number, form )
                
                productions << production
                form_lookup[form.id_number] << production
+               
+               if production_labels.member?(label) then
+                  production_labels[label] << production
+               else
+                  production_labels[label] = [ production ]
+               end
                
                production_sets[production.name] = ProductionSet.new(production.name) unless production_sets.member?(production.name)
                production_sets[production.name] << production
