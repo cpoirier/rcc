@@ -79,6 +79,12 @@ module Ruby
                   parser_plan.productions.each do |production|
                      generate_reduce_function( production, formatter, asn_lookup )
                   end
+                  
+               when "STATES"
+                  parser_plan.state_table.each do |state|
+                     generate_state( state, formatter )
+                  end
+                  
                else
                   formatter << macro_name
             end
@@ -105,7 +111,14 @@ module Ruby
             formatter << %[nodes = @node_stack.slice!(  -#{symbols_to_pop}..-1  )]
             formatter << %[        @state_stack.slice!( -#{symbols_to_pop}..-1  )]
             
-            asn_processor_name = "process_#{production.label}"
+            
+            #
+            # Build the parameter list for the fallback processor/ASN initializer.
+            
+            slot_parameters = []
+            production.slot_mappings.each do |index, slot_name|
+               slot_parameters << ":#{slot_name} => nodes[#{index}]"
+            end
             
             
             #
@@ -113,8 +126,8 @@ module Ruby
             # Tokens and Nodes only.  
             
             if asn_lookup.nil? then
-               processor_name = "process_#{make_general_name(production.label)}__production_#{production.label_number}"
-               fallback_name  = "process_#{make_general_name(production.label)}"
+               processor_name  = "process_#{make_general_name(production.label)}__production_#{production.label_number}"
+               fallback_name   = "process_#{make_general_name(production.label)}"
                
                formatter << %[]
                formatter << %[#]
@@ -127,8 +140,8 @@ module Ruby
                formatter << %[]
                formatter << %[if method_defined?(#{quote_literal(processor_name)}) then]
                formatter << %[   produced_node.value = #{processor_name}( *nodes )]
-               formatter << %[elsif method_defined?(#{quote_literal(fallback_name)})]
-               formatter << %[   produced_node.value = #{fallback_name}( *nodes )]
+               formatter << %[elsif method_defined?(#{quote_literal(fallback_name)}) then]
+               formatter << %[   produced_node.value = #{fallback_name}( #{slot_parameters.join(", ")} )]
                formatter << %[end]
                
             #
@@ -137,13 +150,12 @@ module Ruby
             else
                asn_name        = asn_lookup[production.label]
                processor_name  = "process_#{make_general_name(production.label)}"
-               node_references = production.slot_mappings.keys.sort.collect{ |index| "nodes[#{index}]" }
                
                formatter << %[]
                formatter << %[#]
                formatter << %[# Build the production Node.]
                formatter << %[]
-               formatter << %[produced_node = #{asn_name}.new( #{node_references.join(", ")} )]
+               formatter << %[produced_node = #{asn_name}.new( #{slot_parameters.join(", ")} )]
                formatter << %[]
                formatter << %[#]
                formatter << %[# If the user has defined a processor for this ASN, call it.]
@@ -162,6 +174,124 @@ module Ruby
             
          end
       end
+      
+      
+      #
+      # generate_state()
+      #  - generates the parser routine for entering a state
+      
+      def generate_state( state, formatter )
+         
+         #
+         # Group the actions.
+         
+         terminal_actions     = {}
+         non_terminal_actions = {}
+         
+         state.actions.each do |symbol, action|
+            if action.is_a?(Plan::Actions::Goto) then
+               non_terminal_actions[symbol] = action
+            else
+               terminal_actions[symbol] = action
+            end
+         end
+            
+            
+         #
+         # Generate the function.
+            
+         description = ""
+         state.display( description )
+         
+         generate_function( "perform_state_#{state.state_number}", description, formatter ) do
+
+            #
+            # Generate the terminals processing for the state.
+            
+            formatter << %[]
+            formatter << %[#]
+            formatter << %[# If there is nothing on deck, we are processing lookahead.]
+            formatter << %[]
+            formatter << %[if @on_deck.nil? then]
+            formatter.indent do
+               formatter << %[next_token = la( 1, #{state.state_number} )]
+               formatter << %[token_type = next_token.nil? ? nil : next_token.type]
+               formatter << %[]
+               if terminal_actions.empty? then
+                  formatter << "ERROR HANDLING HERE"
+               else
+                  formatter << %[case token_type]
+                  terminal_actions.each do |symbol, action|
+                     formatter << %[]
+                     formatter << %[#]
+                     formatter.indent( %[# ] ) do
+                        formatter << %[Action analysis for lookahead #{quote_symbol(symbol)}]
+                        formatter.indent( %[   ] ) do
+                           state.explanations[symbol].each do |explanation|
+                              formatter << explanation.to_s
+                           end
+                        end
+                     end
+                     formatter << %[]
+                     formatter << %[when #{quote_symbol(symbol)}]
+                     formatter.indent do
+                        case action
+                           when Plan::Actions::Shift
+                              formatter << %[@node_stack  << consume(#{state.state_number})]
+                              formatter << %[@state_stack << #{action.to_state.state_number}]
+                           when Plan::Actions::Reduce
+                              formatter << %[@on_deck = reduce_by_production_#{action.by_production.number}()]
+                           when Plan::Actions::Accept
+                              formatter << %[HOW DO WE ACCEPT?]
+                           else
+                              nyi "generation support for #{action.plan.name}"
+                        end
+                     end
+                  end
+                  formatter << %[]
+                  formatter << %[#]
+                  formatter << %[# Anything else is an error.]
+                  formatter << %[]
+                  formatter << %[else]
+                  formatter << %[   ERROR HANDLING HERE]
+                  formatter << %[end]
+               end
+            end
+            
+            #
+            # Generate the non-terminals processing for the state.
+            
+            formatter << %[]
+            formatter << %[#]
+            formatter << %[# Otherwise, we are processing the Node on deck.]
+            formatter << %[]
+            formatter << %[else]
+            formatter.indent do
+               if non_terminal_actions.empty? then
+                  formatter << %[# no op]
+               else
+                  formatter << %[@node_stack << @on_deck]
+                  formatter << %[@on_deck    =  nil]
+                  formatter << %[]
+                  formatter << %[case @on_deck.type]
+                  non_terminal_actions.each do |symbol, action|
+                     formatter << %[when #{quote_symbol(symbol)}]
+                     formatter.indent do
+                        formatter << %[@state_stack << #{action.to_state.state_number}]
+                     end
+                  end
+                  formatter << %[end]
+               end
+            end
+            
+            #
+            # Finish up.
+            
+            formatter << %[end]
+         end
+      end
+      
+      
       
       
       
@@ -525,7 +655,9 @@ module Ruby
       #  - given a symbol name, generates a ruby representation
       
       def quote_symbol( symbol )
-         if symbol.is_a?(String) then
+         if symbol.nil? then
+            return "nil"
+         elsif symbol.is_a?(String) then
             return quote_literal( symbol )
          else
             return ":#{symbol.to_s}"

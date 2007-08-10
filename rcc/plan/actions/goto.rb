@@ -26,6 +26,8 @@ module Actions
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      attr_reader :to_state
+      
       def initialize( to_state )
          @to_state = to_state
       end
