@@ -51,10 +51,9 @@ require "#{File.dirname(__FILE__)}/node.rb"
       %%STATES%%
     
     
+       
     
-    
-    
-    
+
     #---------------------------------------------------------------------------------------------------------------------
     # Productions
     #---------------------------------------------------------------------------------------------------------------------
@@ -62,10 +61,6 @@ require "#{File.dirname(__FILE__)}/node.rb"
     protected    
     
       %%PRODUCTIONS%%
-
-
-
-
 
 
 
@@ -78,7 +73,7 @@ require "#{File.dirname(__FILE__)}/node.rb"
     protected
     
       
-   end # Lexer
+   end # %%GRAMMAR_CLASS_NAME%%Parser
    
 
 %%MODULE_FOOTER%%

@@ -100,9 +100,6 @@ require "#{File.dirname(__FILE__)}/token.rb"
 
 
 
-
-
-
     
     #---------------------------------------------------------------------------------------------------------------------
     # Support code
@@ -228,7 +225,7 @@ require "#{File.dirname(__FILE__)}/token.rb"
       end
    
       
-   end # Lexer
+   end # %%GRAMMAR_CLASS_NAME%%Lexer
    
 
 %%MODULE_FOOTER%%
