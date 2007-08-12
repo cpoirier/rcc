@@ -208,7 +208,7 @@ module Ruby
          # description = ""
          # state.display( description )
          # 
-         # generate_function( "perform_state_#{state.state_number}", description, formatter ) do
+         # generate_function( "perform_state_#{state.number}", description, formatter ) do
          # 
          #    #
          #    # Generate the terminals processing for the state.
@@ -219,7 +219,7 @@ module Ruby
          #    formatter << %[]
          #    formatter << %[if @on_deck.nil? then]
          #    formatter.indent do
-         #       formatter << %[next_token = la( 1, #{state.state_number} )]
+         #       formatter << %[next_token = la( 1, #{state.number} )]
          #       formatter << %[token_type = next_token.nil? ? nil : next_token.type]
          #       formatter << %[]
          #       if terminal_actions.empty? then
@@ -242,8 +242,8 @@ module Ruby
          #             formatter.indent do
          #                case action
          #                   when Plan::Actions::Shift
-         #                      formatter << %[@node_stack  << consume(#{state.state_number})]
-         #                      formatter << %[@state_stack << #{action.to_state.state_number}]
+         #                      formatter << %[@node_stack  << consume(#{state.number})]
+         #                      formatter << %[@state_stack << #{action.to_state.number}]
          #                   when Plan::Actions::Reduce
          #                      formatter << %[@on_deck = reduce_by_production_#{action.by_production.number}()]
          #                   when Plan::Actions::Accept
@@ -282,7 +282,7 @@ module Ruby
          #          non_terminal_actions.each do |symbol, action|
          #             formatter << %[when #{quote_symbol(symbol)}]
          #             formatter.indent do
-         #                formatter << %[@state_stack << #{action.to_state.state_number}]
+         #                formatter << %[@state_stack << #{action.to_state.number}]
          #             end
          #          end
          #          formatter << %[end]

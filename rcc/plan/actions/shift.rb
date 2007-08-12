@@ -34,7 +34,7 @@ module Actions
       end
       
       def to_s()
-         return "Shift #{Plan::Symbol.describe(@symbol_name)}, then goto #{@to_state.state_number}"
+         return "Shift #{Plan::Symbol.describe(@symbol_name)}, then goto #{@to_state.number}"
       end
       
    end # Shift

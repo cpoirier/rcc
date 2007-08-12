@@ -151,7 +151,7 @@ module Ruby
          
          formatter.comment_block %[Generate empty states sufficient to our needs.  We'll add actions to them shortly.]
          formatter << %[@@states = []]
-         formatter << %[#{parser_plan.state_table.length}.times { @@states << State.new() }]
+         formatter << %[#{parser_plan.state_table.length}.times { |i| @@states << State.new(i) }]
 
          formatter.comment_block %[All ShiftActions for a particular to-State are identical, so we'll reuse them.]
          formatter << %[@@shift_actions = []]
@@ -184,7 +184,7 @@ module Ruby
             end
 
             formatter.block( "begin", "end" ) do
-               formatter << %[state = @@states[#{state.state_number}]]
+               formatter << %[state = @@states[#{state.number}]]
                
                #
                # Group the actions for output: terminals and non-terminals.
@@ -216,7 +216,7 @@ module Ruby
                   formatter.indent( %[state.actions[#{quote_symbol(symbol)}] = ]) do
                      case action
                         when Plan::Actions::Shift
-                           formatter << %[@@shift_actions[#{action.to_state.state_number}]]
+                           formatter << %[@@shift_actions[#{action.to_state.number}]]
                         when Plan::Actions::Reduce
                            formatter << %[@@reduce_actions[#{action.by_production.number}]]
                         when Plan::Actions::Accept
@@ -235,7 +235,7 @@ module Ruby
                   state_numbers = []
                   non_terminal_actions.each do |symbol, action|
                      symbols       << quote_symbol(symbol)
-                     state_numbers << action.to_state.state_number.to_s
+                     state_numbers << action.to_state.number.to_s
                   end
                
                   formatter.comment_block %[Action for non-terminals is always Goto.]

@@ -100,7 +100,7 @@ module Ruby
                      description << "\n"
                      description << "Prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
                      
-                     lexer_name = "lex_for_state_#{state.state_number}"
+                     lexer_name = "lex_for_state_#{state.number}"
                      if fallback_registry.member?(lexer_plan.object_id) then
                         generate_function( lexer_name, description, [], formatter ) do 
                            formatter << %[return #{fallback_registry[lexer_plan.object_id]}()]

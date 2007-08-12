@@ -236,7 +236,7 @@ module Plan
                   state.compile_customized_lexer_plan( @lexer_plan )
                end
                
-               STDERR.puts "Action compilation for state #{state.state_number}: #{duration}s" if $show_statistics and duration > 0.25
+               STDERR.puts "Action compilation for state #{state.number}: #{duration}s" if $show_statistics and duration > 0.25
             end
          end
          

@@ -50,7 +50,7 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :signature
-      attr_reader :state_number
+      attr_reader :number
       attr_reader :items
       attr_reader :transitions
       attr_reader :reductions
@@ -61,7 +61,7 @@ module Plan
       attr_reader :lexer_plan
       
       def initialize( state_number, start_items = [], context_state = nil  )
-         @state_number = state_number    # The number of this State within the overall ParserPlan
+         @number = state_number    # The number of this State within the overall ParserPlan
          @items        = []              # All Items in this State
          @start_items  = []              # The Items that started this State (ie. weren't added by close())
          @closed       = false           # A flag indicating that close() has been called
@@ -81,7 +81,7 @@ module Plan
          end
          
          @context_states = {}            # States that refer to us via transitions or reductions
-         @context_states[context_state.state_number] = true unless context_state.nil?
+         @context_states[context_state.number] = true unless context_state.nil?
       end
       
       
@@ -111,7 +111,7 @@ module Plan
             index.delete( shifted_item.signature )
          end
          
-         @context_states[context_state.state_number] = true
+         @context_states[context_state.number] = true
       end
       
 
@@ -393,7 +393,7 @@ module Plan
                   determinants = item.determinants( 1, production_sets )
                end
                
-               STDERR.puts "Determinants calculation for state #{@state_number} item [#{item.signature}] duration: #{duration}s" if $show_statistics and duration > 0.1
+               STDERR.puts "Determinants calculation for state #{@number} item [#{item.signature}] duration: #{duration}s" if $show_statistics and duration > 0.1
 
                determinants.each do |determinant|
                   options[determinant.name] = [] unless options.member?(determinant.name)
@@ -624,7 +624,7 @@ module Plan
       end
 
       def display( stream, indent = "", complete = true, show_context = :reduce_determinants )
-         stream << indent << "State #{@state_number}\n"
+         stream << indent << "State #{@number}\n"
          stream << indent << "   Context states: #{@context_states.keys.sort.join(", ")}\n"
 
          #
@@ -693,7 +693,7 @@ module Plan
             unless @transitions.empty?
                width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
                @transitions.each do |symbol_name, state|
-                  stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.state_number) << "\n"
+                  stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.number) << "\n"
                end
             end
          

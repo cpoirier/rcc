@@ -99,7 +99,7 @@ module Interpreter
             case action
                
                when Plan::Actions::Shift
-                  STDOUT.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.state_number}" if explain
+                  STDOUT.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if explain
 
                   node_stack  << consume()
                   state_stack << action.to_state
@@ -135,14 +135,14 @@ module Interpreter
                   
                   state = state_stack[-1]
                   goto_state = state.transitions[production.name]
-                  STDOUT.puts "===> PUSH AND GOTO #{goto_state.state_number}" if explain
+                  STDOUT.puts "===> PUSH AND GOTO #{goto_state.number}" if explain
                
                   node_stack  << csn
                   state_stack << goto_state
                   
                when Plan::Actions::Accept
                   STDOUT.puts "===> ACCEPT" if explain
-                  node_stack << csn
+                  node_stack << csn                    # BUG: What the hell is this for?
                   break
                   
                when NilClass
