@@ -9,7 +9,7 @@
 #================================================================================================================================
 
 require "rcc/environment.rb"
-require "rcc/code_generation/formatter.rb"
+require "rcc/code_generation/ruby/formatter.rb"
 
 module RCC
 module CodeGeneration
@@ -102,7 +102,7 @@ module Ruby
                      
                      lexer_name = "lex_for_state_#{state.state_number}"
                      if fallback_registry.member?(lexer_plan.object_id) then
-                        generate_function( lexer_name, description, formatter ) do 
+                        generate_function( lexer_name, description, [], formatter ) do 
                            formatter << %[return #{fallback_registry[lexer_plan.object_id]}()]
                         end
                      else
@@ -171,7 +171,7 @@ module Ruby
       #  - generates the body of a lexer routine, based on a LexerPlan
       
       def process_lexer_plan( name, plan, pattern_registry, fallback_registry, formatter, description = nil )
-         generate_function( name, description, formatter ) do
+         generate_function( name, description, [], formatter ) do
             
             formatter << %[token = nil]
             formatter << %[while token.nil? and input_remaining?()]
@@ -182,10 +182,8 @@ module Ruby
                # Generate an FSA for the literals in this plan.
       
                unless plan.literal_processor.nil?
-                  formatter << %[]
-                  formatter << %[# ]
-                  formatter << %[# Try for a literal first.  We take the longest possible match.]
-                  formatter << %[]
+                  formatter.comment_block %[Try for a literal first.  We take the longest possible match.]
+
                   process_lexer_state( plan.literal_processor, formatter )
                end
       
@@ -193,11 +191,8 @@ module Ruby
                # After all literals are attempted, we move on to patterns (if any).
       
                unless plan.patterns.empty?
-                  formatter << %[]
-                  formatter << %[# ]
-                  formatter << %[# If we didn't get a literal, try our patterns, in order. ]
-                  formatter << %[]
-                  
+                  formatter.comment_block %[If we didn't get a literal, try our patterns, in order. ]
+
                   pattern_variable = plan.patterns.collect{|pattern, name| "#{name}_pattern"  }
                   symbol_name      = plan.patterns.collect{|pattern, name| quote_symbol(name) }
                   
@@ -208,10 +203,8 @@ module Ruby
                # After all patterns are attempted, we try the fallback lexer, if present.
          
                unless plan.fallback_plan.nil?
-                  formatter << %[]
-                  formatter << %[# ]
-                  formatter << %[# If we still don't have a token, try the fallback lexer.]
-                  formatter << %[]
+                  formatter.comment_block %[If we still don't have a token, try the fallback lexer.]
+
                   formatter << %[token = #{fallback_registry[plan.fallback_plan.object_id]}() if token.nil?]
                end
 
@@ -219,10 +212,8 @@ module Ruby
                # Drop the token if it is in the ignore list.
          
                unless plan.ignore_list.empty?
-                  formatter << %[]
-                  formatter << %[# ]
-                  formatter << %[# If we got a token, and it is on the discard list for this lexer, discard it.]
-                  formatter << %[]
+                  formatter.comment_block %[If we got a token, and it is on the discard list for this lexer, discard it.]
+
                   if plan.ignore_list.length == 1 then
                      formatter << %[token = nil if token.type == #{quote_symbol(plan.ignore_list[0])}]
                   else
@@ -345,24 +336,24 @@ module Ruby
       #  - outputs the header and footer for a function and calls your block in between
       #  - passes your block the formatter
       
-      def generate_function( name, description, formatter, display_name_and_description = false ) 
+      def generate_function( name, description, parameters, formatter, display_name_and_description = false ) 
             
          #
          # Output the header.
          
-         formatter << ""
-         formatter << "# "
-
-         formatter.indent( "# " ) do
+         formatter.comment_block do
             formatter << "#{name}()" if description.nil? or display_name_and_description
             
             unless description.nil?
                formatter << description
             end
          end
-         
-         formatter << ""
-         formatter << "def #{name}()"
+
+         if parameters.empty? then
+            formatter << "def #{name}()"
+         else
+            formatter << "def #{name}( #{parameters.join(", ")} )"
+         end
 
          #
          # Yield to the body generator.
@@ -375,8 +366,8 @@ module Ruby
          # Output the footer.
          
          formatter << "end"
-         formatter << ""
-         formatter << ""
+         formatter.blank_line
+         formatter.blank_line
       end
       
    
@@ -418,7 +409,7 @@ module Ruby
       #  - given a general name, produces a Ruby class name
       
       def make_class_name( name )
-         return name.gsub(/(?:\A|_)(\w)/){|letter| letter.slice(-1..-1).upcase}
+         return name.gsub(/(?:\A|_+)(\w)/){|text| text.upcase.sub("_", "")}
       end
       
       

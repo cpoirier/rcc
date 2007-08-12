@@ -43,8 +43,8 @@ module Plan
          productions       = []
          production_sets   = {}
          production_labels = {}    # label => [Production]
-         ast_classes       = {}
          form_lookup       = {}    # form id_number => Production
+         ast_classes       = Util::OrderedHash.new()
          
          grammar.forms.each do |form|
             form_lookup[form.id_number] = []
@@ -56,13 +56,11 @@ module Plan
             base_class = ast_classes[form.rule.name]
             form_class = nil
             
-            if form.label.nil? then
-               form_class = base_class.catch_all_class
-            else
-               bug( "duplicate name in AST" ) if ast_classes.member?(form.label)
-               form_class = ASTClass.new( form.label, base_class )
-               ast_classes[form.label] = form_class
-            end
+            specific_class_name = form.label.nil? ? form.rule.name + "__form_#{form.number}" : form.label
+
+            bug( "duplicate name in AST [#{specific_class_name}]" ) if ast_classes.member?(specific_class_name)
+            form_class = ASTClass.new( specific_class_name, base_class )
+            ast_classes[form_class.name] = form_class
             
             
             #
@@ -190,7 +188,7 @@ module Plan
          #
          # Return the new ParserPlan.
          
-         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan )
+         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan, ast_classes )
       end
       
       
@@ -203,14 +201,16 @@ module Plan
       attr_reader :lexer_plan        # A LexerState that describes how to lex the Grammar; note that each State can produce a customization on this one
       attr_reader :state_table       # Our States, in convenient table form
       attr_reader :productions       # Our Productions, in declaration order
+      attr_reader :ast_classes       # Our ASTClasses, in declaration order
 
-      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil )
+      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil, ast_classes = nil )         
          @name             = name
          @state_table      = state_table
          @lexer_plan       = lexer_plan
          @productions      = productions
          @production_sets  = production_sets    
          @precedence_table = precedence_table    # Production number => tier (tier 0 is highest precedence)
+         @ast_classes      = ast_classes
       end
       
       

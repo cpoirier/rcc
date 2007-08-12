@@ -54,6 +54,15 @@ module CodeGeneration
       
       
       #
+      # blank_line
+      #  - outputs a blank line
+      
+      def blank_line
+         self << ""
+      end
+      
+      
+      #
       # indent()
       #  - if you pass a block, temporarily increases the indent of this Formatter and calls your block
       #  - otherwise, returns a new Formatter with a deeper indent

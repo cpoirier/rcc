@@ -26,6 +26,7 @@ module Plan
 
       attr_reader :name
       attr_reader :parent_class
+      attr_reader :slots
       
       def initialize( name, parent_class = nil, is_catch_all = false )
          @name         = name

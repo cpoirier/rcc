@@ -118,11 +118,11 @@ module FormElements
             if slot_counts[slot] == 1 then
                @slot = slot
             elsif slot_counts[slot] > 1 then
-               if slot.index("_").nil? then
-                  @slot = "#{slot}#{slot_tracks[slot]}"
-               else
+               # if slot.index("_").nil? then
+               #    @slot = "#{slot}#{slot_tracks[slot]}"
+               # else
                   @slot = slot + "_" + slot_tracks[slot].to_s
-               end
+               # end
             end
          end
       end

@@ -64,11 +64,11 @@ module Ruby
          #
          # We only build an AST-producing Parser if requested.
          
-         asn_lookup = nil
+         ast_class_lookup = nil
          if @configuration.member?(:build_ast) and @configuration[:build_ast] then
-            asn_lookup = {}
+            ast_class_lookup = {}
             parser_plan.productions.each do |production|
-               asn_lookup[production.label] = make_class_name(production.label)
+               ast_class_lookup[production.label] = make_class_name(production.label)
             end
          end
          
@@ -80,7 +80,7 @@ module Ruby
             case macro_name
                when "PRODUCTIONS"
                   parser_plan.productions.each do |production|
-                     generate_reduce_function( production, formatter, asn_lookup )
+                     generate_reduce_function( production, formatter, ast_class_lookup )
                   end
                   
                when "STATES"
@@ -101,9 +101,9 @@ module Ruby
       # generate_reduce_function()
       #  - generates the reduce function on the Parser for a single Plan::Production
       
-      def generate_reduce_function( production, formatter, asn_lookup = nil )
+      def generate_reduce_function( production, formatter, ast_class_lookup = nil )
          
-         generate_function( "reduce_by_production_#{production.number}", "Reducer for:\n   #{production.to_s}", formatter ) do
+         generate_function( "reduce_by_production_#{production.number}", "Reducer for:\n   #{production.to_s}", [], formatter ) do
             symbols_to_pop = production.symbols.length
             
             formatter << %[produced_node = nodes = nil]
@@ -130,7 +130,7 @@ module Ruby
             # If ast_lookup is nil, we are not building an AST.  Instead, we collect a user-supplied value in 
             # Tokens and Nodes only.  
             
-            if asn_lookup.nil? then
+            if ast_class_lookup.nil? then
                processor_name  = "process_#{make_general_name(production.label)}__production_#{production.label_number}"
                fallback_name   = "process_#{make_general_name(production.label)}"
                
@@ -153,7 +153,7 @@ module Ruby
             # Otherwise, we are building an AST.  
             
             else
-               asn_name        = asn_lookup[production.label]
+               asn_name        = ast_class_lookup[production.label]
                processor_name  = "process_#{make_general_name(production.label)}"
                
                formatter << %[]
