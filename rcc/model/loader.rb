@@ -359,7 +359,11 @@ module Model
                   consume()
                   ignore_terminal = consume(:WORD)
                   @grammar.ignore_terminals << ignore_terminal unless @grammar.ignore_terminals.member?(la())
-            
+                  
+               when "EnableBacktracking"
+                  consume()
+                  @grammar.enable_backtracking = true
+                  
                else
                   nyi "error handling for unrecognized configuration parameter #{token}"
             end

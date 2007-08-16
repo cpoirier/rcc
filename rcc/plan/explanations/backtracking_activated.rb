@@ -17,11 +17,11 @@ module Explanations
 
  
  #============================================================================================================================
- # class FavouriteChosen
- #  - explanation that indicates a shift was chosen over a reduce or an earlier reduce over another reduce
- #  - only used if backtracking is disabled
+ # class BacktrackingActivated
+ #  - explanation that indicates a series of actions will be attempted
+ #  - only used if backtracking is enabled
 
-   class FavouriteChosen < Explanation
+   class BacktrackingActivated < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
@@ -33,15 +33,11 @@ module Explanations
       
       
       def to_s()
-         if @actions[0].is_a?(Actions::Shift) then
-            return "Shift beats Reduce in general shift/reduce conflicts"
-         else
-            return "Earliest stated rule wins in reduce/reduce conflicts"
-         end
+         return "Backtracking activated.  Will attempt:\n   " + @actions.collect{|action| action.to_s}.join("\n   ")
       end
       
       
-   end # FavouriteChosen
+   end # BacktrackingActivated
    
 
 

@@ -44,15 +44,15 @@ module Ruby
          # We only build an AST-producing Parser if requested.
          
          ast_class_lookup = nil
-         if true or (@configuration.member?(:build_ast) and @configuration[:build_ast]) then
+         if true or (@configuration.member?("build_ast") and @configuration["build_ast"]) then
             ast_class_lookup = {}
             parser_plan.ast_classes.each do |name, ast_class|
                ast_class_lookup[name] = make_class_name(name) + "Node" unless ast_class_lookup.member?(name)
             end
          end
          
-         # generate_parser( parser_plan, ast_class_lookup, output_directory )
-         generate_ast_classes( parser_plan, ast_class_lookup, output_directory ) unless ast_class_lookup.nil?
+         generate_parser( parser_plan, ast_class_lookup, output_directory )
+         #generate_ast_classes( parser_plan, ast_class_lookup, output_directory ) unless ast_class_lookup.nil?
       end
    
    
@@ -264,7 +264,7 @@ module Ruby
       #  - based on configuration, can use the generated base class or a user supplied subclass of that as base class
       
       def generate_ast_classes( parser_plan, ast_class_lookup, output_directory )
-         general_base_class_name = @configuration.member?(:asn_base_class) ? @configuration[:asn_base_class] : "ASNode"
+         general_base_class_name = @configuration.member?("asn_base_class") ? @configuration["asn_base_class"] : "ASNode"
       
          fill_template("ast.rb", STDOUT, parser_plan) do |macro_name, formatter|
             case macro_name

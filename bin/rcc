@@ -8,30 +8,59 @@
 #
 #================================================================================================================================
 
-   $LOAD_PATH << File.expand_path( "#{File.dirname($0)}/../" )
       
-   require "rcc/environment.rb"
-   require "rcc/model/grammar.rb"
-   require "rcc/code_generation/ruby/generator.rb"
+   #
+   # Set up the environment.  Try to be as tolerant about install location and environment setup
+   # as possible.
+   
+   begin
+      require "rcc/environment.rb"
+   rescue
+      require "#{File.expand_path("#{File.dirname($0)}/..")}/rcc/environment.rb"
+   end
+   
+   require "#{$RCC_LIBRARY_PATH}/model/grammar.rb"
+   
+   GENERATOR_DIR = "#{$RCC_LIBRARY_PATH}/code_generation"
 
-   if ARGV.empty? then
-      puts "USAGE: #{File.basename($0)} <grammar file>"
+
+   #
+   # Display usage information, if appropriate.
+   
+   if ARGV.empty? or ARGV[0] == "help" or ARGV[0] == "--help" then
+      puts "USAGE: #{File.basename($0)} <grammar file> <output generator> <configuration parameter>*"
+
+      generator = ARGV.length > 1 ? ARGV[1].gsub(/[^\w]/, "") : nil
+      
+      if ARGV.length <= 1 or !File.exists?("#{GENERATOR_DIR}/#{generator}/generator.rb") then
+         puts ""
+         puts "Output generators:"
+         Dir.foreach("#{RCC_LIBRARY_PATH}/code_generation") do |file_name|
+            generator_dir = "#{GENERATOR_DIR}/#{file_name}"
+            if File.directory?(generator_dir) and File.exists?("#{generator_dir}/generator.rb") then
+               puts "   #{file_name}"
+            end
+         end
+         puts ""
+         puts "Run [#{File.basename($0)} help <output generator>] for generator configuration help."
+      else
+         require "#{GENERATOR_DIR}/generator/generator.rb"
+         
+         puts ""
+         puts "#{generator} configuration help"
+         puts "==============================="
+         puts ""
+         puts 
+         
+         generator = ARGV[1]
+      end
+      
       exit 10
    end
    
-   
-   grammar = RCC::Model::Grammar.load_from_file( File.basename(ARGV[0]), ARGV[0] )
-   grammar.display( STDOUT )
-   
-   puts()
-   puts()
-   puts()
-   puts()
-   puts()
-   puts()
-   
-   parser_plan = grammar.compile_plan()
-   # parser_plan.display( STDOUT, "", true, ARGV[1].nil? ? :reduce_determinants : ARGV[1].intern )
+   # 
+   # grammar = RCC::Model::Grammar.load_from_file( File.basename(ARGV[0]), ARGV[0] )
+   # grammar.display( STDOUT )
    # 
    # puts()
    # puts()
@@ -39,12 +68,22 @@
    # puts()
    # puts()
    # puts()
-   
-   $show_statistics = true
-   parser_plan.compile_actions( true )
-   
-   generator = RCC::CodeGeneration::Ruby::Generator.new({:module_contexts => ["Rethink", "CommandLanguage"]})
-   generator.generate( parser_plan )
-   
-   
+   # 
+   # parser_plan = grammar.compile_plan()
+   # # parser_plan.display( STDOUT, "", true, ARGV[1].nil? ? :reduce_determinants : ARGV[1].intern )
+   # # 
+   # # puts()
+   # # puts()
+   # # puts()
+   # # puts()
+   # # puts()
+   # # puts()
+   # 
+   # $show_statistics = true
+   # parser_plan.compile_actions( true )
+   # 
+   # generator = RCC::CodeGeneration::Ruby::Generator.new({:module_contexts => ["Rethink", "CommandLanguage"]})
+   # generator.generate( parser_plan )
+   # 
+   # 
    

@@ -68,18 +68,18 @@ module Interpreter
       # next_token()
       #  - runs the lexer against the input until one token is produced or the input is exhausted
       
-      def next_token( lexer_plan, explain = false )
-         token = lex( lexer_plan, explain )
+      def next_token( lexer_plan, explain = false, indent = "" )
+         token = lex( lexer_plan, explain, indent )
          
          if explain then
             if token.nil? then
                if input_remaining?() then
-                  puts "===> ERROR LEXING: #{prep(@pending_lines[0])}"
+                  puts "#{indent}===> ERROR LEXING: #{prep(@pending_lines[0])}"
                else
-                  puts "===> DONE"
+                  puts "#{indent}===> DONE"
                end
             else
-               puts "===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
+               puts "#{indent}===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
             end
          end
          
@@ -113,14 +113,14 @@ module Interpreter
       #  - returns a single token relevant to the supplied state
       #  - always takes the longest match possible
       
-      def lex( lexer_plan, explain )
+      def lex( lexer_plan, explain, indent )
          token = nil   
          while token.nil? and input_remaining?()
 
             #
             # First, try to lex a literal token.
             
-            token = lex_literal( lexer_plan.literal_processor, explain )
+            token = lex_literal( lexer_plan.literal_processor, explain, indent )
 
 
             #
@@ -128,17 +128,17 @@ module Interpreter
             
             if token.nil? and !la().nil? then
                if lexer_plan.patterns.empty? then
-                  puts "     there are no pattern matching options in this state" if explain
+                  puts "#{indent}     there are no pattern matching options in this state" if explain
                else
-                  puts "     attempting pattern matches:" if explain
+                  puts "#{indent}     attempting pattern matches:" if explain
                   lexer_plan.patterns.each do |pattern, symbol_name|
                      if match = consume_match(pattern) then
                         token = Token.new( match )
                         token.locate( @position, @line_number, @column_number, @descriptor, symbol_name )
-                        puts "     matched #{symbol_name}" if explain
+                        puts "#{indent}     matched #{symbol_name}" if explain
                         break
                      else
-                        puts "     did not match #{symbol_name}" if explain
+                        puts "#{indent}     did not match #{symbol_name}" if explain
                      end
                   end
                end
@@ -150,10 +150,10 @@ module Interpreter
             
             if token.nil? and !la().nil? then
                if lexer_plan.fallback_plan.nil? then
-                  puts "     there is no fallback plan for this lexer" if explain
+                  puts "#{indent}     there is no fallback plan for this lexer" if explain
                else
-                  puts "     attempting fallback plan" if explain
-                  token = lex( lexer_plan.fallback_plan, explain )
+                  puts "#{indent}     attempting fallback plan" if explain
+                  token = lex( lexer_plan.fallback_plan, explain, indent )
                end
             end
 
@@ -166,7 +166,7 @@ module Interpreter
                break
             else
                if !lexer_plan.ignore_list.nil? and lexer_plan.ignore_list.member?(token.type) then
-                  puts "===> IGNORING #{prep(token)}" if explain
+                  puts "#{indent}===> IGNORING #{prep(token)}" if explain
                   token = nil
                end
             end
@@ -180,7 +180,7 @@ module Interpreter
       # lex_literal()
       #  - processes a LexerState against the current lookahead
       
-      def lex_literal( state, explain = false, base_la = 1 )
+      def lex_literal( state, explain = false, indent = "", base_la = 1 )
          token = nil
          
          #
@@ -190,19 +190,19 @@ module Interpreter
          
          if c = la(base_la) then
             if state.child_states.member?(c) then
-               puts "     la(#{base_la}) is #{prep(c)}, which matches a child state; recursing" if explain
-               token = lex_literal( state.child_states[c], explain, base_la + 1 )
+               puts "#{indent}     la(#{base_la}) is #{prep(c)}, which matches a child state; recursing" if explain
+               token = lex_literal( state.child_states[c], explain, indent, base_la + 1 )
             end
       
             if token.nil? and state.accepted.member?(c) then
-               puts "     la(#{base_la}) is #{prep(c)}, which is accepted by this state; producing type #{state.accepted[c]}" if explain
+               puts "#{indent}     la(#{base_la}) is #{prep(c)}, which is accepted by this state; producing type #{state.accepted[c]}" if explain
                token = Token.new( consume(base_la) )
                token.locate( @position, @line_number, @column_number, @descriptor, state.accepted[c] )
             end
          end
 
          if token.nil? and !c.nil? then
-            puts "     la(#{base_la}) is #{prep(c)}, which does not match any literal options in this state" if explain
+            puts "#{indent}     la(#{base_la}) is #{prep(c)}, which does not match any literal options in this state" if explain
          end
          
          return token

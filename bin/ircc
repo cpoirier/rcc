@@ -13,6 +13,7 @@
    require "rcc/environment.rb"
    require "rcc/model/grammar.rb"
    require "rcc/interpreter/lexer.rb"
+   require "rcc/interpreter/token_stream.rb"
    require "rcc/interpreter/parser.rb"
 
    if ARGV.empty? then
@@ -62,7 +63,8 @@
          parser_plan.display( STDOUT, "", true, ARGV[0].nil? ? :reduce_determinants : ARGV[0].intern ) if explain
 
          lexer  = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )
-         parser = RCC::Interpreter::Parser.new( parser_plan, lexer )
+         stream = RCC::Interpreter::TokenStream.new( lexer )
+         parser = RCC::Interpreter::Parser.new( parser_plan, stream )
          ast    = parser.parse( explain )
          
          if explain then

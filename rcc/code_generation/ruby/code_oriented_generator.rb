@@ -65,7 +65,7 @@ module Ruby
          # We only build an AST-producing Parser if requested.
          
          ast_class_lookup = nil
-         if @configuration.member?(:build_ast) and @configuration[:build_ast] then
+         if @configuration.member?("build_ast") and @configuration["build_ast"] then
             ast_class_lookup = {}
             parser_plan.productions.each do |production|
                ast_class_lookup[production.label] = make_class_name(production.label)

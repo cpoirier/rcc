@@ -60,18 +60,26 @@ module Model
       attr_reader :precedence_table     # A PrecedenceTable, showing rule precedence for shift/reduce conflicts
       attr_writer :start_rule_name      # The name of the first rule in this Grammar
       attr_reader :ignore_terminals     # The names of any Terminals the lexer should eat
+      attr_writer :enable_backtracking  # If true, backtracking will be used, where necessary, to handle conflicts
+      
 
       def initialize( name )
-         @name              = name
-         @start_rule_name   = nil
-         @ignore_terminals  = []
+         @name                = name
+         @start_rule_name     = nil
+         @ignore_terminals    = []
+         @enable_backtracking = false
                             
-         @definitions       = Util::OrderedHash.new()
-         @rules             = Util::OrderedHash.new()
-         @forms             = []
-         @labels            = {}
-         @precedence_table  = PrecedenceTable.new()
+         @definitions         = Util::OrderedHash.new()
+         @rules               = Util::OrderedHash.new()
+         @forms               = []
+         @labels              = {}
+         @precedence_table    = PrecedenceTable.new()
       end
+      
+      def backtracking_enabled?()
+         return @enable_backtracking
+      end
+      
       
       
       #

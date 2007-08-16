@@ -22,10 +22,17 @@ module Interpreter
    class Token < Model::Token
       
       attr_reader :start_position
+      attr_writer :faked
       
       def locate( start_position, line_number, column_number, source_descriptor, type = nil, raw_text = nil )
          @start_position = start_position
+         @faked          = false
          super( line_number, column_number, source_descriptor, type, raw_text )
+      end
+      
+      
+      def faked?()
+         return @faked
       end
       
       

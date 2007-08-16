@@ -25,9 +25,15 @@ module Actions
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
-
+      
+      attr_reader :actions
+      
       def initialize( actions )
          @actions = actions
+      end
+      
+      def to_s()
+         return "Attempt:\n   " + @actions.collect{|action| action.to_s}.join("\n   ")
       end
       
    end # Attempt

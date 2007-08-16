@@ -22,6 +22,70 @@ module Ruby
 
    class Generator
       
+      @@configuration_help = <<-"end".gsub(/^\s{9}/, "")
+         module_context=<module name>
+          - if you supply this flag, the generated classes will be declared inside 
+            the named Ruby module(s) 
+          - example: module_context=MyProgram::CommandLanguage
+            
+         mode=code
+          - by default, rcc builds a tree-based parser, where all the state 
+            information is stored in a tree of objects, which the parser walks at 
+            run-time
+          - if you supply this flag, a code-based parser will be built instead, which 
+            will generate a *lot* of case/when statements to process the input
+          - NOT YET IMPLEMENTED
+               
+         build_ast
+          - if present, rcc will generate Abstract Syntax Tree classes for your 
+            grammar and the parser will build the tree for you
+          - if you subclass the parser and implement process_<rule name|form label> 
+            methods, they will be called each time the corresponding ASNode is 
+            instantiated (you do not have to implement every possible method -- just
+            pick and choose the ones you need)
+          - you may customize the generated ASNodes by subclassing them (with the same
+            name) inside the "Local" module
+          - you may customize the base class by subclassing ASNode and supplying the
+            name in the "asn_base_class" configuration flag
+            
+         asn_base_class=<class name>
+          - if present, rcc will use the supplied name as the base class for 
+            generated Abstract Syntax Tree classes, instead of ASNode
+          - your class must derive from ASNode and must exist in the same module as
+            that specified in "module_context"; you must also ensure it is loaded
+            before the parser code
+      end
+      
+      def self.configuration_help()
+         return @@configuration_help
+      end
+      
+      def self.process_configuration_flags( flags )
+         configuration = { "build_ast" => false }
+         
+         flags.each do |flag|
+            name, value = flag.split( "=", 2 )
+            case name
+               when "module_context"
+                  configuration["module_contexts"] = value.split("::")
+               when "mode"
+                  configuration["mode"] = "code" if value == "code"
+               when "build_ast"
+                  configuration["build_ast"] = true
+               when "asn_base_class"
+                  configuration["asn_base_class"] = value
+               else
+                  nyi( "error handling for unrecognized configuration parameter [#{name}]" )
+            end
+         end
+         
+         return configuration
+      end
+      
+      
+      
+      
+      
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
@@ -38,7 +102,7 @@ module Ruby
       #  - delegates to DynamicGenerator or StaticGenerator, depending on configuration
       
       def generate( parser_plan, output_directory = nil )
-         generator_class = (@configuration.member?(:mode) and @configuration[:mode] == "code") ? CodeOrientedGenerator : TreeOrientedGenerator
+         generator_class = (@configuration.member?("mode") and @configuration["mode"] == "code") ? CodeOrientedGenerator : TreeOrientedGenerator
          generator = generator_class.new( @configuration )
          return generator.generate( parser_plan, output_directory )
       end
@@ -298,15 +362,15 @@ module Ruby
                   
                   case $1
                      when "MODULE_HEADER"
-                        if @configuration.member?(:module_contexts) then
-                           @configuration[:module_contexts].each do |module_context|
+                        if @configuration.member?("module_contexts") then
+                           @configuration["module_contexts"].each do |module_context|
                               formatter << %[module #{module_context}]
                            end
                         end
                         
                      when "MODULE_FOOTER"
-                        if @configuration.member?(:module_contexts) then
-                           @configuration[:module_contexts].reverse.each do |module_context|
+                        if @configuration.member?("module_contexts") then
+                           @configuration["module_contexts"].reverse.each do |module_context|
                               formatter << %[end   # module #{module_context}]
                            end
                         end

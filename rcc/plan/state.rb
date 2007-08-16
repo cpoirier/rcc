@@ -551,19 +551,32 @@ module Plan
             # reduce/reduce conflicts.
             
             actions = []
+            chosen_shift_actions  = []
+            chosen_reduce_actions = []
             
             valid_shifts = (all_shifts - eliminated_shifts)
-            unless valid_shifts.empty? 
+            unless valid_shifts.empty?
+               
+               #
+               # We care only about the first shift (they all shift the same thing), but for backtracking,
+               # we also care that, ultimately, we produce one of the valid productions.  
+               
+               valid_productions = valid_shifts.collect{|shift| shift.production}
+
                shift = valid_shifts[0]
                if symbol_name.nil? then
                   actions << Actions::Accept.new( shift.production )
                else
-                  actions << Actions::Shift.new( symbol_name, @transitions[symbol_name] )
+                  shift_action = Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions )
+                  chosen_shift_actions << shift_action
+                  actions              << shift_action
                end
             end
             
             (all_reductions - eliminated_reductions).each do |reduction|
-               actions << Actions::Reduce.new( reduction.production )
+               reduce_action = Actions::Reduce.new( reduction.production )
+               chosen_reduce_actions << reduce_action
+               actions               << reduce_action
             end
             
             actions.concat( error_actions )
@@ -574,7 +587,8 @@ module Plan
                @actions[symbol_name] = actions[0]
             else
                if use_backtracking then
-                  @actions[symbol_name] = Actions::Attempt.new( actions )
+                  @actions[symbol_name], additional_explanations = compile_backtracking_actions( chosen_shift_actions, chosen_reduce_actions, error_actions, explain )
+                  explanations.concat( additional_explanations ) if explain
                else
                   explanations << Explanations::FavouriteChosen.new( actions ) if explain
                   @actions[symbol_name] = actions[0]
@@ -589,7 +603,6 @@ module Plan
             end
          end
       end
-      
       
       #
       # close_items()
@@ -750,7 +763,37 @@ module Plan
       def item_present?( item )
          return @item_index.member?(item.signature)
       end
+
+
+      #
+      # compile_backtracking_actions()
+      #  - helper for compile_actions that processing a set of actions into an Attempt plan
+      #  - returns an Action and an array of Explanations
       
+      def compile_backtracking_actions( shift_actions, reduce_actions, error_actions, explain )
+
+         explanations = []
+         
+         #
+         # We still solve reduce/reduce conflicts by taking the first declared rule.
+
+         if reduce_actions.length > 1 then
+            explanations << Explanations::FavouriteChosen.new( reduce_actions ) if explain
+            reduce_actions = [reduce_actions[0]]
+         end
+         
+         #
+         # For shift/reduce conflicts, we try shift first, then reduce.
+         
+         actions = shift_actions + reduce_actions + error_actions
+
+         if actions.length == 1 then
+            return actions[0], explanations
+         else
+            explanations << Explanations::BacktrackingActivated.new( actions ) if explain
+            return Actions::Attempt.new( shift_actions + reduce_actions + error_actions ), explanations
+         end
+      end
       
       
    end # State

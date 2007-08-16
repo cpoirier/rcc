@@ -27,10 +27,12 @@ module Actions
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :to_state
+      attr_reader :valid_productions
       
-      def initialize( symbol_name, to_state )
-         @symbol_name = symbol_name
-         @to_state    = to_state
+      def initialize( symbol_name, to_state, valid_productions )
+         @symbol_name       = symbol_name
+         @to_state          = to_state
+         @valid_productions = valid_productions
       end
       
       def to_s()

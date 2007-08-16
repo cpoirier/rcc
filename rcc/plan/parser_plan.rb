@@ -188,7 +188,7 @@ module Plan
          #
          # Return the new ParserPlan.
          
-         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan, ast_classes )
+         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan, ast_classes, grammar.backtracking_enabled? )
       end
       
       
@@ -203,14 +203,15 @@ module Plan
       attr_reader :productions       # Our Productions, in declaration order
       attr_reader :ast_classes       # Our ASTClasses, in declaration order
 
-      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil, ast_classes = nil )         
-         @name             = name
-         @state_table      = state_table
-         @lexer_plan       = lexer_plan
-         @productions      = productions
-         @production_sets  = production_sets    
-         @precedence_table = precedence_table    # Production number => tier (tier 0 is highest precedence)
-         @ast_classes      = ast_classes
+      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil, ast_classes = nil, enable_backtracking = false )         
+         @name                = name
+         @state_table         = state_table
+         @lexer_plan          = lexer_plan
+         @productions         = productions
+         @production_sets     = production_sets    
+         @precedence_table    = precedence_table    # Production number => tier (tier 0 is highest precedence)
+         @ast_classes         = ast_classes
+         @enable_backtracking = enable_backtracking
       end
       
       
@@ -228,11 +229,11 @@ module Plan
       #  - runs through all our State tables and builds Actions that can drive a compiler
       #  - optionally constructs explanations for conflict resolutions
       
-      def compile_actions( explain = false, k_limit = 1, use_backtracking = false )
+      def compile_actions( explain = false, k_limit = 1 )
          duration = Time.measure do 
             @state_table.each do |state|
                duration = Time.measure do
-                  state.compile_actions( @production_sets, @precedence_table, k_limit, use_backtracking, explain )
+                  state.compile_actions( @production_sets, @precedence_table, k_limit, @enable_backtracking, explain )
                   state.compile_customized_lexer_plan( @lexer_plan )
                end
                
