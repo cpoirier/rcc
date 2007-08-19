@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Model
@@ -97,9 +97,9 @@ end  # module Model
 end  # module Rethink
 
 
-require "rcc/model/form_elements/series_element.rb"
-require "rcc/model/form_elements/fork_element.rb"
-require "rcc/model/form_elements/optional_element.rb"
-require "rcc/model/form_elements/raw_terminal.rb"
-require "rcc/model/form_elements/named_terminal.rb"
-require "rcc/model/form_elements/non_terminal.rb"
+require "#{$RCCLIB}/model/form_elements/series_element.rb"
+require "#{$RCCLIB}/model/form_elements/fork_element.rb"
+require "#{$RCCLIB}/model/form_elements/optional_element.rb"
+require "#{$RCCLIB}/model/form_elements/raw_terminal.rb"
+require "#{$RCCLIB}/model/form_elements/named_terminal.rb"
+require "#{$RCCLIB}/model/form_elements/non_terminal.rb"

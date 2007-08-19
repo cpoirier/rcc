@@ -8,9 +8,9 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/plan/sequence_set.rb"
-require "rcc/plan/production.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/sequence_set.rb"
+require "#{$RCCLIB}/plan/production.rb"
 
 module RCC
 module Plan

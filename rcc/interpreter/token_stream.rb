@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Interpreter
@@ -20,6 +20,10 @@ module Interpreter
 
    class TokenStream
       
+      class RewindLimitReached < Exception
+      end
+      
+      
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
@@ -28,6 +32,8 @@ module Interpreter
          @lexer                   = lexer
          @lookahead               = []
          @lexer_plan              = nil
+         @rewind_limit            = faked_lookahead.length > 0 ? faked_lookahead[0].start_position : @lexer.position
+         p "ON CONSTRUCTION rewind limit is #{@rewind_limit}"
          
          @pending_faked_lookahead = faked_lookahead
          @used_faked_lookahead    = []
@@ -35,6 +41,19 @@ module Interpreter
          @pending_faked_lookahead.each do |token|
             token.faked = true
          end
+      end
+      
+      def position()
+         return @lexer.position
+      end
+      
+      
+      #
+      # fake_token()
+      #  - produces a fake Token of the specified type at the current lexer position
+      
+      def fake_token( type )
+         return @lexer.locate_token( Token.fake(type) )
       end
       
       
@@ -47,7 +66,7 @@ module Interpreter
       def lexer_plan=( plan )
          unless plan.object_id == @lexer_plan.object_id
             unless @lookahead.empty?
-               rewind( @lookahead[0] )
+               rewind( @pending_faked_lookahead.empty? ? @lookahead[0] : @pending_faked_lookahead[0] )
                @lookahead.clear
             end
             
@@ -72,7 +91,10 @@ module Interpreter
             end
          end
          
-         return @lookahead[count-1]
+         token = @lookahead[count-1]
+         STDOUT.puts "#{indent}===> RETURNING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}" if explain
+
+         return token
       end
       
       
@@ -97,22 +119,33 @@ module Interpreter
       #  - rewinds the lexer to where it was when it produced the specified token
       
       def rewind( before_token )
-         @lexer.reset_position( before_token.start_position )
-         @lookahead.clear
+         p "REWINDING"
+         p before_token.start_position
+         p @rewind_limit
+         if before_token.start_position >= @rewind_limit then 
+            p "INSIDE"
+            p @lexer.position
+            @lexer.reset_position( before_token.start_position )
+            p @lexer.position
+            @lookahead.clear
          
-         if before_token.faked? then
-            index = -1
-            @used_faked_lookahead.each_index do |search_index|
-               if before_token.object_id == @used_faked_lookahead[search_index].object_id then
-                  index = search_index
-                  break
+            if before_token.faked? then
+               index = -1
+               @used_faked_lookahead.each_index do |search_index|
+                  if before_token.object_id == @used_faked_lookahead[search_index].object_id then
+                     index = search_index
+                     break
+                  end
+               end
+            
+               if index > -1 then
+                  tokens = @used_faked_lookahead.slice!(index..-1)
+                  @pending_faked_lookahead[0, 0] = tokens
                end
             end
-            
-            if index > -1 then
-               tokens = @used_faked_lookahead.slice!(index..-1)
-               @pending_faked_lookahead[0, 0] = tokens
-            end
+         else
+            STDOUT.puts "#{before_token.description} at [#{before_token.start_position}]; rewind_limit: #{@rewind_limit}"
+            raise RewindLimitReached.new()
          end
       end
       

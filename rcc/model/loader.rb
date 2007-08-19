@@ -8,12 +8,12 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/model/token.rb"
-require "rcc/model/rule.rb"
-require "rcc/model/precedence_table.rb"
-require "rcc/model/form_elements/element.rb"
-require "rcc/model/terminal_definitions/definition.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/model/token.rb"
+require "#{$RCCLIB}/model/rule.rb"
+require "#{$RCCLIB}/model/precedence_table.rb"
+require "#{$RCCLIB}/model/form_elements/element.rb"
+require "#{$RCCLIB}/model/terminal_definitions/definition.rb"
 
 module RCC
 module Model

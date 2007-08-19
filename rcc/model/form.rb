@@ -8,8 +8,8 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/model/form_elements/terminal.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/model/form_elements/terminal.rb"
 
 module RCC
 module Model

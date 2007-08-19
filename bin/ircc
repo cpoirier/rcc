@@ -8,13 +8,11 @@
 #
 #================================================================================================================================
 
-   $LOAD_PATH << File.expand_path( "#{File.dirname($0)}/../" )
-      
-   require "rcc/environment.rb"
-   require "rcc/model/grammar.rb"
-   require "rcc/interpreter/lexer.rb"
-   require "rcc/interpreter/token_stream.rb"
-   require "rcc/interpreter/parser.rb"
+   require "#{File.dirname(__FILE__)}/../rcc/environment.rb"
+   require "#{$RCCLIB}/model/grammar.rb"
+   require "#{$RCCLIB}/interpreter/lexer.rb"
+   require "#{$RCCLIB}/interpreter/token_stream.rb"
+   require "#{$RCCLIB}/interpreter/parser.rb"
 
    if ARGV.empty? then
       puts "USAGE: #{File.basename($0)} <grammar file> (explain? <mode>)?"

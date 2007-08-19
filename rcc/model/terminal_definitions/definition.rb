@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Model
@@ -46,6 +46,6 @@ end  # module Model
 end  # module Rethink
 
 
-require "rcc/model/terminal_definitions/simple.rb"
-require "rcc/model/terminal_definitions/pattern.rb"
-require "rcc/model/terminal_definitions/special.rb"
+require "#{$RCCLIB}/model/terminal_definitions/simple.rb"
+require "#{$RCCLIB}/model/terminal_definitions/pattern.rb"
+require "#{$RCCLIB}/model/terminal_definitions/special.rb"

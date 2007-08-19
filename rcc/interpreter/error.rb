@@ -8,32 +8,39 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
-module module
+module Interpreter
 
  
  #============================================================================================================================
- # class Compiler
- #  - the master controller for rcc system
- #  - manages parsing of the grammar, construction of the model, creation of the plan, and output to a particular language
- 
+ # class Error
+ #  - records the data for a parse error we were unable to recover from
 
-   class Compiler
+   class Error
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
-         @rule_names       = {}
-         @rules_and_groups = []
+      attr_reader :bad_token
+      attr_reader :expected_tokens
+      
+      def initialize( bad_token, expected_tokens )
+         @bad_token         = bad_token
+         @expected_tokens   = expected_tokens
       end
       
-   end # Compiler
+      def position() 
+         return bad_token.start_position
+      end
+      
+      
+      
+   end # Error
    
 
 
-end  # module module
+end  # module Interpreter
 end  # module Rethink

@@ -8,8 +8,8 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/plan/lexer_state.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/lexer_state.rb"
 
 module RCC
 module Plan

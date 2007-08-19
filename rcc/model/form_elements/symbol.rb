@@ -8,8 +8,8 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/model/form_elements/element.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/model/form_elements/element.rb"
 
 module RCC
 module Model
@@ -157,4 +157,4 @@ end  # module Model
 end  # module Rethink
 
 
-require "rcc/model/phrase.rb"
+require "#{$RCCLIB}/model/phrase.rb"

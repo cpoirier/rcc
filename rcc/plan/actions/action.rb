@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Plan
@@ -50,8 +50,8 @@ end  # module Rethink
 
 
 
-require "rcc/plan/actions/shift.rb"
-require "rcc/plan/actions/reduce.rb"
-require "rcc/plan/actions/goto.rb"
-require "rcc/plan/actions/accept.rb"
-require "rcc/plan/actions/attempt.rb"
+require "#{$RCCLIB}/plan/actions/shift.rb"
+require "#{$RCCLIB}/plan/actions/reduce.rb"
+require "#{$RCCLIB}/plan/actions/goto.rb"
+require "#{$RCCLIB}/plan/actions/accept.rb"
+require "#{$RCCLIB}/plan/actions/attempt.rb"

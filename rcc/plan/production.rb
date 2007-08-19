@@ -8,8 +8,8 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/plan/symbol.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/symbol.rb"
 
 module RCC
 module Plan
@@ -78,7 +78,10 @@ module Plan
          return "#{@rule_name} => #{@symbols.join(" ")}"
       end
 
-
+      def ==( rhs )
+         return @number == rhs.number
+      end
+      
       
    end # Production
    

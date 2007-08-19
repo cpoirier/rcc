@@ -8,8 +8,8 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/util/ordered_hash.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/ordered_hash.rb"
 
 module RCC
 module Interpreter
@@ -29,14 +29,16 @@ module Interpreter
       attr_reader :root_symbol    # The Symbol this CSN represents
       attr_reader :slots          # The named Symbols that comprise it
       attr_reader :ast_class 
+      attr_reader :first_token
       
       
       alias :symbol :root_symbol
       
-      def initialize( production, component_symbols )
+      def initialize( production, first_token, component_symbols )
          @root_symbol = production.name
          @ast_class   = production.ast_class
          @slots       = Util::OrderedHash.new()
+         @first_token = first_token
          
          production.slot_mappings.each do |index, slot|
             @slots[slot] = component_symbols[index]

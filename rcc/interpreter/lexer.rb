@@ -8,9 +8,9 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/interpreter/token.rb"
-require "rcc/interpreter/line_reader.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/interpreter/token.rb"
+require "#{$RCCLIB}/interpreter/line_reader.rb"
 
 
 module RCC
@@ -29,6 +29,7 @@ module Interpreter
 
       attr_reader :line_number
       attr_reader :column_number
+      attr_reader :position
       
       def initialize( input, descriptor )
          @line_reader   = LineReader.new( input, descriptor )    # The input stream from which we'll draw input
@@ -41,6 +42,14 @@ module Interpreter
          @last_consumed = nil    # The last Token consumed() (used for updating line and column numbers)
       end
       
+      
+      #
+      # locate_token()
+      #  - sets a Token's position to the current position
+      
+      def locate_token( token )
+         return token.locate( @position, @line_number, @column_number, @descriptor )
+      end
       
       
       #
@@ -67,6 +76,7 @@ module Interpreter
       #
       # next_token()
       #  - runs the lexer against the input until one token is produced or the input is exhausted
+      #  - returns a Token::end_of_file token on the end of input
       
       def next_token( lexer_plan, explain = false, indent = "" )
          token = lex( lexer_plan, explain, indent )
@@ -83,7 +93,15 @@ module Interpreter
             end
          end
          
-         return token
+         if token.nil? then
+            if input_remaining?() then
+               return Token.new( consume() ).locate( @position, @line_number, @column_number, @descriptor, false )
+            else
+               return Token.end_of_file( @position, @line_number, @column_number, @descriptor )
+            end
+         else
+            return token
+         end
       end
 
 
@@ -93,6 +111,7 @@ module Interpreter
       
       def reset_position( to_position )
          @line_reader.seek( to_position )
+         @position = to_position
          @pending_lines.clear()
          @last_consumed = nil
       end
@@ -160,7 +179,7 @@ module Interpreter
             
             #
             # If we got something, and it is on the ignore list, ignore it.  We'll then try again, unless
-            # there is nothing more to do.
+            # there is nothing more to do.  
             
             if token.nil? then
                break

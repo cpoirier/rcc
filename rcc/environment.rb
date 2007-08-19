@@ -8,9 +8,8 @@
 #
 #================================================================================================================================
 
-   $RCC_LIBRARY_PATH = File.dirname(__FILE__)
-   
-   require "rcc/util/quality.rb"
+   $RCCLIB = File.expand_path(File.dirname(__FILE__))
+   require "#{$RCCLIB}/util/quality.rb"
    
    def max( a, b )
       a > b ? a : b
@@ -20,6 +19,15 @@
       a < b ? a : b
    end
    
+   
+   def ignore_errors( *error_classes )
+      begin
+         yield()
+      rescue Exception => e
+         raise e unless error_classes.member?(e.class)
+      end
+   end
+            
 
    class Array
       
@@ -35,6 +43,21 @@
             seed = result
          end
          return seed
+      end
+      
+      
+      #
+      # select()
+      #  - returns an array containing only those elements for which your block returns true
+      
+      def select()
+         selected = []
+         
+         each() do |element|
+            selected << element if yield(element)
+         end
+         
+         return selected
       end
       
       

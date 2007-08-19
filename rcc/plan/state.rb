@@ -8,13 +8,13 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/model/rule.rb"
-require "rcc/model/form.rb"
-require "rcc/plan/item.rb"
-require "rcc/plan/actions/action.rb"
-require "rcc/plan/explanations/explanation.rb"
-require "rcc/util/ordered_hash.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/model/rule.rb"
+require "#{$RCCLIB}/model/form.rb"
+require "#{$RCCLIB}/plan/item.rb"
+require "#{$RCCLIB}/plan/actions/action.rb"
+require "#{$RCCLIB}/plan/explanations/explanation.rb"
+require "#{$RCCLIB}/util/ordered_hash.rb"
 
 module RCC
 module Plan
@@ -603,6 +603,7 @@ module Plan
             end
          end
       end
+      
       
       #
       # close_items()

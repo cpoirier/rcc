@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Plan
@@ -49,12 +49,12 @@ end  # module Rethink
 
 
 
-require "rcc/plan/explanations/selected_action.rb"
-require "rcc/plan/explanations/only_one_choice.rb"
-require "rcc/plan/explanations/reductions_sorted.rb"
-require "rcc/plan/explanations/shift_trumps_reduce.rb"
-require "rcc/plan/explanations/reduce_trumps_shift.rb"
-require "rcc/plan/explanations/initial_options.rb"
-require "rcc/plan/explanations/favourite_chosen.rb"
-require "rcc/plan/explanations/backtracking_activated.rb"
+require "#{$RCCLIB}/plan/explanations/selected_action.rb"
+require "#{$RCCLIB}/plan/explanations/only_one_choice.rb"
+require "#{$RCCLIB}/plan/explanations/reductions_sorted.rb"
+require "#{$RCCLIB}/plan/explanations/shift_trumps_reduce.rb"
+require "#{$RCCLIB}/plan/explanations/reduce_trumps_shift.rb"
+require "#{$RCCLIB}/plan/explanations/initial_options.rb"
+require "#{$RCCLIB}/plan/explanations/favourite_chosen.rb"
+require "#{$RCCLIB}/plan/explanations/backtracking_activated.rb"
 

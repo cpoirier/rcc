@@ -8,8 +8,8 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/code_generation/ruby/formatter.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/code_generation/ruby/formatter.rb"
 
 module RCC
 module CodeGeneration
@@ -501,8 +501,8 @@ end  # module Rethink
 
 
 
-require "rcc/code_generation/ruby/code_oriented_generator.rb"
-require "rcc/code_generation/ruby/tree_oriented_generator.rb"
+require "#{$RCCLIB}/code_generation/ruby/code_oriented_generator.rb"
+require "#{$RCCLIB}/code_generation/ruby/tree_oriented_generator.rb"
 
 
 

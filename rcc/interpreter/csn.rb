@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Interpreter
@@ -36,6 +36,10 @@ module Interpreter
          @component_symbols = component_symbols
       end
       
+      
+      def first_token
+         return @component_symbols.first_token
+      end
       
       def description()
          return "#{@root_symbol}"

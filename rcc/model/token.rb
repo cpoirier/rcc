@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Model
@@ -33,12 +33,12 @@ module Model
          @line_number       = line_number
          @column_number     = column_number
          @source_descriptor = source_descriptor
-         @type              = type
+         @type              = type.nil? ? @type : type
          @raw_text          = nil
       end
       
       def type()
-         return (@type.nil? ? self : @type)
+         return (@type.nil? && self.length > 0 ? self : @type)
       end
       
       def raw_text()

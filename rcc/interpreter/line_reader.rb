@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Interpreter
@@ -79,7 +79,7 @@ module Interpreter
       
       def seek( position )
          @position = position 
-         
+         p @text[@position, 30]
          @line_number = nil
          @line_endings.shift while !@line_endings.empty? and @line_endings[0] >= @position
       end

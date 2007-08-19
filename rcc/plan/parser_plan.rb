@@ -8,13 +8,13 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/util/ordered_hash.rb"
-require "rcc/model/rule.rb"
-require "rcc/plan/production.rb"
-require "rcc/plan/production_set.rb"
-require "rcc/plan/ast_class.rb"
-require "rcc/plan/state.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/ordered_hash.rb"
+require "#{$RCCLIB}/model/rule.rb"
+require "#{$RCCLIB}/plan/production.rb"
+require "#{$RCCLIB}/plan/production_set.rb"
+require "#{$RCCLIB}/plan/ast_class.rb"
+require "#{$RCCLIB}/plan/state.rb"
 
 module RCC
 module Plan

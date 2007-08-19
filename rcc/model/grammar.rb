@@ -8,12 +8,12 @@
 #
 #================================================================================================================================
 
-require "rcc/environment.rb"
-require "rcc/util/ordered_hash.rb"
-require "rcc/model/rule.rb"
-require "rcc/model/precedence_table.rb"
-require "rcc/plan/lexer_plan.rb"
-require "rcc/plan/parser_plan.rb"
+require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/ordered_hash.rb"
+require "#{$RCCLIB}/model/rule.rb"
+require "#{$RCCLIB}/model/precedence_table.rb"
+require "#{$RCCLIB}/plan/lexer_plan.rb"
+require "#{$RCCLIB}/plan/parser_plan.rb"
 
 
 
@@ -36,7 +36,7 @@ module Model
       def self.load_from_file( descriptor, path )
          grammar = nil
          
-         require "rcc/model/loader.rb"
+         require "#{$RCCLIB}/model/loader.rb"
          File.open(path) do |file|
             grammar = Loader.new().load( file.read(), path )
          end
