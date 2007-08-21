@@ -57,13 +57,14 @@
       
 
    case mode
-      when nil, "parse"
+      when nil, "parse", "recovery"
          parser_plan.display( STDOUT, "", true, ARGV[0].nil? ? :reduce_determinants : ARGV[0].intern ) if explain
 
-         lexer  = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )
+         source = RCC::Interpreter::Source.new( STDIN.read, "<stdin>" )
+         lexer  = RCC::Interpreter::Lexer.new( source )
          stream = RCC::Interpreter::TokenStream.new( lexer )
          parser = RCC::Interpreter::Parser.new( parser_plan, stream )
-         ast    = parser.parse( explain )
+         ast    = parser.go( explain ? "" : nil )
          
          if explain then
             STDOUT.puts ""
@@ -80,7 +81,7 @@
          
       when "lex"
          lexer = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )
-         while token = lexer.next_token( parser_plan.lexer_plan, explain )
+         while token = lexer.next_token( parser_plan.lexer_plan, explain ? "" : nil )
             if explain then
                puts "\n"
             else
@@ -95,6 +96,6 @@
          end
          
       else
-         puts "Unsuppored mode: #{mode}; Supported modes: parse, lex"
+         puts "Unsuppored mode: #{mode}; Supported modes: parse, recovery, lex"
          exit 10
    end

@@ -20,134 +20,184 @@ module Interpreter
 
    class TokenStream
       
-      class RewindLimitReached < Exception
+      class PositionOutOfRange < Exception
       end
+      
+      
       
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( lexer, faked_lookahead = [] )
-         @lexer                   = lexer
-         @lookahead               = []
-         @lexer_plan              = nil
-         @rewind_limit            = faked_lookahead.length > 0 ? faked_lookahead[0].start_position : @lexer.position
-         p "ON CONSTRUCTION rewind limit is #{@rewind_limit}"
+      def initialize( lexer, start_position = 0, seed_tokens = [] )
+         @lexer            = lexer             # The Lexer we'll use to produce our Tokens
+         @start_position   = start_position    # The first position to read from the lexer
+         @current_position = start_position    # The next position to read from the lexer
+         @seed_tokens      = seed_tokens       # A set of (possibly faked) Tokens to be produced before reading from the lexer
+
+         #
+         # We tell our seed tokens apart from our real tokens by using a negative rewind position that indicates
+         # the @seed_token number.
          
-         @pending_faked_lookahead = faked_lookahead
-         @used_faked_lookahead    = []
+         number = 1
+         @seed_tokens.each do |seed_token|
+            seed_token.rewind_position = -number
+            number += 1
+         end
          
-         @pending_faked_lookahead.each do |token|
-            token.faked = true
+         @unread_seed_tokens = [] + @seed_tokens
+         @last_read          = nil
+         @last_peek          = nil
+      end
+      
+      
+      #
+      # restart()
+      #  - sets the position back to the first Token producible by this TokenStream
+      
+      def restart()
+         @current_position   = @start_position
+         @unread_seed_tokens = [] + @seed_tokens 
+         
+         @last_read = nil
+         @last_peek = nil
+      end
+      
+      
+      #
+      # position_before()
+      #  - sets the position so that it is ready to re-lex the specified Token
+      
+      def position_before( token )
+         @last_read = nil
+         
+         if token.rewind_position >= 0 then
+            raise PositionOutOfRange.new() if token.rewind_position < @start_position
+            @current_position = token.rewind_position
+         else
+            raise PositionOutOfRange.new() unless @seed_tokens.member?(token)
+            @unread_seed_tokens = @seed_tokens.slice( (-token.rewind_position - 1)..-1 )
+            @current_position = @start_position
          end
       end
       
-      def position()
-         return @lexer.position
+      
+      #
+      # position_after()
+      #  - sets the position so that it is ready to lex the next Token
+      
+      def position_after( token )
+         @last_read = nil
+
+         if token.rewind_position >= 0 then
+            raise PositionOutOfRange.new() if token.rewind_position < @start_position
+            @current_position = token.start_position + token.length
+         else
+            if @unread_seed_tokens.empty? or -token.rewind_position + 1 != -@unread_seed_tokens[0].rewind_position then
+               raise PositionOutOfRange.new() unless @seed_tokens.member?(token)
+               @unread_seed_tokens = @seed_tokens.slice( (-token.rewind_position)..-1 )
+               # assert( !@unread_seed_tokens.nil?, "wtf: #{token.rewind_position}; #{@seed_tokens.length}")
+            end
+            @current_position = @start_position
+         end
       end
+          
+      
+      #
+      # read()
+      #  - reads a Token from the current position, using the supplied LexerPlan
+      #  - advances the position of the TokenStream
+      
+      def read( lexer_plan, explain_indent = nil )
+         if @unread_seed_tokens.empty? then
+            @last_read = @lexer.next_token( @current_position, lexer_plan, explain_indent )
+            @last_read.rewind_position = @current_position
+            @current_position = @lexer.position
+         else
+            @last_read = @unread_seed_tokens.shift
+         end
+         
+         return @last_read
+      end
+      
+      
+      #
+      # peek()
+      #  - reads a Token from the current or specified position, using the supplied LexerPlan
+      #  - does not advance the position of the TokenStream
+      
+      def peek( lexer_plan, explain_indent = nil )
+         return peek_after( @last_read, lexer_plan, explain_indent )
+      end
+         
+         
+      #
+      # peek_after()
+      #  - reads a Token from after the specified Token, using the supplied LexerPlan
+      #  - does not advance the position of the TokenStream
+      
+      def peek_after( token, lexer_plan, explain_indent = nil )
+         position = @current_position
+
+         if token.nil? then
+            unless @unread_seed_tokens.empty?
+               @last_read = @unread_seed_tokens.shift
+               return @last_read
+            end
+         else
+            
+            #
+            # If the supplied token's rewind_position is less than zero, it is one of our seed tokens, and so
+            # requires special handling.
+         
+            if token.rewind_position < 0 then
+               number = -token.rewind_position
+               if number <= @seed_tokens.length then
+                  return @seed_tokens[number - 1]
+               end
+         
+            #
+            # Otherwise it is a real Token, and we need to calculate an offset.  Note that we use the start_position,
+            # not the rewind_position, because the end of the token (and therefore the start of the next) can only
+            # be measured from the start_position -- the rewind_position allows the system to account for characters
+            # not actually in the token (ignored tokens and such).
+         
+            else
+               position = token.start_position + token.length
+            end
+         end
+         
+         
+         #
+         # If we are still here, lex a Token.
+         
+         token = @lexer.next_token( position, lexer_plan, explain_indent )
+         token.rewind_position = position
+         
+         return token
+      end
+      
       
       
       #
       # fake_token()
       #  - produces a fake Token of the specified type at the current lexer position
       
-      def fake_token( type )
-         return @lexer.locate_token( Token.fake(type) )
-      end
-      
-      
-      #
-      # set_lexer_plan()
-      #  - swaps in a new LexerPlan for use with la() and consume()
-      #  - takes the appropriate action to ensure the next token is from that new plan
-      #  - doesn't do unecessary work
-      
-      def lexer_plan=( plan )
-         unless plan.object_id == @lexer_plan.object_id
-            unless @lookahead.empty?
-               rewind( @pending_faked_lookahead.empty? ? @lookahead[0] : @pending_faked_lookahead[0] )
-               @lookahead.clear
-            end
-            
-            @lexer_plan = plan
-         end
-      end
-    
-      
-      #
-      # la()
-      #  - looks ahead one or more tokens
-      
-      def la( count = 1, explain = false, indent = "" )
-         return @pending_faked_lookahead[count - 1] if count <= @pending_faked_lookahead.length
+      def fake_token( type, at_token = nil )
+         token = nil 
          
-         until @lookahead.length >= count
-            if token = @lexer.next_token(@lexer_plan, explain, indent) then
-               @lookahead << token
-            else
-               nyi "error handling for lexer error" if @lexer.input_remaining?
-               break
-            end
+         if at_token.nil? then
+            token = @lexer.locate_token( Token.fake(type) )
+            token.rewind_position = @current_position
+         else
+            token = Token.fake( type, at_token.start_position, at_token.line_number, at_token.column_number, at_token.source_descriptor )
+            token.rewind_position = at_token.rewind_position
          end
          
-         token = @lookahead[count-1]
-         STDOUT.puts "#{indent}===> RETURNING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}" if explain
-
          return token
       end
       
-      
-      #
-      # consume()
-      #  - shifts the next token off the lookahead and returns it
-      
-      def consume( explain = false, indent = "" )
-         la(1, explain, indent)
-         if @pending_faked_lookahead.empty? then
-            return @lookahead.shift
-         else
-            token = @pending_faked_lookahead.shift
-            @used_faked_lookahead << token
-            return token
-         end
-      end
-      
-      
-      #
-      # rewind()
-      #  - rewinds the lexer to where it was when it produced the specified token
-      
-      def rewind( before_token )
-         p "REWINDING"
-         p before_token.start_position
-         p @rewind_limit
-         if before_token.start_position >= @rewind_limit then 
-            p "INSIDE"
-            p @lexer.position
-            @lexer.reset_position( before_token.start_position )
-            p @lexer.position
-            @lookahead.clear
-         
-            if before_token.faked? then
-               index = -1
-               @used_faked_lookahead.each_index do |search_index|
-                  if before_token.object_id == @used_faked_lookahead[search_index].object_id then
-                     index = search_index
-                     break
-                  end
-               end
-            
-               if index > -1 then
-                  tokens = @used_faked_lookahead.slice!(index..-1)
-                  @pending_faked_lookahead[0, 0] = tokens
-               end
-            end
-         else
-            STDOUT.puts "#{before_token.description} at [#{before_token.start_position}]; rewind_limit: #{@rewind_limit}"
-            raise RewindLimitReached.new()
-         end
-      end
       
 
       #
@@ -155,12 +205,8 @@ module Interpreter
       #  - returns a copy of this TokenStream that starts where this one is currently
       #  - you shouldn't try to rewind it past its start point 
       
-      def cover( faked_lookahead = [] )
-         rewind( @lookahead[0] ) unless @lookahead.empty?()
-         token_stream = TokenStream.new( @lexer, faked_lookahead + @pending_faked_lookahead )
-         token_stream.lexer_plan = @lexer_plan
-         
-         return token_stream
+      def cover( seed_tokens = [] )
+         return TokenStream.new( @lexer, @current_position, seed_tokens + @unread_seed_tokens )
       end
 
 

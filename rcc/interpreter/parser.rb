@@ -11,7 +11,7 @@
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/interpreter/token_stream.rb"
 require "#{$RCCLIB}/interpreter/situation.rb"
-require "#{$RCCLIB}/interpreter/failure.rb"
+require "#{$RCCLIB}/interpreter/error.rb"
 require "#{$RCCLIB}/interpreter/csn.rb"
 require "#{$RCCLIB}/interpreter/asn.rb"
 
@@ -43,120 +43,152 @@ module Interpreter
       end
             
 
+
       #
-      # parse()
-      #  - applies the Grammar to the inputs and builds a generic AST
-      #  - returns the true if the parse succeeded
-      #  - situation is optional -- skip it if you aren't passing one
+      # go()
+      #  - go() drives the parse() through error corrections as far as it can go
       
-      def parse( situation = nil, explain = true, indent = "" )
+      def go( explain_indent = nil )
+         attempt_queue    = [@start_situation]
+         correction_queue = []
+         recovery_queue   = []
+         pending_queue    = []
+         in_recovery      = false
+         error_limit      = 1000000000
          
-         situation = @start_situation if situation.nil?
          
          #
-         # Process actions until a solution is found.
-
-         until situation.accepted? or situation.failed?
+         # We proceed in steps, parsing through attempts first, then error corrections, and back again.  We are 
+         # done immediately if we find an error-free, complete parse.  Error correction may encounter new Attempt
+         # actions, which we will defer until all error corrections have been processed.  We'll then return to
+         # the first phase and continue those error corrections.  
+         #
+         # This architecture allows us to avoid stack overflows from deep recursion, and also allows us to set a 
+         # time limit on error correction.  And a natural side effect is that errors earlier in the file will 
+         # tend to be fully explored before ones later in the file.  Which is generally the way the user will 
+         # want it.
+         
+         start_time = Time.now()
+         until attempt_queue.empty? and recovery_queue.empty? and correction_queue.empty? or Time.now() - start_time > 3
             
             #
-            # Get the state and lookahead.
+            # First, run the parse.  On an Attempt action, perform_action() will generate a list of Situations to
+            # try, attach them to the context Situation, and throw a AttemptsPending exception.  We catch it and
+            # reverse the Situations onto our attempt_queue.  By inserting them in reverse order at the front of
+            # the queue, we maintain depth-first ordering we want.
             
-            state, next_token, token_type = situation.look_ahead( nil, explain, indent )
-            situation.display( indent, state, next_token ) if explain
-
-            #
-            # Select the next action.
-            
-            action = state.actions[token_type]
-            
-            if explain then
-               STDOUT.puts "#{indent}| #{state.lookahead_explanations}"
-               STDOUT.puts "#{indent}| Action analysis for lookahead #{Token.description(next_token)}"
-
-               if state.explanations.nil? then
-                  bug( "no explanations found" )
-               else
-                  state.explanations[token_type].each do |explanation|
-                     explanation.to_s.split("\n").each do |line|
-                        STDOUT << "#{indent}|    " << line.to_s << "\n"
+            until attempt_queue.empty?
+               attempt = attempt_queue.shift
+               
+               begin
+                  if parse( attempt, explain_indent ) then
+                     if in_recovery then
+                        # what here?
+                     else
+                        return attempt.solution
                      end
+                  else
+                     recovery_queue << attempt
+                  end
+                  
+               rescue InvalidReduce
+                  attempt.discard()
+               rescue AttemptsPending
+                  attempt.attempts.reverse.each do |child_attempt|
+                     attempt_queue.unshift child_attempt
                   end
                end
             end
-                        
+            
+            
             #
-            # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
-
-            if !action.nil? then
-               perform_action( action, situation, next_token, token_type, explain, indent )
-            else
-               if explain then
-                  STDOUT.puts "#{indent}===> ERROR DETECTED: cannot use #{next_token.description}"
-                  indent += "   "
-               end
-
-               situation.token_stream.rewind( next_token )
-               situation.failure = Failure.new( next_token, state.actions.keys.collect{|t| situation.token_stream.fake_token(t)} )
-            end
-         end
-         
-         return situation.accepted?
-      end
-      
-
-
-      #
-      # drive()
-      #  - parse() stops at the first error; if this is what you need, call it directly
-      #  - drive() drives the parse() through error corrections as far as it can go
-      
-      def drive( explain = true, indent = "" )
-         return true if parse( @situation, explain, indent )
-         
-         corrections_queue = [] + find_error_corrections( @situation, explain, indent )
-         until corrections_queue.empty?
-            correction = corrections_queue.shift
-            if correction.apply(self, explain, indent) then
-               correction.
-               # yay!  what now?
-            else
-               find_error_corrections( correction.situation, explain, indent ).reverse.each do |child_correction|
-                  corrections_queue.unshift( child_correction )
-               end
-            end
-         end
-         
-               
-               
+            # If we are still here, it is time to start error recovery.  For each recover_queue Situation, we'll
+            # want to look for and apply Corrections (and resultant Corrections) in depth-first order.  When we
+            # encounter an AttemptsPending exception, we'll add that work back to the attempt_queue and pick it
+            # up on the next pass.
             
-            if parse(situation, explain, indent) then
-               # yay!  what now?
-            else
-               situation.pending_corrections.each do |correction|
+            in_recovery = true
+            correction_queue.concat pending_queue
+            pending_queue.clear
+            
+            until correction_queue.empty? and recovery_queue.empty?
+               
+               if correction_queue.empty? then
+                  error_situation = recovery_queue.shift
+                  correction_queue.concat find_error_corrections( error_situation, explain_indent )
+               end
                   
+               until correction_queue.empty?
+                  correction = correction_queue.shift
+         
+                  #
+                  # If the correction succeeds, we mark it as accepted.  This is automatically send up the chain of 
+                  # Situations by the Correction and Situation code.
+         
+                  begin
+                     if correction.apply(self, explain_indent) then
+                        correction.accept()
+                        error_limit = min( correction.situation.error_count, error_limit )
+            
+                     #
+                     # Otherwise, we look for correction options for the failed correction.  If we find some, we add
+                     # them to the work_queue and the current Correction's situation (to maintain the chain).  If there
+                     # are no corrections to attempt, we discard the correction.  Again, this is automatically sent up 
+                     # the chain, closing off dead branches of the correction tree.
+         
+                     else
+
+                        #
+                        # When we are done here, the next step will be to pick those branches of the correction tree that
+                        # have the fewest errors.  Therefore, we can save work by cutting off any branch that already 
+                        # has more errors than the best solutions we've already found.  This optimization can save a 
+                        # great deal of work.
+
+                        if correction.situation.error_count > error_limit then
+                           correction.discard()
+                        else
+                           corrections = find_error_corrections( correction.situation, explain_indent )
+                           if corrections.empty? then
+                              correction.discard()
+                           else
+                              corrections.reverse.each do |child_correction|
+                                 correction_queue.unshift( child_correction )
+                              end
+                           end
+                        end
+                     end
+            
+                  rescue TokenStream::PositionOutOfRange 
+                     correction.discard()
+                  rescue AttemptsPending
+                     correction.situation.attempts.reverse.each do |attempt|
+                        attempt_queue.unshift attempt
+                     end
+                     
+                     pending_queue << correction
+                  end
                end
             end
-            
          end
-         
-         
-         
          
          
          #
-         # So, we now have a list of corrected parses that completed.  We must now pick the ones to report to the 
-         # user.  Presumably, errors are not intentional, so they shouldn't be too frequent.  We'll therefore pick 
-         # those solutions that have the fewest errors.  For now, if there's more than one choice, we'll let the 
-         # user sort it out.
+         # So, we now have a tree of corrected (or partially-corrected) parses that completed (or got to an Attempt).  
+         # We must now pick the ones to report to the user.  Presumably, errors are not intentional, so they shouldn't 
+         # be too frequent.  We'll therefore pick those solutions that have the fewest errors.  For now, if there's 
+         # more than one choice, we'll let the user sort it out.
+         
+         
 
-         if accepted_corrections.empty? then
-            situation.corrections << failure
-         else
-            accepted_corrections.sort!{ |a, b| a.situation.corrections.length <=> b.situation.corrections.length }
-
-            fewest_errors         = accepted_corrections[0].situation.correction.length
-            @corrections          = accepted_corrections.select{ |c| c.situation.corrections.length == fewest_errors }
-         end
+         # work
+         # if accepted_corrections.empty? then
+         #    situation.corrections << failure
+         # else
+         #    accepted_corrections.sort!{ |a, b| a.situation.corrections.length <=> b.situation.corrections.length }
+         # 
+         #    fewest_errors         = accepted_corrections[0].situation.correction.length
+         #    @corrections          = accepted_corrections.select{ |c| c.situation.corrections.length == fewest_errors }
+         # end
          
          
          
@@ -169,66 +201,117 @@ module Interpreter
     # Mid-level Machinery
     #---------------------------------------------------------------------------------------------------------------------
     
-    protected
 
+
+      #
+      # parse()
+      #  - applies the Grammar to the inputs and builds a generic AST
+      #  - returns the true if the parse succeeded
+      #  - situation is optional -- skip it if you aren't passing one
+      
+      def parse( situation = nil, explain_indent = nil )
+         
+         situation = @start_situation if situation.nil?
+         
+         #
+         # Process actions until a solution is found.
+
+         until situation.accepted? or situation.failed?
+            
+            #
+            # Get the state and lookahead.
+            
+            state, next_token, token_type = situation.look_ahead( nil, explain_indent )
+            situation.display( explain_indent, state, next_token ) unless explain_indent.nil?
+
+            #
+            # Select the next action.
+            
+            action = state.actions[token_type]
+            
+            unless explain_indent.nil? then
+               STDOUT.puts "#{explain_indent}| #{state.lookahead_explanations}"
+               STDOUT.puts "#{explain_indent}| Action analysis for lookahead #{Token.description(next_token)}"
+
+               if state.explanations.nil? then
+                  bug( "no explanations found" )
+               else
+                  state.explanations[token_type].each do |explanation|
+                     explanation.to_s.split("\n").each do |line|
+                        STDOUT << "#{explain_indent}|    " << line.to_s << "\n"
+                     end
+                  end
+               end
+            end
+                        
+            #
+            # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
+
+            if !action.nil? then
+               perform_action( action, situation, next_token, token_type, explain_indent )
+            else
+               unless explain_indent.nil? then
+                  STDOUT.puts "#{explain_indent}===> ERROR DETECTED: cannot use #{next_token.description}"
+                  explain_indent += "   "
+               end
+
+               situation.error = Error.new( next_token, state.actions.keys.collect{|t| situation.token_stream.fake_token(t, next_token)} )
+            end
+         end
+         
+         return situation.accepted?
+      end
+      
+
+
+    protected
       
       #
       # perform_action()
       #  - performs a single action against the current Parser state
       
-      def perform_action( action, situation, next_token, token_type, explain, indent )
+      def perform_action( action, situation, next_token, token_type, explain_indent )
          case action
             when Plan::Actions::Shift
-               situation.shift( situation.token_stream.consume(), action.to_state, explain, indent )
+               situation.shift( next_token, action.to_state, explain_indent )
+               situation.position_after( next_token )
                
             when Plan::Actions::Reduce
-               raise InvalidReduce.new() unless situation.reduce(action.by_production, @build_ast, explain, indent)
+               raise InvalidReduce.new() unless situation.reduce(action.by_production, @build_ast, explain_indent)
                
             when Plan::Actions::Accept
-               situation.accept( explain, indent )
+               situation.accept( explain_indent )
                
             when Plan::Actions::Attempt
                first = true
-               child_indent = "#{indent}   "
+               child_indent = explain_indent.nil? ? nil : "#{explain_indent}   "
                
-               rewind_to_token = next_token
+               failed = true
                action.actions.each do |attempt_action|
-                  if explain then
+                  unless explain_indent.nil? then
                      if first then
                         first = false
                      else
-                        STDOUT.puts "#{indent}" 
-                        STDOUT.puts "#{indent}" 
-                        STDOUT.puts "#{indent}<=== RETURN"
+                        STDOUT.puts "#{explain_indent}" 
+                        STDOUT.puts "#{explain_indent}" 
+                        STDOUT.puts "#{explain_indent}<=== RETURN"
                      end
 
-                     STDOUT.puts "#{indent}" 
-                     STDOUT.puts "#{indent}" 
-                     situation.display( indent ) if explain
-                     STDOUT.puts "#{indent}===> ATTEMPT #{attempt_action.to_s}"
+                     STDOUT.puts "#{explain_indent}" 
+                     STDOUT.puts "#{explain_indent}" 
+                     situation.display( explain_indent ) unless explain_indent.nil?
+                     STDOUT.puts "#{explain_indent}===> ATTEMPT #{attempt_action.to_s}"
                   end
 
-                  begin
-                     
-                     #
-                     # Set up for our attempt and feed in the selected action.
-                     
-                     attempt_situation = situation.cover_for_attempt( attempt_action.is_a?(Plan::Actions::Shift) ? attempt_action.valid_productions : nil )
-                     perform_action( attempt_action, attempt_situation, next_token, token_type, explain, child_indent ) 
-                     
-                     #
-                     # Recurse with the new Situation and see what happens.
-                     
-                     if parse( attempt_situation, explain, child_indent ) then
-                        situation.take_solution_from( attempt_situation )
-                        break
-                     else
-                        situation.rewind( next_token )
-                     end
-                  rescue InvalidReduce
-                     situation.rewind( next_token )
-                  end
+                  #
+                  # Set up a Situation to run our attempt and feed in the selected first action.
+                  
+                  attempt_situation = situation.cover_for_attempt( attempt_action.is_a?(Plan::Actions::Shift) ? attempt_action.valid_productions : nil )
+                  perform_action( attempt_action, attempt_situation, next_token, token_type, child_indent ) 
+                  situation.attempts << attempt_situation
                end
+               
+               raise AttemptsPending.new()
             
             else
                nyi "support for #{action.class.name}"
@@ -253,7 +336,7 @@ module Interpreter
       #  - looks for and constructs Corrections for the error in the supplied Situation
       #  - BEWARE: the supplied Situation will unwound (by unwind()) in the process
       
-      def find_error_corrections( situation, explain, indent )
+      def find_error_corrections( situation, explain_indent )
          
          corrections = []
          
@@ -267,7 +350,6 @@ module Interpreter
          accepted_corrections = []
          situation.unwind do |state|
             state, next_token, token_type = situation.look_ahead()
-            situation.rewind( next_token )
 
             failed_action = state.actions[token_type]
             symbols       = state.actions.keys
@@ -275,13 +357,13 @@ module Interpreter
                next if leader_type == token_type
                action = state.actions[leader_type]
                
-               situation.rewind( next_token )
-               fake_token = situation.token_stream.fake_token( leader_type )
+               fake_token = situation.fake_token( leader_type, next_token )
 
                #
                # Option 1: before next_token, insert valid tokens and see if it changes anything
                
                if correction_worth_trying?( situation, action, failed_action, fake_token ) then
+                  situation.position_before( next_token )
                   corrections << situation.correct( fake_token, nil )
                end
 
@@ -289,9 +371,9 @@ module Interpreter
                # Option 2: replace next_token with one of our known valid alternatives, provided the replacement 
                # is similar to what the user actually wrote.
                
-               situation.token_stream.rewind( next_token )
                if next_token.similar_to?(leader_type) then
                   if correction_worth_trying?( situation, action, failed_action, fake_token )
+                     situation.position_after( next_token )
                      corrections << situation.correct( fake_token, next_token )
                   end
                end
@@ -301,9 +383,10 @@ module Interpreter
             #
             # Option 3: delete next_token and try the one following.
             
-            situation.token_stream.rewind( next_token )
-            if state.actions.member?(situation.token_stream.la(2).type) then 
-               correctsion << situation.correct( nil, consume() )
+            follow_token = situation.la( nil, nil, next_token )
+            if state.actions.member?(follow_token.type) then 
+               situation.position_before( follow_token )
+               corrections << situation.correct( nil, situation.consume() )
             end
          end
          
@@ -322,7 +405,7 @@ module Interpreter
          case action
             when Plan::Actions::Shift
                to_state = action.to_state
-               worth_trying = true if action.to_state.actions.member?(situation.la(1, action.to_state).type) 
+               worth_trying = true if action.to_state.actions.member?(situation.la(action.to_state, nil, inserted_token).type) 
 
             when Plan::Actions::Reduce
                unless failed_action.is_a?(Plan::Actions::Reduce) and failed_action.by_production == action.by_production
@@ -348,7 +431,7 @@ module Interpreter
                action.actions.each do |attempt_type, attempt_action|
                   case attempt_action
                      when Plan::Actions::Shift
-                        worth_trying = true if attempt_action.to_state.actions.member?(situation.la(1, attempt_action.to_state).type) 
+                        worth_trying = true if attempt_action.to_state.actions.member?(situation.la(attempt_action.to_state, nil, inserted_token).type) 
 
                      when Plan::Actions::Reduce
                         unless failed_action.is_a?(Plan::Actions::Reduce) and failed_action.by_production == attempt_action.by_production
@@ -471,6 +554,9 @@ module Interpreter
       class UnableToRepair < ParserFailure
       end
       
+      class AttemptsPending < ParserFailure
+      end
+      
       
       
     
@@ -480,47 +566,47 @@ module Interpreter
     # Low-level Machinery
     #---------------------------------------------------------------------------------------------------------------------
     
-    protected
-    
-    
-      #
-      # rewind()
-      #  - rewinds the lexer to where it was when it produced the specified token
-      
-      def rewind( before_token )
-         @token_stream.rewind( before_token )
-      end
-      
-      
-      #
-      # set_lexer_plan()
-      #  - swaps in a new LexerPlan for use with la() and consume()
-      #  - takes the appropriate action to ensure the next token is from that new plan
-      #  - doesn't do unecessary work
-      
-      def set_lexer_plan( plan )
-         @token_stream.lexer_plan = plan
-      end
-    
-          
-      #
-      # la()
-      #  - looks ahead one or more tokens
-      
-      def la( count = 1, explain = false, indent = "" )
-         return @token_stream.la( count, explain, indent )
-      end
-      
-      
-      #
-      # consume()
-      #  - shifts the next token off the lookahead and returns it
-      
-      def consume( explain = false, indent = "" )
-         return @token_stream.consume( explain, indent )
-      end
-      
-      
+    # protected
+    # 
+    # 
+    #   #
+    #   # rewind()
+    #   #  - rewinds the lexer to where it was when it produced the specified token
+    #   
+    #   def rewind( before_token )
+    #      @token_stream.rewind( before_token )
+    #   end
+    #   
+    #   
+    #   #
+    #   # set_lexer_plan()
+    #   #  - swaps in a new LexerPlan for use with la() and consume()
+    #   #  - takes the appropriate action to ensure the next token is from that new plan
+    #   #  - doesn't do unecessary work
+    #   
+    #   def set_lexer_plan( plan )
+    #      @token_stream.lexer_plan = plan
+    #   end
+    # 
+    #       
+    #   #
+    #   # la()
+    #   #  - looks ahead one or more tokens
+    #   
+    #   def la( count = 1, explain_indent = nil )
+    #      return @token_stream.la( count, explain_indent )
+    #   end
+    #   
+    #   
+    #   #
+    #   # consume()
+    #   #  - shifts the next token off the lookahead and returns it
+    #   
+    #   def consume( explain_indent = nil )
+    #      return @token_stream.consume( explain_indent )
+    #   end
+    #   
+    #   
       
    end # Parser
    

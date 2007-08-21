@@ -21,12 +21,14 @@ module Interpreter
 
    class Token < Model::Token
       
-      attr_reader :start_position
-      attr_writer :faked
+      attr_accessor :rewind_position
+      attr_reader   :start_position
+      attr_writer   :faked
       
       def locate( start_position, line_number, column_number, source_descriptor, type = nil, faked = false )
-         @start_position = start_position
-         @faked          = faked
+         @rewind_position = start_position
+         @start_position  = start_position
+         @faked           = faked
          super( line_number, column_number, source_descriptor, type, nil )
          
          return self
@@ -68,6 +70,8 @@ module Interpreter
       def similar_to?( type )
          return @type == type unless type.is_a?(String)
          return false unless (self.length - type.length).abs < 3
+         return false if self =~ /\w+/ and type !~ /\w+/
+         return false if type =~ /\w+/ and self !~ /\w+/
          
          #
          # We've establish that both operands are Strings of similar length.  Next we'll get their unique characters
@@ -92,6 +96,8 @@ module Interpreter
          
          if @type.nil? then
             return "$"
+         elsif @faked then
+            return "FAKE[" + (@type.is_a?(Symbol) ? ":#{@type}" : "#{@type.gsub("\n", "\\n")}") + "]"
          else
             return "[#{self.gsub("\n", "\\n")}]" + (@type.is_a?(Symbol) ? ":#{@type}" : "")
          end
@@ -134,7 +140,7 @@ module Interpreter
       #  - builds a fake Token of the specified type
       
       def self.fake( type, start_position = nil, line_number = nil, column_number = nil, source_descriptor = nil )
-         return new( type.to_s ).locate( start_position, line_number, column_number, source_descriptor, type, true )
+         return new( "" ).locate( start_position, line_number, column_number, source_descriptor, type, true )
       end
       
       
