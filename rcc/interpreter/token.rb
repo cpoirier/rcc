@@ -41,6 +41,10 @@ module Interpreter
       def first_token
          return self
       end
+      
+      def token_count
+         return 1
+      end
 
 
 

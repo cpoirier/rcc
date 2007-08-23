@@ -28,12 +28,15 @@ module Interpreter
 
       attr_reader :root_symbol         # The Symbol this CSN represents
       attr_reader :component_symbols   # The Symbols that comprise it
+      attr_reader :token_count         # The number of Tokens in this and all sub CSNs
       
       alias :symbol :root_symbol
+      alias :type   :root_symbol
       
       def initialize( root_symbol, component_symbols )
          @root_symbol       = root_symbol
          @component_symbols = component_symbols
+         @token_count       = component_symbols.inject(0) {|sum, symbol| symbol.token_count }
       end
       
       

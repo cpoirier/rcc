@@ -50,7 +50,7 @@ module Interpreter
 
          end
          
-         @situation.restart( )
+         @situation.restart( )         
          result = parser.parse( @situation, explain_indent.nil? ? nil : explain_indent + "   " )
 
          unless explain_indent.nil?

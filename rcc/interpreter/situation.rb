@@ -446,12 +446,14 @@ module Interpreter
       
       def unwind()
          popped_node = nil
+         tokens_popped = 0
          until @node_stack.empty?
             @token_stream.position_before( popped_node.first_token ) unless popped_node.nil?
-            yield( @state_stack[-1] )
+            yield( @state_stack[-1], tokens_popped )
             
             @state_stack.pop
-            popped_node = @node_stack.pop
+            popped_node    = @node_stack.pop
+            tokens_popped += popped_node.token_count
          end
       end
       

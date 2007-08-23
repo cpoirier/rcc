@@ -30,15 +30,17 @@ module Interpreter
       attr_reader :slots          # The named Symbols that comprise it
       attr_reader :ast_class 
       attr_reader :first_token
-      
+      attr_reader :token_count
       
       alias :symbol :root_symbol
+      alias :type   :root_symbol
       
       def initialize( production, first_token, component_symbols )
          @root_symbol = production.name
          @ast_class   = production.ast_class
          @slots       = Util::OrderedHash.new()
          @first_token = first_token
+         @token_count = component_symbols.inject(0) {|sum, symbol| symbol.token_count }
          
          production.slot_mappings.each do |index, slot|
             @slots[slot] = component_symbols[index]
