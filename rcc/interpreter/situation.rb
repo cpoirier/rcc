@@ -32,10 +32,12 @@ module Interpreter
       attr_accessor :error
       attr_reader   :pending_corrections
       attr_reader   :corrections
+      attr_reader   :context_correction
       attr_reader   :token_stream
       attr_reader   :attempts
+      attr_accessor :recovery_stop
       
-      def initialize( token_stream, context_or_start_state, expected_productions = nil )
+      def initialize( token_stream, context_or_start_state, expected_productions = nil, context_correction = nil ) 
          @token_stream        = token_stream
          @solution            = nil
          @stop_node           = nil
@@ -43,16 +45,21 @@ module Interpreter
          @pending_corrections = []
          @corrections         = []
          @attempts            = [] 
-         
+         @context_correction  = context_correction
+
          if context_or_start_state.is_a?(Situation) then
-            @context     = context_or_start_state
-            @node_stack  = @context.node_stack.dup
-            @state_stack = @context.state_stack.dup
+            @context       = context_or_start_state
+            @node_stack    = @context.node_stack.dup
+            @state_stack   = @context.state_stack.dup
+            @recovery_stop = @context.recovery_stop
          else
-            @context     = nil
-            @node_stack  = []
-            @state_stack = [ context_or_start_state ]
+            @context       = nil
+            @node_stack    = []
+            @state_stack   = [ context_or_start_state ]
+            @recovery_stop = 0
          end
+         
+         bug "WTF?" if @recovery_stop == 0 and !@context.nil?
          
          @expected_productions = expected_productions
          if expected_productions.nil? then
@@ -123,7 +130,7 @@ module Interpreter
          STDOUT.puts "#{indent}"
          STDOUT.puts "#{indent}"
          STDOUT.puts "#{indent}#{stack_bar}"
-         STDOUT.puts "#{indent}STACK: #{stack_description} |      LOOKAHEAD: #{next_token.description} at #{next_token.line_number}:#{next_token.column_number}, position #{next_token.start_position}"
+         STDOUT.puts "#{indent}STACK: #{stack_description} |      LOOKAHEAD: #{next_token.description} at #{next_token.line_number}:#{next_token.column_number}, position #{next_token.sequence_number}:#{next_token.start_position}"
          STDOUT.puts "#{indent}#{stack_bar}"
          state.display( STDOUT, "#{indent}| " )
       end
@@ -223,8 +230,9 @@ module Interpreter
       #  - be sure to set the TokenStream the way you want it before calling
       #  - adds the Correction to the pending_correction list
       
-      def correct( insertion_token, deletion_token )
-         correction = Correction.new( insertion_token, deletion_token, self )
+      def correct( insertion_token, deletion_token, context_correction, recovery_stop )
+         correction = Correction.new( insertion_token, deletion_token, self, context_correction )
+         correction.situation.recovery_stop = recovery_stop
          @pending_corrections << correction
          
          return correction

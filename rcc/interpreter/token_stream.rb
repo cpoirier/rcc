@@ -29,21 +29,31 @@ module Interpreter
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
-
-      def initialize( lexer, start_position = 0, seed_tokens = [] )
-         @lexer            = lexer             # The Lexer we'll use to produce our Tokens
-         @start_position   = start_position    # The first position to read from the lexer
-         @current_position = start_position    # The next position to read from the lexer
-         @seed_tokens      = seed_tokens       # A set of (possibly faked) Tokens to be produced before reading from the lexer
+    
+      attr_reader :start_sequence_number
+      attr_reader :sequence_number
+    
+      def initialize( lexer, start_position = 0, seed_tokens = [], start_sequence_number = 0 )
+         @lexer            = lexer                   # The Lexer we'll use to produce our Tokens
+         @start_position   = start_position          # The first position to read from the lexer
+         @current_position = start_position          # The next position to read from the lexer
+         @seed_tokens      = seed_tokens             # A set of (possibly faked) Tokens to be produced before reading from the lexer
+         
+         @start_sequence_number = start_sequence_number   # The sequence number at which our Tokens start
+         @sequence_number       = start_sequence_number   # A "sequence number" to be assigned to Tokens we generate
 
          #
          # We tell our seed tokens apart from our real tokens by using a negative rewind position that indicates
-         # the @seed_token number.
+         # the @seed_token number.  While we're at it, assign the sequence numbers, as they will not change for
+         # the seed tokens.
          
          number = 1
+         sequence_number = @sequence_number
          @seed_tokens.each do |seed_token|
             seed_token.rewind_position = -number
-            number += 1
+            seed_token.sequence_number = sequence_number
+            number          += 1
+            sequence_number += 1
          end
          
          @unread_seed_tokens = [] + @seed_tokens
@@ -58,6 +68,7 @@ module Interpreter
       
       def restart()
          @current_position   = @start_position
+         @sequence_number    = @start_sequence_number
          @unread_seed_tokens = [] + @seed_tokens 
          
          @last_read = nil
@@ -80,6 +91,8 @@ module Interpreter
             @unread_seed_tokens = @seed_tokens.slice( (-token.rewind_position - 1)..-1 )
             @current_position = @start_position
          end
+         
+         @sequence_number = token.sequence_number
       end
       
       
@@ -101,6 +114,8 @@ module Interpreter
             end
             @current_position = @start_position
          end
+
+         @sequence_number = token.sequence_number + 1
       end
           
       
@@ -113,6 +128,8 @@ module Interpreter
          if @unread_seed_tokens.empty? then
             @last_read = @lexer.next_token( @current_position, lexer_plan, explain_indent )
             @last_read.rewind_position = @current_position
+            @last_read.sequence_number = @sequence_number
+            @sequence_number += 1
             @current_position = @lexer.position
          else
             @last_read = @unread_seed_tokens.shift
@@ -138,7 +155,8 @@ module Interpreter
       #  - does not advance the position of the TokenStream
       
       def peek_after( token, lexer_plan, explain_indent = nil )
-         position = @current_position
+         position        = @current_position
+         sequence_number = @sequence_number
 
          if token.nil? then
             unless @unread_seed_tokens.empty?
@@ -166,6 +184,8 @@ module Interpreter
             else
                position = token.start_position + token.length
             end
+
+            sequence_number = token.sequence_number + 1
          end
          
          
@@ -174,6 +194,7 @@ module Interpreter
          
          token = @lexer.next_token( position, lexer_plan, explain_indent )
          token.rewind_position = position
+         token.sequence_number = sequence_number
          
          return token
       end
@@ -190,9 +211,11 @@ module Interpreter
          if at_token.nil? then
             token = @lexer.locate_token( Token.fake(type) )
             token.rewind_position = @current_position
+            token.sequence_number = @sequence_number
          else
             token = Token.fake( type, at_token.start_position, at_token.line_number, at_token.column_number, at_token.source_descriptor )
             token.rewind_position = at_token.rewind_position
+            token.sequence_number = at_token.sequence_number
          end
          
          return token
@@ -206,7 +229,7 @@ module Interpreter
       #  - you shouldn't try to rewind it past its start point 
       
       def cover( seed_tokens = [] )
-         return TokenStream.new( @lexer, @current_position, seed_tokens + @unread_seed_tokens )
+         return TokenStream.new( @lexer, @current_position, seed_tokens + @unread_seed_tokens, @sequence_number )
       end
 
 

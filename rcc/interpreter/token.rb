@@ -22,6 +22,7 @@ module Interpreter
    class Token < Model::Token
       
       attr_accessor :rewind_position
+      attr_accessor :sequence_number
       attr_reader   :start_position
       attr_writer   :faked
       
@@ -29,6 +30,7 @@ module Interpreter
          @rewind_position = start_position
          @start_position  = start_position
          @faked           = faked
+         @sequence_number = nil
          super( line_number, column_number, source_descriptor, type, nil )
          
          return self
@@ -87,8 +89,8 @@ module Interpreter
          
          extra_symbol_chars = symbol_chars.length - intersection.length
          extra_token_chars  = token_chars.length  - intersection.length
-         
-         return (extra_symbol_chars + extra_token_chars > 2)
+
+         return (extra_symbol_chars + extra_token_chars <= 2)
       end
       
       

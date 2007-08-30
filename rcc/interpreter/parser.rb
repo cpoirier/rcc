@@ -14,6 +14,7 @@ require "#{$RCCLIB}/interpreter/situation.rb"
 require "#{$RCCLIB}/interpreter/error.rb"
 require "#{$RCCLIB}/interpreter/csn.rb"
 require "#{$RCCLIB}/interpreter/asn.rb"
+require "#{$RCCLIB}/util/tiered_queue.rb"
 
 
 module RCC
@@ -37,9 +38,10 @@ module Interpreter
       #  - repair_search_tolerance is used to limit recursion in discover_repair_options()
       
       def initialize( parser_plan, token_stream, build_ast = true )
-         @parser_plan     = parser_plan
-         @build_ast       = build_ast
-         @start_situation = Situation.new( token_stream, @parser_plan.state_table[0] )
+         @parser_plan         = parser_plan
+         @build_ast           = build_ast
+         @start_situation     = Situation.new( token_stream, @parser_plan.state_table[0] )
+         @recovery_signatures = {}
       end
             
 
@@ -50,7 +52,7 @@ module Interpreter
       
       def go( explain_indent = nil )
          attempt_queue    = [@start_situation]
-         correction_queue = []
+         correction_queue = Util::TieredQueue.new( 5 )
          recovery_queue   = []
          pending_queue    = []
          in_recovery      = false
@@ -98,16 +100,19 @@ module Interpreter
          STDOUT.puts "#{explain_indent}===> ERROR RECOVERY BEGINNING" 
          
          start_time = Time.now()
-         until recovery_queue.empty?
+         until recovery_queue.empty? # or Time.now() - start_time > 3
             situation         = recovery_queue.shift
             attempt_situation = nil
-            correction_queue  = find_error_corrections( situation, explain_indent )
             
-            until correction_queue.empty?
+            correction_queue.clear
+            correction_queue.queue_all( find_error_corrections(situation, nil, explain_indent) ) { |correction| correction.quality }
+            
+            until correction_queue.empty? #  or Time.now() - start_time > 3
                correction = correction_queue.shift
+               correction.situation.reset_recovery_stop
                attempt_queue.clear
                
-               if correction.situation.error_count > error_limit then
+               if correction.error_depth > error_limit then
                   correction.discard()
                   next
                end
@@ -133,7 +138,7 @@ module Interpreter
                   
                      if correction.apply(self, explain_indent) then
                         correction.accept()
-                        error_limit = min( correction.situation.error_count, error_limit )
+                        error_limit = min( correction.error_depth, error_limit )
 
                      #
                      # Otherwise, we look for correction options for the failed correction.  If we find some, we add
@@ -142,29 +147,24 @@ module Interpreter
                      # the chain, closing off dead branches of the correction tree.
 
                      else
-
+                        STDERR.puts "correction failed for #{correction.inserted_token.description}" unless correction.inserted_token.nil?
+                        
                         #
                         # When we are done here, the next step will be to pick those branches of the correction tree that
                         # have the fewest errors.  Therefore, we can save work by cutting off any branch that already 
                         # has more errors than the best solutions we've already found.  This optimization can save a 
                         # great deal of work.
 
-                        error_count = correction.situation.error_count
-                        if error_count > error_limit then
+                        if correction.error_depth > error_limit then
                            correction.discard()
                         else
-                           corrections = find_error_corrections( correction.situation, explain_indent )
+                           STDERR.puts "checking for corrections"
+                           corrections = find_error_corrections( correction.situation, correction, explain_indent )
                            if corrections.empty? then
                               correction.discard()
                            else
-                              if error_count > 2 then
-                                 corrections.reverse.each do |child_correction|
-                                    correction_queue.push( child_correction )
-                                 end
-                              else
-                                 corrections.reverse.each do |child_correction|
-                                    correction_queue.unshift( child_correction )
-                                 end
+                              corrections.reverse.each do |child_correction|
+                                 correction_queue.insert( child_correction, child_correction.quality )
                               end
                            end
                         end
@@ -246,6 +246,7 @@ module Interpreter
       #
       # parse()
       #  - applies the Grammar to the inputs and builds a generic AST
+      #  - stops via an exception when an branch point is reached (error or attempt)
       #  - returns the true if the parse succeeded
       #  - situation is optional -- skip it if you aren't passing one
       
@@ -376,7 +377,7 @@ module Interpreter
       #  - looks for and constructs Corrections for the error in the supplied Situation
       #  - BEWARE: the supplied Situation will unwound (by unwind()) in the process
       
-      def find_error_corrections( situation, explain_indent )
+      def find_error_corrections( situation, context_correction, explain_indent )
          
          corrections = []
          
@@ -387,18 +388,25 @@ module Interpreter
          # for correction analysis.  Our caller (generally drive()) will restart the parse in each Correction we
          # produce.  Any child parse that succeeds is in the running for error reporting.
          
+         STDERR.puts "BEFORE #{situation.recovery_stop}, #{situation.la().sequence_number - 8}, #{situation.la().description}"
+         recovery_stop = max( situation.recovery_stop, situation.la().sequence_number - 8 )
+         
          begin
             situation.unwind do |state, tokens_popped|
                state, next_token, token_type = situation.look_ahead()
-               
+         
+               STDERR.puts "#{situation.object_id}: rewind_limit #{recovery_stop}; current #{next_token.sequence_number}; tos #{situation.node_stack[-1].first_token.sequence_number}"
+
                #
                # We don't want to error correct immediately after an error correction.  correction_worth_trying?()
                # filters out a lot of such problems, but not all.  So if either the next token or the last token 
                # was faked, we generate no more error corrections for this situation (a previous one will be 
                # dealing with it).
                
+               break if next_token.sequence_number < situation.recovery_stop 
                break if next_token.faked? or (situation.node_stack[-1].token_count == 1 and situation.node_stack[-1].first_token.faked?)
-               
+            
+               STDERR.puts "STILL HERE"
                
                #
                # Options 1 & 2: Look for insertion/substitution corrections.
@@ -417,18 +425,22 @@ module Interpreter
                
                   situation.position_before( next_token )
                   if insertion_worth_trying?( situation, action, fake_token ) then
-                     corrections << situation.correct( fake_token, nil )
+                     # STDERR.puts "considering #{fake_token.description} insertion before #{next_token.description}"
+                     corrections << situation.correct( fake_token, nil, context_correction, recovery_stop )
                   end
 
                   #
                   # Option 2: replace next_token with one of our known valid alternatives, provided the replacement 
                   # is similar to what the user actually wrote.
                
+                  # STDERR.puts "checking #{next_token.description} similar to #{fake_token.description}"
                   if next_token.similar_to?(leader_type) then
+                     # STDERR.puts "similar"
                      situation.position_after( next_token )
                      if insertion_worth_trying?( situation, action, fake_token )
+                        # STDERR.puts "considering #{fake_token.description} substituion for #{next_token.description}"
                         situation.position_after( next_token )
-                        corrections << situation.correct( fake_token, next_token )
+                        corrections << situation.correct( fake_token, next_token, context_correction, recovery_stop )
                      end
                   end
                end
@@ -440,12 +452,13 @@ module Interpreter
                follow_token = situation.la( nil, nil, next_token )
                if state.actions.member?(follow_token.type) then 
                   situation.position_before( follow_token )
-                  corrections << situation.correct( nil, situation.consume() )
+                  corrections << situation.correct( nil, situation.consume(), context_correction, recovery_stop )
                end
             end
             
          rescue TokenStream::PositionOutOfRange 
-            # no op -- we'll just stop loking
+            STDERR.puts "bailing out"
+            # no op -- we'll just stop looking
          end
          
          return corrections
