@@ -40,53 +40,77 @@ module Interpreter
       def initialize( parser_plan, token_stream, build_ast = true )
          @parser_plan         = parser_plan
          @build_ast           = build_ast
-         @start_situation     = Situation.new( token_stream, @parser_plan.state_table[0] )
-         @recovery_signatures = {}
+         @current_position    = @start_position
+         @work_queue          = []
+         @pre_error_positions = []
       end
+      
+      
+      #
+      # ::describe_type()
+      
+      def self.describe_type( type )
+         return type.nil? ? "$" : (type.is_a?(Symbol) ? ":#{type}" : "'#{type.gsub("\n", "\\n")}'") 
+      end
+      
+      
             
 
 
       #
       # go()
-      #  - go() drives the parse() through error corrections as far as it can go
+      #  - go() drives the parser through attempts and error corrections as far as it can go
+      #  - error corrections will not be run indefinitely
       
-      def go( explain_indent = nil )
-         attempt_queue    = [@start_situation]
-         correction_queue = Util::TieredQueue.new( 5 )
-         recovery_queue   = []
-         pending_queue    = []
-         in_recovery      = false
-         error_limit      = 1000000000
-
+      def go( recovery_time_limit = 3, explain_indent = nil )
+         solution       = nil
+         recovery_queue = []
+         
 
          #
-         # First, run the parse.  On an Attempt action, perform_action() will generate a list of Situations to
-         # try, attach them to the context Situation, and throw a AttemptsPending exception.  We catch it and
-         # reverse the Situations onto our attempt_queue.  By inserting them in reverse order at the front of
-         # the queue, we maintain depth-first ordering we want.  We are done immeditaely if we find a valid
-         # parse.
+         # First, run the initial parse.  With a bit of luck, there'll be no errors, and we can just return 
+         # the solution: no fuss, no muss.
          
          3.times { STDOUT.puts "" }
-         STDOUT.puts "#{explain_indent}===> PARSING BEGINNING"
+         STDOUT.puts "#{explain_indent}===> PARSING BEGINNING" 
 
-         until attempt_queue.empty?
-            attempt = attempt_queue.shift
+         begin
+            solution = parse_until_error( StartPosition.new(@parser_plan.state_table[0], token_stream), explain_indent )
+            return solution
+         rescue ParseError => e
+            recovery_queue << e.position
+         end
+
+         STDOUT.puts "#{explain_indent}===> PARSING FAILED" 
+         
+         
+         #
+         # If we are still here, it's time to start error recovery.  For each recovery_queue position, we'll
+         # look for and apply Corrections in depth-first order.  We'll give it three seconds to find the best
+         # corrections, and the underlying system will direct this toward real solutions by use of position
+         # signatures on the position recovery context to shortcut out of pointless corrections.
+         
+         5.times { STDOUT.puts "" }
+         STDOUT.puts "#{explain_indent}===> ERROR RECOVERY BEGINNING" 
+      
+         error_limit = 1000000000
+         start_time  = Time.now()
+         
+         until recovery_queue.empty? or Time.now() - start_time > recovery_time_limit
+            recovery_position = recovery_queue.shift
+            correction_queue  = find_error_corrections( recovery_position, explain_indent ) 
             
-            begin
-               if parse( attempt, explain_indent ) then
-                  return attempt.solution
-               else
-                  recovery_queue << attempt
-               end
-               
-            rescue InvalidReduce
-               attempt.discard()
-            rescue AttemptsPending
-               attempt.attempts.reverse.each do |child_attempt|
-                  attempt_queue.unshift child_attempt
-               end
+            until correction_queue.empty? or Time.now() - start_time > recovery_time_limit
+               correction = correction_queue.shift
+               if correction_queue.error_depth > error_limit then
+                  correction
             end
          end
+
+         STDOUT.puts "#{explain_indent}===> ERROR RECOVERY COMPLETE" 
+         
+         
+         
 
          
          #
@@ -240,39 +264,157 @@ module Interpreter
     #---------------------------------------------------------------------------------------------------------------------
     # Mid-level Machinery
     #---------------------------------------------------------------------------------------------------------------------
+
+    protected
     
-
-
       #
-      # parse()
+      # parse_until_error()
       #  - applies the Grammar to the inputs and builds a generic AST
-      #  - stops via an exception when an branch point is reached (error or attempt)
-      #  - returns the true if the parse succeeded
-      #  - situation is optional -- skip it if you aren't passing one
+      #  - manages FlowControl through Attempts
+      #  - raises FlowControl for errors
+      #  - returns any solution Position found
       
-      def parse( situation = nil, explain_indent = nil )
-         
-         situation = @start_situation if situation.nil?
+      def parse_until_error( position, explain_indent = nil )
+         solution   = nil
+         work_queue = [position]
          
          #
-         # Process actions until a solution is found.
-
-         until situation.accepted? or situation.failed?
+         # We want to avoid deep recursion for attempts.  Life would be a lot easier if we didn't care, but we do.
+         # So, the underlying structures will throw FlowControl exceptions we use to manage our place.  We keep track
+         # of which AttemptPosition is in which set by use of an attempt_depth marking, which we maintain.
+         #
+         # Error recovery with attempts is tricky, because if something goes wrong, we'll have several positions
+         # from which to start error recovery (the terminal position for each attempt in the set).  That said, we 
+         # don't want to keep those positions as suspect forever -- once one of the attempts succeeds, we're probably 
+         # done with the alternate recovery positions produced by that attempt set.  
+         #
+         # We manage error recovery options by accumulating recovery positions in our position stack.  After an attempt 
+         # fails, we add its last-processed position and any of its alternate recovery positions to the next AttemptPosition
+         # as alternate recovery positions.  If we run out of attempts before finding a solution, we raise a ParseError
+         # for the last position tried.  The error recovery code will then ensure that all our alternates are considered, 
+         # when the time comes.
+         #
+         # This method works great for AttemptPositions that launch with a Shift.  The AttemptPosition will be on the
+         # stack of active positions until it is Reduced off, indicating that we have successfully left the attempt
+         # and are on to bigger things.  At this point, all the alternate recovery positions are irrelevant, and naturally 
+         # fall from our attention when the AttemptPosition leaves the stack.  The problem is that if the AttemptPosition 
+         # launches with a Reduce, it *immediately* leaves the stack.  Oops.  So, in this one case, we'll transfer any 
+         # alternate recovery positions to the resulting position.  That position will stay on the stack until it is reduced
+         # off, and that should be long enough to get us past any need for the alternate recovery positions from the set.
+         #
+         # Whew.  My brain hurts.
+         
+         until solution.exists? or work_queue.empty?
+            position      = work_queue.shift
+            attempt_depth = 0
             
             #
-            # Get the state and lookahead.
+            # If the current position is an AttemptPosition, we have some setup work to do.  See the notes above
+            # for details.  Note that we shoud never get a FlowControl exception from our launch action, as the
+            # thing that created the AttemptPosition already verified the lookahead.
             
-            state, next_token, token_type = situation.look_ahead( nil, explain_indent )
-            situation.display( explain_indent, state, next_token ) unless explain_indent.nil?
+            if position.is_a?(AttemptPosition) then
+               attempt_depth = position.attempt_depth
+               next_position = perform_action( position, position.launch_action, position.next_token, explain_indent )
+               
+               #
+               # Shift actions will make a new position with the old position as context.  Reduce actions will
+               # make a new position without the old position as context.  In the latter case, we need to transfer
+               # our recovery suspicions to the new position, so they don't immediately fall off the stack.
+               
+               if next_position.context.object_id != position.object_id then
+                  next_position.alternate_recovery_positions.concat( position.alternate_recovery_positions )
+               end
+               
+               position = next_position
+            end
+            
 
+            #
+            # So, we're all set and ready to go.  Parse until some FlowControl indicates we have work to do.
+            
+            begin
+               solution = parse_until_branch_point( position, explain_indent )
+               
+            #
+            # AttemptsPending is thrown to send us a new batch of AttemptPositions.  We reverse them onto the head of
+            # our work_queue in order to process in the "natural" order.
+            
+            rescue AttemptsPending => e
+               e.attempts.reverse.each do |child_attempt|
+                  child_attempt.attempt_depth = attempt_depth + 1
+                  work_queue.unshift child_attempt
+               end
+               
+            #
+            # ParseFailed is thrown if the parse encountered an error (ParseError), or if the parser attempted
+            # to Reduce past an AttemptPosition with something other than the exected Productions (AttemptFailed).
+            # This latter one generally occurs when the code parsed, but was reduced by a Production from one of our 
+            # peer Attempts.
+            
+            rescue ParseFailed => e
+               attempt_context = e.position.attempt_context
+               
+               #
+               # If there is no attempt_context, all attempts have been successful, and our work_queue is irrelevant.
+               # Re-raise the error.  Note that AttemptFailed will never trigger this condition.
+               
+               raise if attempt_context.nil?
+               
+               #
+               # Discard things from our work_queue that were made irrelevant by the actual parse -- ie. any peers to 
+               # attempts that succeeded.  We need the next thing on the stack (if anything) to be the AttemptPosition 
+               # to try next (a peer in this set, or something in a context set).  
+               
+               work_queue.shift until work_queue.empty? or work_queue[0].attempt_depth <= attempt_context.attempt_depth
+               
+               #
+               # If the work_queue is empty, we failed.  Raise an error.
+               
+               raise ParseError.new( e.position ) if work_queue.empty?
+               
+               #
+               # Otherwise, the error becomes an alternate recovery position for the next work_queue position.
+               
+               work_queue[0].alternate_recovery_positions.concat( e.position.alternate_recovery_positions )
+               work_queue[0].alternate_recovery_positions << e.position
+            end
+         end
+         
+         return solution
+      end
+      
+      
+
+      #
+      # parse_until_branch_point()
+      #  - applies the Grammar to the inputs and builds a generic AST
+      #  - raises FlowControl on branch points
+      #  - returns any solution Position found
+      
+      def parse_until_branch_point( position, explain_indent = nil )
+         solution = nil
+         
+         #
+         # Process actions until a solution is found or an exception is raised (AttemptsPending, for instance).
+         
+         while true
+            
+            #
+            # Get the lookahead.
+            
+            state      = @current_position.state
+            next_token = @current_position.la( explain_indent )
+            
+            @current_position.display( explain_indent, next_token ) unless explain_indent.nil?
+            
             #
             # Select the next action.
             
-            action = state.actions[token_type]
-            
+            action = state.actions[next_token.type]
             unless explain_indent.nil? then
                STDOUT.puts "#{explain_indent}| #{state.lookahead_explanations}"
-               STDOUT.puts "#{explain_indent}| Action analysis for lookahead #{Token.description(next_token)}"
+               STDOUT.puts "#{explain_indent}| Action analysis for lookahead #{next_token.description}"
 
                if state.explanations.nil? then
                   bug( "no explanations found" )
@@ -287,76 +429,103 @@ module Interpreter
                         
             #
             # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
+            # perform_action() raises an AttemptsPending exception if it encounters a branch point -- we pass it
+            # through to our caller.
 
-            if !action.nil? then
-               perform_action( action, situation, next_token, token_type, explain_indent )
+            if action.exists? then
+               if action.is_a?(Plan::Actions::Accept) then
+                  solution = position
+               else
+                  position = perform_action( position, action, next_token, explain_indent )
+                  
+                  #
+                  # Check/register the position signature, to prevent pointless error corrections.  That said,
+                  # we don't want to do any of this work until we've actually encountered an error, as it could
+                  # be costly.
+                  
+                  recovery_context = position.recovery_context
+                  if recovery_context.exists? then
+                     if recovery_context.position_seen?(position) then
+                        raise PositionSeen.new( position )
+                     else
+                        recovery_context.mark_position_seen( position )
+                     end
+                  else
+                     @pre_error_positions << position
+                  end
+               end
             else
                unless explain_indent.nil? then
                   STDOUT.puts "#{explain_indent}===> ERROR DETECTED: cannot use #{next_token.description}"
                   explain_indent += "   "
                end
 
-               situation.error = Error.new( next_token, state.actions.keys.collect{|t| situation.token_stream.fake_token(t, next_token)} )
+               raise ParseError.new( position )
             end
+            
          end
          
-         return situation.accepted?
+         return solution
       end
       
 
-
-    protected
-      
       #
       # perform_action()
-      #  - performs a single action against the current Parser state
+      #  - performs a single action against a Position 
+      #  - returns the next Position to process, or nil when the last position was accepted
+      #  - raises AttemptsPendings if the parse hit a branch point
       
-      def perform_action( action, situation, next_token, token_type, explain_indent )
+      def perform_action( position, action, next_token, explain_indent )
+         next_position = nil
+         
          case action
             when Plan::Actions::Shift
-               situation.shift( next_token, action.to_state, explain_indent )
-               situation.position_after( next_token )
+               STDOUT.puts "#{explain_indent}===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" unless explain_indent.nil?
+               next_position = position.push( next_token, action.to_state )
                
             when Plan::Actions::Reduce
-               raise InvalidReduce.new() unless situation.reduce(action.by_production, @build_ast, explain_indent)
+               production = action.by_production
+               STDOUT.puts "#{explain_indent}===> REDUCE #{production.to_s}" unless explain_indent.nil?
                
-            when Plan::Actions::Accept
-               situation.accept( explain_indent )
+               #
+               # Pop the right number of nodes.  Position.pop() may through an exception if it detects an error.  
+               # We pass it through to our caller. 
                
-            when Plan::Actions::Attempt
-               first = true
-               child_indent = explain_indent.nil? ? nil : "#{explain_indent}   "
-               
-               failed = true
-               action.actions.each do |attempt_action|
-                  unless explain_indent.nil? then
-                     if first then
-                        first = false
-                     else
-                        STDOUT.puts "#{explain_indent}" 
-                        STDOUT.puts "#{explain_indent}" 
-                        STDOUT.puts "#{explain_indent}<=== RETURN"
-                     end
-
-                     STDOUT.puts "#{explain_indent}" 
-                     STDOUT.puts "#{explain_indent}" 
-                     situation.display( explain_indent ) unless explain_indent.nil?
-                     STDOUT.puts "#{explain_indent}===> ATTEMPT #{attempt_action.to_s}"
-                  end
-
-                  #
-                  # Set up a Situation to run our attempt and feed in the selected first action.
-                  
-                  attempt_situation = situation.cover_for_attempt( attempt_action.is_a?(Plan::Actions::Shift) ? attempt_action.valid_productions : nil )
-                  perform_action( attempt_action, attempt_situation, next_token, token_type, child_indent ) 
-                  situation.attempts << attempt_situation
+               nodes = []
+               top_position = position
+               production.symbols.length.times do |i|
+                  nodes.unshift position.node
+                  position = position.pop( production, top_position )
                end
                
-               raise AttemptsPending.new( situation )
+               #
+               # Get the goto state from the now-top-of-stack State: it will be the next state.
+               
+               goto_state = position.state.transitions[production.name]
+               STDOUT.puts "#{explain_indent}===> PUSH AND GOTO #{goto_state.number}" unless explain_indent.nil?
+
+               next_position = position.push( build_ast ? ASN.new(production, nodes[0].first_token, nodes) : CSN.new(production.name, nodes), goto_state )
+               
+            when Plan::Actions::Attempt
+               
+               #
+               # position.fork() for each of our options and feed in the selected first action.  We can rely on this
+               # never being another Attempt action.  Once all are set up, raise an AttemptsPending exception to 
+               # pass the list back to somebody who can do something about it.  Doing things this way helps us prevent
+               # stack overflow from deep recursion.
+               
+               attempts = action.actions.collect do |attempt_action|
+                  valid_productions = attempt_action.is_a?(Plan::Actions::Shift) ? attempt_action.valid_productions : nil
+                  position.fork( attempt_action, valid_productions )
+               end
+               
+               raise AttemptsPending.new( attempts )
             
             else
                nyi "support for #{action.class.name}"
          end
+         
+         return next_position
       end
 
 
@@ -395,7 +564,7 @@ module Interpreter
             situation.unwind do |state, tokens_popped|
                state, next_token, token_type = situation.look_ahead()
          
-               STDERR.puts "#{situation.object_id}: rewind_limit #{recovery_stop}; current #{next_token.sequence_number}; tos #{situation.node_stack[-1].first_token.sequence_number}"
+               STDERR.puts "#{situation.object_id}: rewind_limit #{recovery_stop}; current #{next_token.sequence_number}; tos #{situation.stack[-1].node.first_token.sequence_number}"
 
                #
                # We don't want to error correct immediately after an error correction.  correction_worth_trying?()
@@ -404,7 +573,7 @@ module Interpreter
                # dealing with it).
                
                break if next_token.sequence_number < situation.recovery_stop 
-               break if next_token.faked? or (situation.node_stack[-1].token_count == 1 and situation.node_stack[-1].first_token.faked?)
+               break if next_token.faked? or (situation.stack[-1].node.token_count == 1 and situation.stack[-1].node.first_token.faked?)
             
                STDERR.puts "STILL HERE"
                
@@ -415,7 +584,7 @@ module Interpreter
                symbols       = state.actions.keys
                symbols.each do |leader_type|
                   next if leader_type == token_type
-                  next if leader_type == situation.node_stack[-1].type
+                  next if leader_type == situation.stack[-1].node.type
                   action = state.actions[leader_type]
                
                   fake_token = situation.fake_token( leader_type, next_token )
@@ -479,7 +648,7 @@ module Interpreter
          # Shift is easy.  Reduce is moderately easy.  Attempt starts to get complicated.  We'll return
          # as soon as things get too complicated.
          
-         top_of_stack = situation.state_stack.length - 1
+         top_of_stack = situation.stack.length - 1
 
          until action.nil?
             case action
@@ -501,7 +670,7 @@ module Interpreter
                   production    = action.by_production
                   count         = production.symbols.length
                   top_of_stack -= count
-                  new_top_state = situation.state_stack[top_of_stack]
+                  new_top_state = situation.stack[top_of_stack].state
                   action        = nil
 
                   if new_top_state.transitions.member?(production.name) then
@@ -533,109 +702,98 @@ module Interpreter
       end
       
 
-      #
-      # DISCARDED in favour of new strategy.   To be deleted after SVN commit.
-      # #
-      # # discover_repair_insertions()
-      # #  - searches for repair options in the current and successive states (by recursion)
-      # #  - a repair option must move the parse forward at least one real token to be worth trying
-      # #  - recursion depth is limited by @repair_search_tolerance
-      # #  - adds RepairAttempt objects to @repair_attempts
-      #       
-      # def discover_repair_insertions( state, situation, next_token_type, breadcrumbs = [] )
-      #    
-      #    #
-      #    # We will check each action for a result that will get the parse moving forward again.  If we find one,
-      #    # we add it to the list.  If we don't, and we haven't reached our tolerance, we try another insertion.
-      #    
-      #    state.actions.each do |insertion_type, action|
-      #       discovered = false
-      #       next_state = nil
-      #       
-      #       case action
-      #          when Plan::Actions::Shift
-      #             process_repair_insertion( action.to_state, insertion_type, next_token_type, breadcrumbs )
-      #          
-      #          when Plan::Actions::Reduce
-      #             production    = action.by_production
-      #             count         = production.symbols.length
-      #             new_top_state = @state_stack[-(count+1)]
-      #             goto_state    = new_top_state.transitions[production.name]
-      # 
-      #             process_repair_insertion( goto_state, insertion_type, next_token_type, breadcrumbs )
-      #             
-      #          when Plan::Actions::Accept
-      #             # we can't accept while we have pending lookahead
-      #          
-      #          when Plan::Actions::Attempt
-      #             action.actions.each do |attempt_action|
-      #                case attempt_action
-      #                   when Plan::Actions::Shift
-      #                      process_repair_insertion( action.to_state, insertion_type, next_token_type, breadcrumbs )
-      # 
-      #                   when Plan::Actions::Reduce
-      #                      production    = action.by_production
-      #                      count         = production.symbols.length
-      #                      new_top_state = @state_stack[-(count+1)]
-      #                      goto_state    = new_top_state.transitions[production.name]
-      # 
-      #                      process_repair_insertion( goto_state, insertion_type, next_token_type, breadcrumbs )
-      #                   else
-      #                      nyi "support for #{action.class.name}"
-      #                end
-      #             end
-      #       
-      #          else
-      #             nyi "support for #{action.class.name}"
-      #       end
-      #    end
-      #    
-      #    return done
-      # end
-      # 
-      # 
-      # #
-      # # process_repair_insertion()
-      # #  - helper for discover_repair_insertions() that either builds a RepairAttempt or recurses back into 
-      # #    discover_repair_insertions()
-      # #  - recursion is limited by @repair_search_tolerance
-      # 
-      # def process_repair_insertion( next_state, situation, insertion_type, next_token_type, breadcrumbs )
-      #    if next_state.actions.member?(next_token_type) then
-      #       @repair_insertions << breadcrumbs
-      #    else
-      #       unless breadcrumbs.length >= @repair_search_tolerance
-      #          discover_repair_insertions( next_state, next_token_type, breadcrumbs + [insertion_type] )
-      #       end
-      #    end
-      # end
 
 
 
 
 
     #---------------------------------------------------------------------------------------------------------------------
-    # Error Classes
+    # Flow Control Exceptions
     #---------------------------------------------------------------------------------------------------------------------
     
     protected
     
-      class ParserFailure < ::Exception
+      class FlowControl < ::Exception
       end
       
-      class InvalidReduce < ParserFailure
-      end
       
-      class UnableToRepair < ParserFailure
-      end
+      #
+      # AttemptsPending
+      #  - raised when parse_until_branch_point() reaches a branch point
       
-      class AttemptsPending < ParserFailure
-         attr_reader :situation
+      class AttemptsPending < FlowControl
+         attr_reader :attempts
          
-         def initialize( situation )
-            @situation = situation
+         def initialize( attempts )
+            @attempts = attempts
          end
       end
+      
+      
+      #
+      # ParseFailed
+      #  - base class for things that can indicate parsing could not proceed
+      
+      class ParseFailed < FlowControl
+         attr_reader :position
+         
+         def initialize( position )
+            @position = position
+         end
+      end
+      
+      
+      #
+      # AttemptFailed
+      #  - raised when an Attempt branch has failed due to an invalid reduction
+      
+      class AttemptFailed < ParseFailed
+         attr_reader :actual_production
+         attr_reader :expected_productions
+         
+         def initialize( actual_production, expected_productions, top_position )
+            super( top_position )
+            
+            @actual_production    = actual_production
+            @exptected_production = expected_productions
+         end
+      end
+      
+      
+      #
+      # ParseError
+      #  - raised when an error is encountered
+      
+      class ParseError < ParseFailed
+      end
+      
+      
+      #
+      # UnrecoverableParseError
+      #  - raised when an error is encountered and can't be corrected
+      
+      class UnrecoverableParseError < ::Exception
+         attr_reader :parse_error
+         
+         def initialize( parse_error )
+            @parse_error = parse_error
+         end
+      end
+
+
+      #
+      # PositionSeen
+      #  - raised when a Position has already been seen during error recovery
+      
+      class PositionSeen < FlowControl
+         attr_reader :position
+         
+         def initialize( position )
+            @position = position
+         end
+      end
+      
+      
       
       
       

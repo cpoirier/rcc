@@ -12,35 +12,51 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
+module PositionMarkers
 
  
  #============================================================================================================================
- # class Error
- #  - records the data for a parse error we were unable to recover from
+ # class StartPosition
+ #  - a special Position marker that denotes the start position of the Parser
 
-   class Error < Exception
+   class StartPosition < GeneralPosition
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :bad_token
-      attr_reader :expected_tokens
-      
-      def initialize( bad_token, expected_tokens )
-         @bad_token         = bad_token
-         @expected_tokens   = expected_tokens
-      end
-      
-      def position() 
-         return bad_token.start_position
+      def initialize( state, token_stream )
+         super( nil, nil, state, token_stream )
       end
       
       
+      #
+      # error_context()
+      #  - StartPosition never has one
       
-   end # Error
+      def error_context()
+         return nil
+      end
+      
+      
+      #
+      # pop()
+      #  - tells this Position it is being "popped" from the working set
+      #  - returns our context Position
+      
+      def pop( production )
+         return @context
+      end
+      
+      
+      
+      
+   end # StartPosition
    
 
 
+end  # module PositionMarkers
 end  # module Interpreter
 end  # module Rethink
+
+

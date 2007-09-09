@@ -26,50 +26,56 @@ module Interpreter
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader   :node_stack
-      attr_reader   :state_stack
-      attr_reader   :solution
-      attr_accessor :error
-      attr_reader   :pending_corrections
-      attr_reader   :corrections
-      attr_reader   :context_correction
-      attr_reader   :token_stream
-      attr_reader   :attempts
-      attr_accessor :recovery_stop
+      attr_reader   :stack                # a stack of StackFrames, representing our current state
+      attr_reader   :token_stream         # the TokenStream from whence we get our Tokens
+      attr_reader   :solution             # the CSN/ASN produced by Accept
+      attr_accessor :error                # the Error recording where our parse failed
+      attr_reader   :attempts             # if we hit an Attempt, a list of Situations that take over from us
+                                          
+      attr_reader   :context_correction   # if we were created to run an error recovery, this is the Correction that owns us
+      attr_reader   :corrections          # the Corrections we created to recover from @error
       
       def initialize( token_stream, context_or_start_state, expected_productions = nil, context_correction = nil ) 
+         
+         #
+         # Core state
+         
          @token_stream        = token_stream
-         @solution            = nil
-         @stop_node           = nil
-         @error               = nil
-         @pending_corrections = []
-         @corrections         = []
-         @attempts            = [] 
+         @solution            = nil         
+         @error               = nil         
+         @attempts            = []                    
          @context_correction  = context_correction
 
          if context_or_start_state.is_a?(Situation) then
-            @context       = context_or_start_state
-            @node_stack    = @context.node_stack.dup
-            @state_stack   = @context.state_stack.dup
-            @recovery_stop = @context.recovery_stop
-         else
-            @context       = nil
-            @node_stack    = []
-            @state_stack   = [ context_or_start_state ]
-            @recovery_stop = 0
+            @context = context_or_start_state
+            @stack   = @context.stack.dup
+         else        
+            @context = nil
+            @stack   = [ StackFrame.new(nil, context_or_start_state) ]
          end
-         
-         bug "WTF?" if @recovery_stop == 0 and !@context.nil?
+
+
+         #
+         # If started by an Attempt, our context is expecting us to reduce past our start point using some
+         # specific Productions.  If so, this is the list.
          
          @expected_productions = expected_productions
          if expected_productions.nil? then
-            @checked   = true
-            @committed = true
+            @checked   = true                   # If not checking, we'll consider ourselves already checked
+            @committed = true                   # If not checking, we'll consider our parse already committed
          else
-            @checked   = false
-            @check_at  = @node_stack.length
-            @committed = false
+            @checked   = false                  # Set true once we've found the reduce we care about
+            @check_at  = @stack.length          # We'll check the first time we reduce past this point in the stack
+            @committed = false                  # Set true once we've found a reduce from the expected_productions at the right point
          end
+
+
+         #
+         # Error correction support.
+         
+         @pending_corrections = []          
+         @corrections         = []
+
       end
       
       def error_count()
@@ -86,7 +92,7 @@ module Interpreter
       #  - returns true if this Situation has been accept()ed
       
       def accepted?()
-         return !@solution.nil?
+         return @solution.exists?
       end
       
       
@@ -95,7 +101,7 @@ module Interpreter
       #  - returns true if this Situation has encountered an error
       
       def failed?()
-         return !@error.nil?
+         return @error.exists?
       end
       
       
@@ -124,7 +130,7 @@ module Interpreter
       def display( indent, state = nil, next_token = nil )
          state, next_token = look_ahead() if state.nil? 
          
-         stack_description = @node_stack.collect{|node| node.description}.join( ", " )
+         stack_description = @stack.collect{|frame| frame.node.description}.join( ", " )
          stack_bar         = "=" * (stack_description.length + 9)
 
          STDOUT.puts "#{indent}"
@@ -154,7 +160,7 @@ module Interpreter
          expected_tokens = tokenize_types( expected_types )
          
          STDOUT.puts "#{explain_indent}===> UNEXPECTED END OF FILE; expected (one of): #{Token.description(expected_tokens)}" unless explain_indent.nil?
-         return add_error( eof_token, expected_tokens )
+         return set_error( eof_token, expected_tokens )
       end
       
       
@@ -166,7 +172,7 @@ module Interpreter
          expected_tokens = tokenize_types( expected_types )
          
          STDOUT.puts "#{explain_indent}===> ERROR: unexpected token: #{bad_token}; expected (one of): #{Token.description(expected_tokens)}" unless explain_indent.nil?
-         return add_error( bad_token, expected_tokens )
+         return set_error( bad_token, expected_tokens )
       end
       
       
@@ -230,9 +236,8 @@ module Interpreter
       #  - be sure to set the TokenStream the way you want it before calling
       #  - adds the Correction to the pending_correction list
       
-      def correct( insertion_token, deletion_token, context_correction, recovery_stop )
+      def correct( insertion_token, deletion_token, context_correction )
          correction = Correction.new( insertion_token, deletion_token, self, context_correction )
-         correction.situation.recovery_stop = recovery_stop
          @pending_corrections << correction
          
          return correction
@@ -294,7 +299,7 @@ module Interpreter
       # look_ahead()
       
       def look_ahead( state = nil, explain_indent = nil, relative_token = nil )
-         state = @state_stack[-1] if state.nil?
+         state = @stack[-1].state if state.nil?
          next_token = la( state, explain_indent, relative_token )
          return state, next_token, next_token.type
       end
@@ -305,7 +310,7 @@ module Interpreter
       #  - like look_ahead(), but only returns the Token
       
       def la( state = nil, explain_indent = nil, relative_token = nil )
-         state = @state_stack[-1] if state.nil?
+         state = @stack[-1].state if state.nil?
 
          unless explain_indent.nil?
             lexer_explanation = "Lexing with prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
@@ -328,7 +333,7 @@ module Interpreter
       # consume()
    
       def consume( state = nil, explain_indent = nil )
-         state = @state_stack[-1] if state.nil?
+         state = @stack[-1].stack if state.nil?
          return @token_stream.read( state.lexer_plan, explain_indent )
       end
     
@@ -381,8 +386,7 @@ module Interpreter
       def shift( node, to_state, explain_indent = nil )
          STDOUT.puts "#{explain_indent}===> SHIFT #{node.description} AND GOTO #{to_state.number}" unless explain_indent.nil?
          
-         @node_stack  << node      
-         @state_stack << to_state
+         @stack << StackFrame.new( node, to_state )
          
          return true
       end
@@ -399,7 +403,7 @@ module Interpreter
          #
          # If we are validating the production by which we reduce past our start point, check it now.
          
-         if !@checked and (@node_stack.length - count) < @check_at then
+         if !@checked and (@stack.length - count) < @check_at then
             @checked = true
             unless @expected_productions.member?( production ) 
                STDOUT.puts "#{explain_indent}===> REDUCE #{production.to_s} INVALID; RETURNING" unless explain_indent.nil?
@@ -415,19 +419,19 @@ module Interpreter
          
          STDOUT.puts "#{explain_indent}===> REDUCE #{production.to_s}" unless explain_indent.nil?
          
-         nodes = @node_stack.slice!(  -count..-1 )
-                 @state_stack.slice!( -count..-1 )
+         frames = @stack.slice!( -count..-1 )
+         nodes  = frames.collect{ |frame| frame.node }
       
          #
          # Get the goto state from the now-top-of-stack State: it will be the next state.
       
-         state = @state_stack[-1]
+         state = @stack[-1].state
          goto_state = state.transitions[production.name]
          
          STDOUT.puts "#{explain_indent}===> PUSH AND GOTO #{goto_state.number}" unless explain_indent.nil?
    
-         @node_stack  << (build_ast ? ASN.new(production, nodes[0].first_token, nodes) : CSN.new(production.name, nodes) )
-         @state_stack << goto_state
+         node = ( build_ast ? ASN.new(production, nodes[0].first_token, nodes) : CSN.new(production.name, nodes) )
+         @stack << StackFrame.new( node, goto_state )
          
          return true
       end
@@ -440,7 +444,7 @@ module Interpreter
       
       def accept( explain_indent = nil )
          STDOUT.puts "#{explain_indent}===> ACCEPT" unless explain_indent.nil?         
-         @solution = node_stack[-1]
+         @solution = stack[-1].node
          
          return true
       end
@@ -453,15 +457,18 @@ module Interpreter
       #  - note that you are essentially destroying the Situation by calling this
       
       def unwind()
-         popped_node = nil
          tokens_popped = 0
-         until @node_stack.empty?
-            @token_stream.position_before( popped_node.first_token ) unless popped_node.nil?
-            yield( @state_stack[-1], tokens_popped )
+         
+         until @stack.length == 0
+            yield( @stack[-1].state, tokens_popped )
             
-            @state_stack.pop
-            popped_node    = @node_stack.pop
-            tokens_popped += popped_node.token_count
+            if @stack.length == 1 then
+               break    # When we reach the start frame, we're done
+            else
+               popped_frame  = @stack.pop
+               tokens_popped = popped_frame.node.token_count
+               @token_stream.position_before( popped_frame.node.first_token )
+            end
          end
       end
       
@@ -477,12 +484,12 @@ module Interpreter
     protected
     
       #
-      # add_error()
-      #  - adds an error to the situation
+      # set_error()
+      #  - sets the error for this Situation, effectively marking it done
       
       def add_error( bad_token, expected_tokens )
          error = Error.new( bad_token, expected_tokens )
-         @local_errors << error
+         @error = error
          return error
       end
 

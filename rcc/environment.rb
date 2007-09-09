@@ -89,6 +89,10 @@
       def each()
          yield( self )
       end
+      
+      def exists?()
+         return !nil?()
+      end
    end
    
    class NilClass

@@ -31,7 +31,9 @@ module Interpreter
     #---------------------------------------------------------------------------------------------------------------------
     
       attr_reader :start_sequence_number
+      attr_reader :start_position
       attr_reader :sequence_number
+      attr_reader :current_position
     
       def initialize( lexer, start_position = 0, seed_tokens = [], start_sequence_number = 0 )
          @lexer            = lexer                   # The Lexer we'll use to produce our Tokens
@@ -81,6 +83,8 @@ module Interpreter
       #  - sets the position so that it is ready to re-lex the specified Token
       
       def position_before( token )
+         return if @current_position == token.rewind_position
+         
          @last_read = nil
          
          if token.rewind_position >= 0 then
@@ -101,21 +105,41 @@ module Interpreter
       #  - sets the position so that it is ready to lex the next Token
       
       def position_after( token )
+         next_position = token.rewind_position + token.length
+         return if @current_position == next_position
+         
          @last_read = nil
 
          if token.rewind_position >= 0 then
             raise PositionOutOfRange.new() if token.rewind_position < @start_position
-            @current_position = token.start_position + token.length
+            @current_position = next_position
          else
             if @unread_seed_tokens.empty? or -token.rewind_position + 1 != -@unread_seed_tokens[0].rewind_position then
                raise PositionOutOfRange.new() unless @seed_tokens.member?(token)
                @unread_seed_tokens = @seed_tokens.slice( (-token.rewind_position)..-1 )
-               # assert( !@unread_seed_tokens.nil?, "wtf: #{token.rewind_position}; #{@seed_tokens.length}")
             end
             @current_position = @start_position
          end
 
          @sequence_number = token.sequence_number + 1
+      end
+      
+      
+      #
+      # set_position()
+      
+      def set_position( position )
+         @last_read = nil
+         
+         if position >= 0 then
+            raise PositionOutOfRange.new() if position < @start_position
+         else
+            raise PositionOutOfRange.new() unless @seed_tokens.member?(token)
+            @unread_seed_tokens = @seed_tokens.slice( (-token.rewind_position)..-1 )
+         end
+         
+         @current_position = position
+         @sequence_number  = 
       end
           
       
@@ -136,6 +160,32 @@ module Interpreter
          end
          
          return @last_read
+      end
+      
+      
+      #
+      # read_at()
+      #  - reads a Token from the specified position, using the supplied LexerPlan
+      #  - advances the position of the TokenStream
+      
+      def read_at( position, lexer_plan, explain_indent = nil )
+         if position != @current_position then
+            if position >= 0 then
+               raise PositionOutOfRange.new() if position < @start_position
+               @current_position = token.start_position + token.length
+            else
+               if @unread_seed_tokens.empty? or -token.rewind_position + 1 != -@unread_seed_tokens[0].rewind_position then
+                  raise PositionOutOfRange.new() unless @seed_tokens.member?(token)
+                  @unread_seed_tokens = @seed_tokens.slice( (-token.rewind_position)..-1 )
+                  # assert( !@unread_seed_tokens.nil?, "wtf: #{token.rewind_position}; #{@seed_tokens.length}")
+               end
+               @current_position = @start_position
+            end
+
+            @sequence_number = token.sequence_number + 1
+         end
+            
+         return read( lexer_plan, explain_indent )
       end
       
       
