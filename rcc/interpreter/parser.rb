@@ -42,7 +42,11 @@ module Interpreter
          @build_ast           = build_ast
          @current_position    = @start_position
          @work_queue          = []
-         @pre_error_positions = []
+
+         
+         @in_recovery         = false
+         @position_registry   = []
+         @position_signatures = {}   
       end
       
       
@@ -78,10 +82,16 @@ module Interpreter
             solution = parse_until_error( StartPosition.new(@parser_plan.state_table[0], token_stream), explain_indent )
             return solution
          rescue ParseError => e
-            recovery_queue << e.position
+            recovery_queue << e.position 
          end
 
          STDOUT.puts "#{explain_indent}===> PARSING FAILED" 
+         
+         
+         @in_recovery = true
+         @position_registry.each do |visited_position|
+            @position_signatures[visited_position.signature] = true
+         end
          
          
          #
@@ -97,8 +107,8 @@ module Interpreter
          start_time  = Time.now()
          
          until recovery_queue.empty? or Time.now() - start_time > recovery_time_limit
-            recovery_position = recovery_queue.shift
-            correction_queue  = find_error_corrections( recovery_position, explain_indent ) 
+            recovery_context = recovery_queue.shift
+            correction_queue = find_error_corrections( recovery_context, explain_indent ) 
             
             until correction_queue.empty? or Time.now() - start_time > recovery_time_limit
                correction = correction_queue.shift
@@ -437,22 +447,6 @@ module Interpreter
                   solution = position
                else
                   position = perform_action( position, action, next_token, explain_indent )
-                  
-                  #
-                  # Check/register the position signature, to prevent pointless error corrections.  That said,
-                  # we don't want to do any of this work until we've actually encountered an error, as it could
-                  # be costly.
-                  
-                  recovery_context = position.recovery_context
-                  if recovery_context.exists? then
-                     if recovery_context.position_seen?(position) then
-                        raise PositionSeen.new( position )
-                     else
-                        recovery_context.mark_position_seen( position )
-                     end
-                  else
-                     @pre_error_positions << position
-                  end
                end
             else
                unless explain_indent.nil? then
@@ -474,6 +468,7 @@ module Interpreter
       #  - performs a single action against a Position 
       #  - returns the next Position to process, or nil when the last position was accepted
       #  - raises AttemptsPendings if the parse hit a branch point
+      #  - raises PositionSeen if the action has a recovery context and would duplicate a position already seen
       
       def perform_action( position, action, next_token, explain_indent )
          next_position = nil
@@ -493,9 +488,11 @@ module Interpreter
                
                nodes = []
                top_position = position
+               corrected    = false
                production.symbols.length.times do |i|
                   nodes.unshift position.node
-                  position = position.pop( production, top_position )
+                  corrected = true if position.corrected?
+                  position  = position.pop( production, top_position )
                end
                
                #
@@ -505,6 +502,12 @@ module Interpreter
                STDOUT.puts "#{explain_indent}===> PUSH AND GOTO #{goto_state.number}" unless explain_indent.nil?
 
                next_position = position.push( build_ast ? ASN.new(production, nodes[0].first_token, nodes) : CSN.new(production.name, nodes), goto_state )
+
+               #
+               # Raise PositionSeen if appropriate.  
+               
+               raise PositionSeen.new( top_position ) if corrected and @position_signatures.member?(next_position.signature)
+               
                
             when Plan::Actions::Attempt
                
@@ -524,7 +527,19 @@ module Interpreter
             else
                nyi "support for #{action.class.name}"
          end
+
+         #
+         # Maintain the signature registry.  If we are in the recovery phase, this means storing the next_position
+         # signature.  If in the initial (pre-error) parse phase, we'll just save the position object for later
+         # signature production.  We do this as a cost savings measure.  go() will take care over moving the 
+         # @pre_error_positions into the @signature_registry, when the time comes.
          
+         if @in_recovery then
+            @signature_registry[next_position.signature] = true
+         else
+            @pre_error_positions << next_position
+         end
+
          return next_position
       end
 
@@ -537,9 +552,124 @@ module Interpreter
     #---------------------------------------------------------------------------------------------------------------------
     # Error Recovery
     #---------------------------------------------------------------------------------------------------------------------
+    #
+    # Error recovery in rcc involves trying to alter then token stream in order to produce a valid parse.  This is 
+    # predicated on the idea that the user isn't trying to produce bad code -- that the errors are, in fact, accidents.
+    # 
+    # We can alter the token stream in three ways: by inserting a token; by replacing a token; or by deleting a token.
+    # Generally speaking, we trust deletion the least, as users are lazy: they don't do generally do work the didn't think 
+    # they needed.  As a result, we try deletions last.  Replacing a token is something we trust a little more, but only 
+    # if the replacement token can be considered lexically similar to the one that was already there.  For instance, we 
+    # might replace "++" with "+" to produce a valid parse, or the identifer "fi" with the keyword "if"; but we should not 
+    # arbitrarily replace keyword "class" with operator "*", as it is unlikely the user meant one and typed the other.
+    # We rely on machinery in Token for this comparison.  Finally, insertion of a token is our favourite choice.  It seems
+    # far more likely that a user forgot to type something, than typed something extra.
+    #
+    # The parser works with a "stack" of position markers (it is maintained as a linked list, but behaves like a stack).
+    # Shift actions create new positions at the head of the stack, and Reduce actions remove one or more positions from
+    # the stack and replace them with a new position.  rcc limits its error recovery attempts to positions currently
+    # on the position stack.  This generally means that token stream modifications start at the error position, then 
+    # jump larger and larger distances back through the source text, looking for ways to fix the token stream.  The idea 
+    # is that there is no point error correcting stuff that has already matched Productions, unless as the result of a 
+    # upstream token change.  Let's consider a Ruby example: imagine that we have a dozen lines of valid code processed 
+    # and reduced to statements, then encounter an unexpected "end" marker.  It is unlikely all of that valid code needs 
+    # reinterpretation.  It parsed right once; changing it is only likely to break it.  The user may have put the extra 
+    # "end" in by accident; or they may have forgotten a "begin" before one of those valid statements; or they may have 
+    # forgotten a "class <name>" or something similar at the very top of the file.  By error correcting only at positions 
+    # still on the stack, we conveniently leap to those suspicious points. 
+    #
+    # Fortunately, at any given position there are a limited number of token stream changes we can make without 
+    # immediately creating a new error.  These are the supported lookahead types from the position's State's action set.  
+    # We error correct by inserting/replacing to one of these, or by deleting the next token and seeing what happens.
+    # And, for obvious reasons, we NEVER do anything if the lookahead token is one the error correction system itself
+    # created.
+    #
+    # Unfortunately, error recovery interacts very badly with backtracking.  Backtracking is used by the parser to
+    # process ambiguous grammars -- if the same token stream could possibly have two (or more) different meanings, the 
+    # parser tries them both (all).  Each time it hits a dead end, it backtracks to the branch point and tries the next
+    # option.  This complicates error recovery because, if an error happens before we've gotten past the ambiguity,
+    # we have to consider that the error may have been in any *one* of the branches we tried -- not just the last.  
+    # Further, really ambiguous grammars may nest ambiguities within ambiguities, creating a nightmare of complexity for
+    # the error recovery system to sort out.  parse_until_error() is used to drive a parse across multiple branches, and 
+    # it is responsible for setting up any error recovery operation that becomes necessary.  Each time a branch dead-ends,
+    # parse_until_error() adds its last position as an alternate error recovery position on the next branch.  This effect
+    # is cumulative, so each branch ends up with all its prececessors last positions as alternate recovery points.  If
+    # none of the branches succeed, the error recovery system is passed the whole mess, and must generate corrections on
+    # all direct and alternate recovery positions it finds there.
+    #
+    # parse_until_error() stores the alternate recovery points on or near the stack position that launched the branch.  As 
+    # such, recovery positions from the ambiguity will be retired automatically when the position is reduced from the 
+    # stack.  From then on, as with normal error recovery, the ambiguity will only be reconsidered as the result of an 
+    # upstream token change.
+    #
+    #
+    # Optimizations
+    #---------------------------------------------------------------------------------------------------------------------
+    #
+    # Unfortunately, there are lots of potential error corrections that will go nowhere at all.  For instance, inserting a
+    # "-" in front of an expression like "10 + 10" in a math-like language isn't going to materially change the parse (you 
+    # trade one expression for another).  Any downstream errors will still occur, regardless.  We need to avoid such 
+    # corrections because -- especially with ambiguous grammars -- they could trigger a great deal of pointless reparsing.
+    # Similarly, given a token stream like "10 11" in the same math-like language, there is little point inserting a "-" 
+    # between "10" and "11" after we have tried "+" -- once one works, the other will add no new information, and the 
+    # suggestion of adding a "+" should be sufficient to get the user fixing the problem.
+    #
+    # At some future date, my plan is to try to pre-calculate which insertions are worth trying for each State.  As of
+    # this moment, though, I haven't figured out how to do that (actually, I hadn't thought of trying until I started
+    # writing up this documentation today).  Hopefully, it'll turn out to be something simple and obvious.  For now, 
+    # though, we'll just try to identify dead-ends at run-time, when the token stream is finite and understood.  To be 
+    # honest, I'm a bit gunshy of trying predictive stuff with LR grammars again -- I dumped two days into that dead-end 
+    # earlier in the development of rcc (when figuring out how to do backtracking).
+    #
+    # The simplest solution at run-time is to construct a signature for each position: something that will produce the same
+    # signature if we find ourselves in that position again.  Presently, we use a concatenation of node name and state 
+    # number from all positions on the stack, combined with the lookahead's stream position.  I'm not yet sure it is
+    # right/sufficient, but it will do for now.
+    #
+    # perform_action() maintains the signature registry.  Each time it produces a new position, we add it to the registry.
+    # This is the simple part.  The actual work is done in the recovery phase, when we must check if the position has
+    # been seen before.  Unfortunately, there's a problem: there are some positions we want to be able to repeat.
+    #
+    # Consider the simplest case: just before accepting the parse, the stack will generally have one position (the 
+    # reduced start-rule), and the EOF will be on lookahead.  Regardless of how we get there, this about-to-be-accepted
+    # position will ALWAYS have the same signature.  Which means, if we aren't smart about it, we will only ever accept
+    # one error recovery -- the first one we come across.  Even if there are better options.  That's not much of an 
+    # error recovery system.
+    #
+    # So here's what we're going to do, for now.  I'm not sure it is right/sufficient, but it's a start.  Instead of 
+    # checking EVERY position against the position registry, we are going to check only on Reduce, and only if there is
+    # AT LEAST one corrected position being popped from the stack during the Reduce.  My hope is that, while this may 
+    # allow unnecessary identical parses to continue, this policy should cut down on lots of noise without eliminating 
+    # any necessary parses.  It definitely allows the Accept action to proceed after each successful error correction.
+    #
+    #---------------------------------------------------------------------------------------------------------------------
     
     protected
     
+    
+      #
+      # find_error_corrections()
+      #  - looks for and constructs altered Positions that might get us past an error
+      
+      def find_error_corrections( recovery_context, explain_indent )
+         corrections = []
+         
+         #
+         # Start by looking for a way around the error.  We can insert a token, replace a token, or delete a token,
+         # and we can do it at the error position or at ANY point on the state stack.  This allows us to correct 
+         # errors that we didn't notice until we were past them, without opening up the entire token stream for 
+         # correction analysis.  We generate all potential corrections that appear worth trying.  The caller will
+         # then retry the parse from each of them.  The position signature registry in the recovery_context will be
+         # used by the parser to eliminate pointless recovery options (ie. options that won't materially change the
+         # outcome of the parse).
+
+         begin
+            
+         end
+         
+         
+      end
+      
     
       #
       # find_error_corrections()

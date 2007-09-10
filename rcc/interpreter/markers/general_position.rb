@@ -27,21 +27,35 @@ module PositionMarkers
 
       attr_reader   :node
       attr_reader   :state
-      attr_reader   :token_stream
       attr_reader   :stream_position
       attr_accessor :recovery_context
       attr_accessor :alternate_recovery_positions
       
-      def initialize( context, node, state, token_stream, error_context = nil )
+      def initialize( context, node, state, lexer, stream_position, recovery_context = nil, corrected = false )
          @context          = context
          @node             = node
          @state            = state
-         @next_token       = nil
-         @token_stream     = token_stream
-         @stream_position  = token_stream.current_position 
-         @recovery_context = error_context
+         @recovery_context = recovery_context
          @signature        = nil
+         @corrected        = corrected
          @alternate_recovery_positions = []
+         
+         #
+         # Token management
+         
+         @lexer                = lexer
+         @stream_position      = stream_position
+         @next_token           = nil
+         @next_stream_position = nil
+      end
+      
+      
+      #
+      # corrected?
+      #  - returns true if this position was created as a correction
+      
+      def corrected?
+         return @corrected
       end
       
       
@@ -67,27 +81,17 @@ module PositionMarkers
       
       
       #
-      # next_token()
-      #  - reads the next token from the underlying TokenStream
-      
-      def next_token( explain_indent )
-         @next_token = @token_stream.read( @state.lexer_plan, explain_indent ) if @next_token.nil? 
-         return @next_token
-      end
-      
-      
-      #
       # push()
       #  - creates a new Position that uses this as its context
       #  - returns the new Position
       
       def push( node, state, token_stream = nil )
-         error_context = @error_context
-         while error_context.exists? and node.first_token.rewind_position > error_context.stream_position then
-            error_context = error_context.error_context
+         recovery_context = @recovery_context
+         while recovery_context.exists? and node.first_token.rewind_position > recovery_context.stream_position then
+            recovery_context = recovery_context.recovery_context
          end
-         
-         return GeneralPosition.new( self, node, state, token_stream.nil? ? @token_stream : token_stream, error_context )
+
+         return GeneralPosition.new( self, node, state, @lexer, @next_stream_position, recovery_context )
       end
       
       
@@ -108,7 +112,7 @@ module PositionMarkers
       #  - call this on the original Position for each of your potential branches, then use the AttemptPositions instead
       
       def fork( launch_action, expected_productions = nil )
-         return AttemptPosition.new( self, @node, @state, @token_stream, launch_action, expected_productions, @error_context )
+         return AttemptPosition.new( self, @node, @state, @lexer, @stream_position, launch_action, expected_productions, @recovery_context )
       end
       
       
@@ -132,8 +136,49 @@ module PositionMarkers
       
       
       #
-      # correct()
-      #  - produces a new position similar to this one but with an altered TokenStream for lookahead
+      # correct_by_insertion()
+      #  - produces a new position similar to this one, but with a manufactured token on lookahead
+      
+      def correct_by_insertion( type )
+         correction = GeneralPosition.new( @context, @node, @state, @lexer, @read_position, @recovery_context, true )
+         
+         correction.instance_eval do
+            @lexer.set_position( @stream_position )
+            @next_token = @lexer.locate_token( Token.fake(type) )
+            @next_token.rewind_position = @stream_position
+            @next_token.sequence_number = @context.nil? ? 1 : (@context.next_token.sequence_number + 1)
+            
+            @next_stream_position = @stream_position
+         end
+         
+         return correction
+      end
+      
+      
+      #
+      # correct_by_deletion()
+      #  - produces a new position similar to this one, but with the second next token on lookahead
+      
+      def correct_by_deletion()
+         self.next_token()
+         return GeneralPosition.new( @context, @node, @state, @lexer, @next_stream_position, @recovery_context, true )
+      end
+      
+      
+      #
+      # correct_by_replacement()
+      #  - produces a new position similar to this one, but with a manufactured token on lookahead, in place of the next token
+      
+      def correct_by_replacement( type )
+         next_stream_position = self.next_token.follow_position
+         correction = correct_by_insertion( type )
+         
+         correction.instance_eval do
+            @next_stream_position = next_stream_position
+         end
+         
+         return correction
+      end
       
       
       
@@ -147,4 +192,4 @@ end  # module Rethink
 
 
 require "#{$RCCLIB}/interpreter/position_markers/start_position.rb"
-require "#{$RCCLIB}/interpreter/position_markers/start_position.rb"
+require "#{$RCCLIB}/interpreter/position_markers/attempt_position.rb"

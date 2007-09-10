@@ -47,7 +47,10 @@ module Interpreter
       def token_count
          return 1
       end
-
+      
+      def follow_position()
+         return @start_position + length()         
+      end
 
 
 
