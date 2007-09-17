@@ -11,7 +11,6 @@
    require "#{File.dirname(__FILE__)}/../rcc/environment.rb"
    require "#{$RCCLIB}/model/grammar.rb"
    require "#{$RCCLIB}/interpreter/lexer.rb"
-   require "#{$RCCLIB}/interpreter/token_stream.rb"
    require "#{$RCCLIB}/interpreter/parser.rb"
 
    if ARGV.empty? then
@@ -62,9 +61,8 @@
 
          source = RCC::Interpreter::Source.new( STDIN.read, "<stdin>" )
          lexer  = RCC::Interpreter::Lexer.new( source )
-         stream = RCC::Interpreter::TokenStream.new( lexer )
-         parser = RCC::Interpreter::Parser.new( parser_plan, stream )
-         ast    = parser.go( explain ? "" : nil )
+         parser = RCC::Interpreter::Parser.new( parser_plan, lexer )
+         ast    = parser.go( 3, explain ? "" : nil )
          
          if explain then
             STDOUT.puts ""

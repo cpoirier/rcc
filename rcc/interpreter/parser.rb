@@ -9,12 +9,10 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/interpreter/token_stream.rb"
-require "#{$RCCLIB}/interpreter/situation.rb"
 require "#{$RCCLIB}/interpreter/error.rb"
 require "#{$RCCLIB}/interpreter/csn.rb"
 require "#{$RCCLIB}/interpreter/asn.rb"
-require "#{$RCCLIB}/util/tiered_queue.rb"
+require "#{$RCCLIB}/interpreter/markers/general_position.rb"
 
 
 module RCC
@@ -37,16 +35,15 @@ module Interpreter
       #  - initializes this Parser for use
       #  - repair_search_tolerance is used to limit recursion in discover_repair_options()
       
-      def initialize( parser_plan, token_stream, build_ast = true )
+      def initialize( parser_plan, lexer, build_ast = true )
          @parser_plan         = parser_plan
+         @lexer               = lexer
          @build_ast           = build_ast
-         @current_position    = @start_position
          @work_queue          = []
-
          
          @in_recovery         = false
-         @position_registry   = []
-         @position_signatures = {}   
+         @pre_error_positions = []
+         @position_registry   = {}   
       end
       
       
@@ -79,171 +76,52 @@ module Interpreter
          STDOUT.puts "#{explain_indent}===> PARSING BEGINNING" 
 
          begin
-            solution = parse_until_error( StartPosition.new(@parser_plan.state_table[0], token_stream), explain_indent )
-            return solution
+            solution = parse_until_error( Markers::StartPosition.new(@parser_plan.state_table[0], @lexer), explain_indent )
+            return solution.node
          rescue ParseError => e
-            recovery_queue << e.position 
+            generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
+               recovery_queue.unshift recovery_position
+            end
          end
 
          STDOUT.puts "#{explain_indent}===> PARSING FAILED" 
          
          
-         @in_recovery = true
-         @position_registry.each do |visited_position|
-            @position_signatures[visited_position.signature] = true
-         end
-         
-         
          #
          # If we are still here, it's time to start error recovery.  For each recovery_queue position, we'll
-         # look for and apply Corrections in depth-first order.  We'll give it three seconds to find the best
-         # corrections, and the underlying system will direct this toward real solutions by use of position
-         # signatures on the position recovery context to shortcut out of pointless corrections.
+         # look for and apply corrections in depth-first order.  We'll give it recovery_time_limit seconds to 
+         # find the best corrections, and the underlying system will direct this toward real soutions by use 
+         # of position signatures to shortcut out of pointless corrections.
          
          5.times { STDOUT.puts "" }
          STDOUT.puts "#{explain_indent}===> ERROR RECOVERY BEGINNING" 
-      
+
+         @in_recovery = true
+         @pre_error_posotions.each do |visited_position|
+            @position_registry[visited_position.signature] = true
+         end
+         
          error_limit = 1000000000
          start_time  = Time.now()
+         solutions   = []
          
-         until recovery_queue.empty? or Time.now() - start_time > recovery_time_limit
-            recovery_context = recovery_queue.shift
-            correction_queue = find_error_corrections( recovery_context, explain_indent ) 
-            
-            until correction_queue.empty? or Time.now() - start_time > recovery_time_limit
-               correction = correction_queue.shift
-               if correction_queue.error_depth > error_limit then
-                  correction
+         until recovery_queue.empty? or (Time.now - start_time > recovery_time_limit)
+            restart_position = recovery_queue.shift
+            unless restart_position.correction_count > error_limit
+               begin
+                  solution = parse_until_error( restart_position, explain_indent )
+                  solutions << solution
+               rescue ParseError => e
+                  generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
+                     recovery_queue.unshift recovery_position
+                  end
+               rescue PositionSeen => e
+                  # no op -- it's a dead-end
+               end   
             end
          end
-
+         
          STDOUT.puts "#{explain_indent}===> ERROR RECOVERY COMPLETE" 
-         
-         
-         
-
-         
-         #
-         # If we are still here, it is time to start error recovery.  For each recovery_queue Situation, we'll
-         # want to look for and apply Corrections (and resultant Corrections) in depth-first order.  When we
-         # encounter an AttemptsPending exception, we'll process it immediately in the same fashion as above,
-         # except that in error correction, we try all branches.  That way, only additional errors have to
-         # be deferred for later processing.
-         
-         5.times { STDOUT.puts "" }
-         STDOUT.puts "#{explain_indent}===> ERROR RECOVERY BEGINNING" 
-         
-         start_time = Time.now()
-         until recovery_queue.empty? # or Time.now() - start_time > 3
-            situation         = recovery_queue.shift
-            attempt_situation = nil
-            
-            correction_queue.clear
-            correction_queue.queue_all( find_error_corrections(situation, nil, explain_indent) ) { |correction| correction.quality }
-            
-            until correction_queue.empty? #  or Time.now() - start_time > 3
-               correction = correction_queue.shift
-               correction.situation.reset_recovery_stop
-               attempt_queue.clear
-               
-               if correction.error_depth > error_limit then
-                  correction.discard()
-                  next
-               end
-   
-               #
-               # We process a single Correction and all of its Attempts in one pass.  Further Corrections
-               # are deferred for a later pass.  
-            
-               begin   # <<<<<<<<<<<< LOOP HEADER <<<<<<<<<<<<
-               
-                  #
-                  # The first thing is to apply the Correction (attempt_queue will always be empty on the first 
-                  # time through this loop, and full thereafter).  If any Attempts are encountered during the
-                  # processing, an AttemptsPending will be thrown on the Correction's Situation.  We'll catch
-                  # it and add the attempts to the attempt_queue for further processing.  We stay in this loop
-                  # until we have moved the error correction forward, or discarded this line of Correction.
-                  
-                  if attempt_queue.empty? then
-                  
-                     #
-                     # If the correction succeeds, we mark it as accepted.  This is automatically sent up the
-                     # chain of Situations by the Correction and Situation code.
-                  
-                     if correction.apply(self, explain_indent) then
-                        correction.accept()
-                        error_limit = min( correction.error_depth, error_limit )
-
-                     #
-                     # Otherwise, we look for correction options for the failed correction.  If we find some, we add
-                     # them to the work_queue and the current Correction's situation (to maintain the chain).  If there
-                     # are no corrections to attempt, we discard the correction.  Again, this is automatically sent up 
-                     # the chain, closing off dead branches of the correction tree.
-
-                     else
-                        STDERR.puts "correction failed for #{correction.inserted_token.description}" unless correction.inserted_token.nil?
-                        
-                        #
-                        # When we are done here, the next step will be to pick those branches of the correction tree that
-                        # have the fewest errors.  Therefore, we can save work by cutting off any branch that already 
-                        # has more errors than the best solutions we've already found.  This optimization can save a 
-                        # great deal of work.
-
-                        if correction.error_depth > error_limit then
-                           correction.discard()
-                        else
-                           STDERR.puts "checking for corrections"
-                           corrections = find_error_corrections( correction.situation, correction, explain_indent )
-                           if corrections.empty? then
-                              correction.discard()
-                           else
-                              corrections.reverse.each do |child_correction|
-                                 correction_queue.insert( child_correction, child_correction.quality )
-                              end
-                           end
-                        end
-                     end
-                  
-                  #
-                  # Otherwise, we are processing an attempt.  If it succeeds, this Correction is accepted.  If it
-                  # doesn't, we add it to the recovery_queue, for further processing (later).
-                  
-                  else
-                     attempt_situation = attempt_queue.shift
-                     if parse( attempt_situation, explain_indent ) then
-                        correction.accept
-                        attempt_queue.clear
-                        error_limit = min( correction.situation.error_count, error_limit )
-                     else
-                        recovery_queue << attempt_situation
-                     end
-                     
-                  end
-                  
-               
-               rescue TokenStream::PositionOutOfRange 
-                  if attempt_situation.nil? then
-                     correction.discard()
-                     attempt_queue.clear
-                  else
-                     attempt_situation.discard()
-                     correction.discard() if attempt_queue.empty?
-                  end
-                  
-               rescue InvalidReduce
-                  attempt_situation.discard()
-                  correction.discard() if attempt_queue.empty?
-                  
-               rescue AttemptsPending => e
-                  e.situation.attempts.reverse.each do |child_attempt|
-                     attempt_queue.unshift child_attempt
-                  end
-            
-               end until attempt_queue.empty?
-            end
-         
-         end   
-
 
          
          #
@@ -323,7 +201,7 @@ module Interpreter
             # for details.  Note that we shoud never get a FlowControl exception from our launch action, as the
             # thing that created the AttemptPosition already verified the lookahead.
             
-            if position.is_a?(AttemptPosition) then
+            if position.is_a?(Markers::AttemptPosition) then
                attempt_depth = position.attempt_depth
                next_position = perform_action( position, position.launch_action, position.next_token, explain_indent )
                
@@ -376,7 +254,7 @@ module Interpreter
                # attempts that succeeded.  We need the next thing on the stack (if anything) to be the AttemptPosition 
                # to try next (a peer in this set, or something in a context set).  
                
-               work_queue.shift until work_queue.empty? or work_queue[0].attempt_depth <= attempt_context.attempt_depth
+               work_queue.shift until (work_queue.empty? or work_queue[0].attempt_depth <= attempt_context.attempt_depth)
                
                #
                # If the work_queue is empty, we failed.  Raise an error.
@@ -413,10 +291,10 @@ module Interpreter
             #
             # Get the lookahead.
             
-            state      = @current_position.state
-            next_token = @current_position.la( explain_indent )
+            state      = position.state
+            next_token = position.next_token( explain_indent )
             
-            @current_position.display( explain_indent, next_token ) unless explain_indent.nil?
+            position.display( explain_indent, next_token ) unless explain_indent.nil?
             
             #
             # Select the next action.
@@ -501,12 +379,12 @@ module Interpreter
                goto_state = position.state.transitions[production.name]
                STDOUT.puts "#{explain_indent}===> PUSH AND GOTO #{goto_state.number}" unless explain_indent.nil?
 
-               next_position = position.push( build_ast ? ASN.new(production, nodes[0].first_token, nodes) : CSN.new(production.name, nodes), goto_state )
+               next_position = position.push( @build_ast ? ASN.new(production, nodes[0].first_token, nodes) : CSN.new(production.name, nodes), goto_state, top_position )
 
                #
                # Raise PositionSeen if appropriate.  
                
-               raise PositionSeen.new( top_position ) if corrected and @position_signatures.member?(next_position.signature)
+               raise PositionSeen.new( top_position ) if corrected and @position_registry.member?(next_position.signature)
                
                
             when Plan::Actions::Attempt
@@ -535,7 +413,7 @@ module Interpreter
          # @pre_error_positions into the @signature_registry, when the time comes.
          
          if @in_recovery then
-            @signature_registry[next_position.signature] = true
+            @position_registry[next_position.signature] = true
          else
             @pre_error_positions << next_position
          end
@@ -648,189 +526,40 @@ module Interpreter
     
     
       #
-      # find_error_corrections()
-      #  - looks for and constructs altered Positions that might get us past an error
+      # generate_recovery_positions()
+      #  - given an error position, generates a list of potential recovery positions
       
-      def find_error_corrections( recovery_context, explain_indent )
+      def generate_recovery_positions( position, explain_indent )
          corrections = []
          
          #
-         # Start by looking for a way around the error.  We can insert a token, replace a token, or delete a token,
-         # and we can do it at the error position or at ANY point on the state stack.  This allows us to correct 
-         # errors that we didn't notice until we were past them, without opening up the entire token stream for 
-         # correction analysis.  We generate all potential corrections that appear worth trying.  The caller will
-         # then retry the parse from each of them.  The position signature registry in the recovery_context will be
-         # used by the parser to eliminate pointless recovery options (ie. options that won't materially change the
-         # outcome of the parse).
-
-         begin
+         # Work back from the supplied position to the root.  We will try inserting, replacing, or deleting a 
+         # token at the lookahead for each position.  We generate all potential corrections and let the error
+         # recovery code sort them out.
+         
+         recovery_context = position
+         until position.nil?
             
-         end
-         
-         
-      end
-      
-    
-      #
-      # find_error_corrections()
-      #  - looks for and constructs Corrections for the error in the supplied Situation
-      #  - BEWARE: the supplied Situation will unwound (by unwind()) in the process
-      
-      def find_error_corrections( situation, context_correction, explain_indent )
-         
-         corrections = []
-         
-         #
-         # Start by looking for a way around the error.  We can insert a token, replace a token, or delete a token,
-         # and we can do it at the current lexer situation or AT ANY point on the state stack.  This allows us to
-         # correct errors that we didn't notice until we were past them, without opening up the entire token stream
-         # for correction analysis.  Our caller (generally drive()) will restart the parse in each Correction we
-         # produce.  Any child parse that succeeds is in the running for error reporting.
-         
-         STDERR.puts "BEFORE #{situation.recovery_stop}, #{situation.la().sequence_number - 8}, #{situation.la().description}"
-         recovery_stop = max( situation.recovery_stop, situation.la().sequence_number - 8 )
-         
-         begin
-            situation.unwind do |state, tokens_popped|
-               state, next_token, token_type = situation.look_ahead()
-         
-               STDERR.puts "#{situation.object_id}: rewind_limit #{recovery_stop}; current #{next_token.sequence_number}; tos #{situation.stack[-1].node.first_token.sequence_number}"
-
-               #
-               # We don't want to error correct immediately after an error correction.  correction_worth_trying?()
-               # filters out a lot of such problems, but not all.  So if either the next token or the last token 
-               # was faked, we generate no more error corrections for this situation (a previous one will be 
-               # dealing with it).
-               
-               break if next_token.sequence_number < situation.recovery_stop 
-               break if next_token.faked? or (situation.stack[-1].node.token_count == 1 and situation.stack[-1].node.first_token.faked?)
+            #
+            # Never muck with a faked token -- infinite loops lie there . . . .
             
-               STDERR.puts "STILL HERE"
+            unless position.next_token.faked?
+               lookahead_type = position.next_token.type
                
-               #
-               # Options 1 & 2: Look for insertion/substitution corrections.
-               
-               failed_action = state.actions[token_type]
-               symbols       = state.actions.keys
-               symbols.each do |leader_type|
-                  next if leader_type == token_type
-                  next if leader_type == situation.stack[-1].node.type
-                  action = state.actions[leader_type]
-               
-                  fake_token = situation.fake_token( leader_type, next_token )
-
-                  #
-                  # Option 1: before next_token, insert valid tokens and see if it changes anything
-               
-                  situation.position_before( next_token )
-                  if insertion_worth_trying?( situation, action, fake_token ) then
-                     # STDERR.puts "considering #{fake_token.description} insertion before #{next_token.description}"
-                     corrections << situation.correct( fake_token, nil, context_correction, recovery_stop )
-                  end
-
-                  #
-                  # Option 2: replace next_token with one of our known valid alternatives, provided the replacement 
-                  # is similar to what the user actually wrote.
-               
-                  # STDERR.puts "checking #{next_token.description} similar to #{fake_token.description}"
-                  if next_token.similar_to?(leader_type) then
-                     # STDERR.puts "similar"
-                     situation.position_after( next_token )
-                     if insertion_worth_trying?( situation, action, fake_token )
-                        # STDERR.puts "considering #{fake_token.description} substituion for #{next_token.description}"
-                        situation.position_after( next_token )
-                        corrections << situation.correct( fake_token, next_token, context_correction, recovery_stop )
-                     end
-                  end
-               end
-
-
-               #
-               # Option 3: delete next_token and try the one following.
-            
-               follow_token = situation.la( nil, nil, next_token )
-               if state.actions.member?(follow_token.type) then 
-                  situation.position_before( follow_token )
-                  corrections << situation.correct( nil, situation.consume(), context_correction, recovery_stop )
+               position.state.actions.keys.each do |leader_type|
+                  next if leader_type == lookahead_type
+                  
+                  corrections << position.correct_by_insertion( leader_type, recovery_context )
+                  corrections << position.correct_by_replacement( leader_type, recovery_context )
+                  corrections << position.correct_by_deletion( recovery_context )
                end
             end
             
-         rescue TokenStream::PositionOutOfRange 
-            STDERR.puts "bailing out"
-            # no op -- we'll just stop looking
+            position = position.context
          end
          
          return corrections
       end
-      
-      
-      #
-      # insertion_worth_trying?()
-      #  - without doing too much work, tries to decide if the specified insertion will move a correction forward
-      #  - errs on the side of caution -- only returns false if it *knows* the insertion can't work
-      #  - be sure the Situation's TokenStream is ready for reading the follow token -- it will be processed in
-      #    the appropriate state during evaluation
-      
-      def insertion_worth_trying?( situation, action, inserted_token )
-         worth_trying = false
-         
-         #
-         # Shift is easy.  Reduce is moderately easy.  Attempt starts to get complicated.  We'll return
-         # as soon as things get too complicated.
-         
-         top_of_stack = situation.stack.length - 1
-
-         until action.nil?
-            case action
-               
-               #
-               # For Shift, we have to shift the inserted_token, then see if the lookahead is useful to the
-               # next state.
-               
-               when Plan::Actions::Shift
-                  worth_trying = action.to_state.actions.member?( situation.la(action.to_state).type )
-                  action       = nil
-                  
-               #
-               # Reduce never moves the parse, but may result in something that does.  We have more work to do.
-               # Note that we never Reduce anything after we've done anything else, so we don't have to keep
-               # the state stack accurate in order to be able to use it -- we'll only ever access real frames.
-               
-               when Plan::Actions::Reduce
-                  production    = action.by_production
-                  count         = production.symbols.length
-                  top_of_stack -= count
-                  new_top_state = situation.stack[top_of_stack].state
-                  action        = nil
-
-                  if new_top_state.transitions.member?(production.name) then
-                     goto_state = new_top_state.transitions[production.name]
-                     if goto_state.actions.member?(inserted_token.type) then
-                        action        = goto_state.actions[inserted_token.type]
-                        top_of_stack += 1
-                     end
-                  end
-                  
-               #
-               # Goto is never a consideration, as it is for non-terminals.
-               # BUG: is this right?
-               
-               when Plan::Actions::Goto
-                  worth_trying = false
-                  action       = nil
-                  
-               #
-               # Everything else (Attempt included) is worth a shot.
-               
-               else
-                  worth_trying = true
-                  action       = nil
-            end
-         end
-         
-         return worth_trying
-      end
-      
 
 
 

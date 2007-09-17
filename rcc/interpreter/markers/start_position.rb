@@ -12,7 +12,7 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module PositionMarkers
+module Markers
 
  
  #============================================================================================================================
@@ -25,8 +25,9 @@ module PositionMarkers
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( state, token_stream )
-         super( nil, nil, state, token_stream )
+
+      def initialize( state, lexer )
+         super( nil, nil, state, lexer, 0 )
       end
       
       
@@ -55,7 +56,7 @@ module PositionMarkers
    
 
 
-end  # module PositionMarkers
+end  # module Markers
 end  # module Interpreter
 end  # module Rethink
 

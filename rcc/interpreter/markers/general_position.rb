@@ -12,7 +12,7 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module PositionMarkers
+module Markers
 
  
  #============================================================================================================================
@@ -25,6 +25,7 @@ module PositionMarkers
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      attr_reader   :context
       attr_reader   :node
       attr_reader   :state
       attr_reader   :stream_position
@@ -48,6 +49,44 @@ module PositionMarkers
          @next_token           = nil
          @next_stream_position = nil
       end
+      
+      
+      #
+      # next_token()
+      #  - returns the next_token from this Position
+      
+      def next_token( explain_indent = nil )
+         if @next_token.nil?
+            @next_token = @lexer.next_token( @stream_position, @state.lexer_plan, explain_indent )
+            @next_token.rewind_position = @stream_position
+             @next_token.sequence_number = @context.nil? ? 0 : @context.next_token.sequence_number + 1
+         end
+         
+         return @next_token
+      end
+       
+      
+      
+      #
+      # correction_count()
+      #  - returns the number of corrections done to get to this position
+      
+      def correction_count( cache = false )
+         correction_count = 0
+         
+         if @correction_count.nil? then
+            unless @recovery_context.nil?
+               correction_count = @recovery_context.correction_count(true) + 1
+            end
+            
+            @correction_count = correction_count if cache
+         else
+            correction_count = @correction_count
+         end
+         
+         return correction_count
+      end
+      
       
       
       #
@@ -85,9 +124,13 @@ module PositionMarkers
       #  - creates a new Position that uses this as its context
       #  - returns the new Position
       
-      def push( node, state, token_stream = nil )
+      def push( node, state, reduce_position = nil )
+         
+         #
+         # BUG: Are you sure the recovery_context should come from this Position, and not the top being reduced?
+         
          recovery_context = @recovery_context
-         while recovery_context.exists? and node.first_token.rewind_position > recovery_context.stream_position then
+         while recovery_context.exists? and node.first_token.rewind_position > recovery_context.stream_position
             recovery_context = recovery_context.recovery_context
          end
 
@@ -104,8 +147,8 @@ module PositionMarkers
       def pop( production, top_position )
          return @context
       end
-      
-      
+
+
       #
       # fork()
       #  - returns an AttemptPosition that replace this position for further processing of one branch of an Attempt
@@ -139,8 +182,8 @@ module PositionMarkers
       # correct_by_insertion()
       #  - produces a new position similar to this one, but with a manufactured token on lookahead
       
-      def correct_by_insertion( type )
-         correction = GeneralPosition.new( @context, @node, @state, @lexer, @read_position, @recovery_context, true )
+      def correct_by_insertion( type, recovery_context )
+         correction = GeneralPosition.new( @context, @node, @state, @lexer, @read_position, recovery_context, true )
          
          correction.instance_eval do
             @lexer.set_position( @stream_position )
@@ -159,9 +202,9 @@ module PositionMarkers
       # correct_by_deletion()
       #  - produces a new position similar to this one, but with the second next token on lookahead
       
-      def correct_by_deletion()
+      def correct_by_deletion( recovery_context )
          self.next_token()
-         return GeneralPosition.new( @context, @node, @state, @lexer, @next_stream_position, @recovery_context, true )
+         return GeneralPosition.new( @context, @node, @state, @lexer, @next_stream_position, recovery_context, true )
       end
       
       
@@ -169,9 +212,9 @@ module PositionMarkers
       # correct_by_replacement()
       #  - produces a new position similar to this one, but with a manufactured token on lookahead, in place of the next token
       
-      def correct_by_replacement( type )
+      def correct_by_replacement( type, recovery_context )
          next_stream_position = self.next_token.follow_position
-         correction = correct_by_insertion( type )
+         correction = correct_by_insertion( type, recovery_context )
          
          correction.instance_eval do
             @next_stream_position = next_stream_position
@@ -186,10 +229,10 @@ module PositionMarkers
    
 
 
-end  # module PositionMarkers
+end  # module Markers
 end  # module Interpreter
 end  # module Rethink
 
 
-require "#{$RCCLIB}/interpreter/position_markers/start_position.rb"
-require "#{$RCCLIB}/interpreter/position_markers/attempt_position.rb"
+require "#{$RCCLIB}/interpreter/markers/start_position.rb"
+require "#{$RCCLIB}/interpreter/markers/attempt_position.rb"

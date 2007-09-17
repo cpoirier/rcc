@@ -12,7 +12,7 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module PositionMarkers
+module Markers
 
  
  #============================================================================================================================
@@ -80,7 +80,7 @@ module PositionMarkers
    
 
 
-end  # module PositionMarkers
+end  # module Markers
 end  # module Interpreter
 end  # module Rethink
 
