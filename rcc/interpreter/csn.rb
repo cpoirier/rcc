@@ -41,7 +41,15 @@ module Interpreter
       
       
       def first_token
-         return @component_symbols.first_token
+         return @component_symbols[0].first_token
+      end
+      
+      def last_token
+         return @component_symbols[-1].last_token
+      end
+      
+      def follow_position()
+         return last_token().follow_position()
       end
       
       def description()

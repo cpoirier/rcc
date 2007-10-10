@@ -13,6 +13,7 @@ require "#{$RCCLIB}/interpreter/error.rb"
 require "#{$RCCLIB}/interpreter/csn.rb"
 require "#{$RCCLIB}/interpreter/asn.rb"
 require "#{$RCCLIB}/interpreter/markers/general_position.rb"
+require "#{$RCCLIB}/util/tiered_queue.rb"
 
 
 module RCC
@@ -44,6 +45,7 @@ module Interpreter
          @in_recovery         = false
          @pre_error_positions = []
          @position_registry   = {}   
+         @recovery_registry   = {}
       end
       
       
@@ -65,8 +67,9 @@ module Interpreter
       
       def go( recovery_time_limit = 3, explain_indent = nil )
          solution       = nil
-         recovery_queue = []
+         recovery_queue = Util::TieredQueue.new()
          
+         recovery_time_limit = 15
 
          #
          # First, run the initial parse.  With a bit of luck, there'll be no errors, and we can just return 
@@ -80,7 +83,8 @@ module Interpreter
             return solution.node
          rescue ParseError => e
             generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
-               recovery_queue.unshift recovery_position
+               recovery_queue.insert( recovery_position, 21 - recovery_position.quality )
+               # recovery_queue.unshift recovery_position
             end
          end
 
@@ -97,7 +101,8 @@ module Interpreter
          STDOUT.puts "#{explain_indent}===> ERROR RECOVERY BEGINNING" 
 
          @in_recovery = true
-         @pre_error_posotions.each do |visited_position|
+         @pre_error_positions.each do |visited_position|
+            STDERR.puts "adding #{visited_position.signature}"
             @position_registry[visited_position.signature] = true
          end
          
@@ -113,10 +118,11 @@ module Interpreter
                   solutions << solution
                rescue ParseError => e
                   generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
-                     recovery_queue.unshift recovery_position
+                     recovery_queue.insert( recovery_position, 21 - recovery_position.quality )
+                     # recovery_queue.unshift recovery_position
                   end
                rescue PositionSeen => e
-                  # no op -- it's a dead-end
+                  STDOUT.puts "===> RECOVERY FAILED: results in a parse already tried"
                end   
             end
          end
@@ -130,7 +136,13 @@ module Interpreter
          # be too frequent.  We'll therefore pick those solutions that have the fewest errors.  For now, if there's 
          # more than one choice, we'll let the user sort it out.
          
-         
+         solutions.each do |solution|
+            STDOUT.puts "#{explain_indent}"
+            STDOUT.puts "#{explain_indent}"
+            STDOUT.puts "#{explain_indent}"
+            STDOUT.puts "#{explain_indent}===> POSSIBLE SOLUTION"
+            solution.node.display(STDOUT, explain_indent)
+         end
 
          # work
          # if accepted_corrections.empty? then
@@ -142,7 +154,7 @@ module Interpreter
          #    @corrections          = accepted_corrections.select{ |c| c.situation.corrections.length == fewest_errors }
          # end
          
-         
+         return nil
          
       end
       
@@ -224,6 +236,7 @@ module Interpreter
             begin
                solution = parse_until_branch_point( position, explain_indent )
                
+               
             #
             # AttemptsPending is thrown to send us a new batch of AttemptPositions.  We reverse them onto the head of
             # our work_queue in order to process in the "natural" order.
@@ -266,9 +279,10 @@ module Interpreter
                
                work_queue[0].alternate_recovery_positions.concat( e.position.alternate_recovery_positions )
                work_queue[0].alternate_recovery_positions << e.position
+               
             end
          end
-         
+
          return solution
       end
       
@@ -286,7 +300,7 @@ module Interpreter
          #
          # Process actions until a solution is found or an exception is raised (AttemptsPending, for instance).
          
-         while true
+         while solution.nil?
             
             #
             # Get the lookahead.
@@ -294,7 +308,7 @@ module Interpreter
             state      = position.state
             next_token = position.next_token( explain_indent )
             
-            position.display( explain_indent, next_token ) unless explain_indent.nil?
+            position.display( explain_indent ) unless explain_indent.nil?
             
             #
             # Select the next action.
@@ -307,7 +321,7 @@ module Interpreter
                if state.explanations.nil? then
                   bug( "no explanations found" )
                else
-                  state.explanations[token_type].each do |explanation|
+                  state.explanations[next_token.type].each do |explanation|
                      explanation.to_s.split("\n").each do |line|
                         STDOUT << "#{explain_indent}|    " << line.to_s << "\n"
                      end
@@ -379,14 +393,8 @@ module Interpreter
                goto_state = position.state.transitions[production.name]
                STDOUT.puts "#{explain_indent}===> PUSH AND GOTO #{goto_state.number}" unless explain_indent.nil?
 
-               next_position = position.push( @build_ast ? ASN.new(production, nodes[0].first_token, nodes) : CSN.new(production.name, nodes), goto_state, top_position )
+               next_position = position.push( @build_ast ? ASN.new(production, nodes) : CSN.new(production.name, nodes), goto_state, top_position )
 
-               #
-               # Raise PositionSeen if appropriate.  
-               
-               raise PositionSeen.new( top_position ) if corrected and @position_registry.member?(next_position.signature)
-               
-               
             when Plan::Actions::Attempt
                
                #
@@ -406,6 +414,7 @@ module Interpreter
                nyi "support for #{action.class.name}"
          end
 
+
          #
          # Maintain the signature registry.  If we are in the recovery phase, this means storing the next_position
          # signature.  If in the initial (pre-error) parse phase, we'll just save the position object for later
@@ -413,7 +422,13 @@ module Interpreter
          # @pre_error_positions into the @signature_registry, when the time comes.
          
          if @in_recovery then
-            @position_registry[next_position.signature] = true
+            if @position_registry.member?(next_position.signature) then
+               STDERR.puts "position seen: #{next_position.signature}"
+               raise PositionSeen.new( next_position )
+            else
+               STDERR.puts "recovery adding: #{next_position.signature}"
+               @position_registry[next_position.signature] = true
+            end
          else
             @pre_error_positions << next_position
          end
@@ -541,16 +556,26 @@ module Interpreter
          until position.nil?
             
             #
-            # Never muck with a faked token -- infinite loops lie there . . . .
+            # Ensure we don't regenerate the same corrections
+
+            if @recovery_registry.member?(position.signature) then
+               STDOUT.puts "===> RECOVERY SKIPPED FOR: #{position.signature}"
+            else
+               @recovery_registry[position.signature] = true
             
-            unless position.next_token.faked?
-               lookahead_type = position.next_token.type
+               #
+               # Never muck with a faked token -- infinite loops lie there . . . .
+            
+               unless position.next_token.faked?
+                  lookahead_type = position.next_token.type
+                  position.state.actions.keys.each do |leader_type|
+                     STDOUT.puts "mucking around with #{leader_type}"
+                     unless leader_type.nil? or leader_type == lookahead_type or @parser_plan.non_terminal?(leader_type) then
+                        corrections << position.correct_by_insertion( leader_type, recovery_context )
+                        corrections << position.correct_by_replacement( leader_type, recovery_context ) if position.next_token.similar_to?(leader_type)
+                     end
+                  end
                
-               position.state.actions.keys.each do |leader_type|
-                  next if leader_type == lookahead_type
-                  
-                  corrections << position.correct_by_insertion( leader_type, recovery_context )
-                  corrections << position.correct_by_replacement( leader_type, recovery_context )
                   corrections << position.correct_by_deletion( recovery_context )
                end
             end

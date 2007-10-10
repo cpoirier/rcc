@@ -24,10 +24,14 @@ module Util
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( tier_count )
+      def initialize( tier_count = nil )
          @tiers = []
-         tier_count.times do |index|
-            @tiers[index] = []
+         @extend = tier_count.nil?
+         
+         unless tier_count.nil?
+            tier_count.times do |index|
+               @tiers[index] = []
+            end
          end
          
          @length = 0
@@ -48,8 +52,12 @@ module Util
       #  - clears the queue
       
       def clear()
-         @tiers.each do |tier|
-            tier.clear
+         if @extend then
+            @tiers.clear
+         else
+            @tiers.each do |tier|
+               tier.clear
+            end
          end
          
          @length = 0
@@ -61,8 +69,10 @@ module Util
       #  - adds the supplied object to the end of the specified tier
       
       def queue( object, tier_number )
+         ensure_tiers( tier_number ) if @extend
+         
          @length += 1
-         @tiers[tier_number - 1].push object
+         @tiers[tier_number - 1] << object
       end
       
       
@@ -88,6 +98,8 @@ module Util
       #  - adds the supplied object to the start of the specified tier
       
       def insert( object, tier_number )
+         ensure_tiers(tier_number) if @extend
+         
          @length += 1
          @tiers[tier_number - 1].unshift object
       end
@@ -107,7 +119,19 @@ module Util
          
          return nil
       end
+
+
+    protected
       
+      def ensure_tiers( to )
+         if to > @tiers.length then
+            (to - @tiers.length).times do
+               @tiers << []
+            end
+         end
+      end
+    
+   
       
    end # TieredQueue
    

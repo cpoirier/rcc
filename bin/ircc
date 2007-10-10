@@ -73,8 +73,13 @@
          STDOUT.puts "ABSTRACT SYNTAX TREE" 
          STDOUT.puts "===================="
          STDOUT.puts ""
-         ast.format().each do |line|
-            STDOUT.puts line
+
+         if ast.nil? then
+            STDOUT.puts "?"
+         else
+            ast.format().each do |line|
+               STDOUT.puts line
+            end
          end
          
       when "lex"

@@ -50,6 +50,14 @@ module Markers
       end
       
       
+      #
+      # description()
+      #  - return a description of this Position (node data only)
+      
+      def description()
+         return ""
+      end
+      
       
       
    end # StartPosition

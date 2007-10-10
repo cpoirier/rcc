@@ -215,6 +215,15 @@ module Plan
       end
       
       
+      def non_terminal?( type )
+         return false unless type.is_a?(::Symbol)
+         return @production_sets.member?(type)
+      end
+      
+      def non_terminals()
+         return @production_sets.keys
+      end
+      
       
       
       

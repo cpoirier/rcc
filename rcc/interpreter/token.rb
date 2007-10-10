@@ -22,15 +22,14 @@ module Interpreter
    class Token < Model::Token
       
       attr_accessor :rewind_position
-      attr_accessor :sequence_number
       attr_reader   :start_position
       attr_writer   :faked
-      
-      def locate( start_position, line_number, column_number, source_descriptor, type = nil, faked = false )
+
+      def locate( start_position, line_number, column_number, source_descriptor, type = nil, faked = false, follow_position = nil )
          @rewind_position = start_position
          @start_position  = start_position
-         @faked           = faked
-         @sequence_number = nil
+         @faked           = faked unless faked.nil?
+         @follow_position = follow_position unless follow_position.nil?
          super( line_number, column_number, source_descriptor, type, nil )
          
          return self
@@ -44,12 +43,20 @@ module Interpreter
          return self
       end
       
+      def last_token
+         return self
+      end
+      
       def token_count
          return 1
       end
       
       def follow_position()
-         return @start_position + length()         
+         if defined?(@follow_position) then
+            return @follow_position
+         else
+            return @start_position + length()         
+         end
       end
 
 
@@ -79,8 +86,8 @@ module Interpreter
       def similar_to?( type )
          return @type == type unless type.is_a?(String)
          return false unless (self.length - type.length).abs < 3
-         return false if self =~ /\w+/ and type !~ /\w+/
-         return false if type =~ /\w+/ and self !~ /\w+/
+         return false if self =~ /^\w+$/ and type !~ /^\w+$/
+         return false if type =~ /^\w+$/ and self !~ /^\w+$/
          
          #
          # We've establish that both operands are Strings of similar length.  Next we'll get their unique characters
@@ -120,9 +127,9 @@ module Interpreter
          if token.is_a?(Array) then
             return token.collect{|t| t.description}.join(", ")
          elsif token.is_a?(Token) then
-            return token.nil? ? "$" : token.description
+            return token.description
          else
-            return token.nil? ? "$" : (token.is_a?(Symbol) ? ":#{token}" : "'#{self.gsub("\n", "\\n")}'")
+            return token.nil? ? "$" : (token.is_a?(Symbol) ? ":#{token}" : "'#{token.gsub("\n", "\\n")}'")
          end
       end
       
@@ -148,8 +155,8 @@ module Interpreter
       # ::fake()
       #  - builds a fake Token of the specified type
       
-      def self.fake( type, start_position = nil, line_number = nil, column_number = nil, source_descriptor = nil )
-         return new( "" ).locate( start_position, line_number, column_number, source_descriptor, type, true )
+      def self.fake( type, follow_position = nil, start_position = nil, line_number = nil, column_number = nil, source_descriptor = nil )
+         return new( "" ).locate( start_position, line_number, column_number, source_descriptor, type, true, follow_position )
       end
       
       
@@ -167,7 +174,6 @@ module Interpreter
 
    end # Token
    
-
 
 end  # module Interpreter
 end  # module Rethink

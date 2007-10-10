@@ -30,7 +30,7 @@ module Markers
       attr_accessor :attempt_depth
       
       def initialize( context, node, state, lexer, stream_position, launch_action, expected_productions, error_context = nil, attempt_depth = 0 )
-         super( nil, nil, state, lexer, stream_position, error_context )
+         super( context, node, state, lexer, stream_position, error_context )
          @launch_action        = launch_action
          @attempt_depth        = attempt_depth
          @expected_productions = expected_productions
