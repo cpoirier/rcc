@@ -12,60 +12,54 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module Markers
+module Corrections
 
  
  #============================================================================================================================
- # class StartPosition
- #  - a special Position marker that denotes the start position of the Parser
+ # class Replacement
+ #  - represents a single token replacement in the source text
 
-   class StartPosition < GeneralPosition
+   class Replacement < Correction
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-
-      def initialize( state, lexer )
-         super( nil, nil, state, lexer, 0 )
+      attr_reader :inserted_token
+      attr_reader :deleted_token
+      
+      def initialize( inserted_token, deleted_token, recovery_context, previous_correction, position_number, correction_penalty = 0 )
+         super( recovery_context, previous_correction, position_number, correction_penalty )
+         @inserted_token = inserted_token
+         @deleted_token  = deleted_token
       end
       
       
       #
-      # error_context()
-      #  - StartPosition never has one
+      # intrinsic_cost()
+      #  - returns the intrinsic cost of this type of correction
       
-      def error_context()
-         return nil
+      def intrinsic_cost()
+         return 1
       end
+      
       
       
       #
-      # pop()
-      #  - tells this Position it is being "popped" from the working set
-      #  - returns our context Position
+      # inserts_token?
       
-      def pop( production )
-         return @context
-      end
-      
-      
-      #
-      # description()
-      #  - return a description of this Position (node data only)
-      
-      def description()
-         return ""
+      def inserts_token?
+         return true
       end
       
       
       
-   end # StartPosition
+   end # Replacement
    
 
 
-end  # module Markers
+
+end  # module Corrections
 end  # module Interpreter
 end  # module Rethink
-
 

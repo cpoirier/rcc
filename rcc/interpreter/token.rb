@@ -58,6 +58,10 @@ module Interpreter
             return @start_position + length()         
          end
       end
+      
+      def terminal?()
+         return true
+      end
 
 
 

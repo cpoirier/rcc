@@ -92,6 +92,63 @@ module Plan
       end
       
       
+      #
+      # dangerous_insertion?()
+      #  - returns true if inserting the leader of this item during recovery would be dangerous (would cause a loop)
+      #  - a false return doesn't guarantee the insertion is safe
+      
+      def dangerous_insertion?()
+         return false if complete?        
+         return false if @production.symbols.length != 2
+        
+         #
+         # It's dangerous if we have: NT(x) => . terminal NT(x) 
+
+         if @production.symbols[0].terminal? then
+            return false if @at > 0
+            return false if @production.symbols[1].terminal?
+            return @production.symbols[1].name == @production.name
+           
+         #
+         # It's dangerous if we have: NT(x) => NT(x) . terminal
+        
+         else
+            return false if @at != 1
+            return false unless @production.symbols[1].terminal?
+            return @production.symbols[0].name == @production.name
+         end
+      
+         return false
+      end
+
+      # #
+      # # recovery_dead_end?()
+      # #  - returns true if error recovery should not voluntarily enter this production
+      # 
+      # def recovery_dead_end?()
+      #    
+      #    #
+      #    # It's a dead end if it's a prefix expression.  ie. expression => - expression
+      #    
+      #    if symbols.length > 1 then
+      #       potential_dead_end = true
+      #       
+      #       symbols[0..-2].each do |symbol|
+      #          if !symbol.terminal? then
+      #             potential_dead_end = false
+      #             break
+      #          end
+      #       end
+      #       
+      #       if potential_dead_end then
+      #          return true if !symbols[-1].terminal? and symbols[-1].name == @name
+      #       end
+      #    end
+      #    
+      #    return false
+      # end
+      
+      
 
 
 

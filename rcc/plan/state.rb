@@ -59,9 +59,11 @@ module Plan
       attr_reader :explanations
       attr_reader :lookahead_explanations
       attr_reader :lexer_plan
+      attr_reader :dangerous_insertions
+      attr_reader :risky_insertions
       
       def initialize( state_number, start_items = [], context_state = nil  )
-         @number = state_number    # The number of this State within the overall ParserPlan
+         @number       = state_number    # The number of this State within the overall ParserPlan
          @items        = []              # All Items in this State
          @start_items  = []              # The Items that started this State (ie. weren't added by close())
          @closed       = false           # A flag indicating that close() has been called
@@ -82,6 +84,9 @@ module Plan
          
          @context_states = {}            # States that refer to us via transitions or reductions
          @context_states[context_state.number] = true unless context_state.nil?
+         
+         @dangerous_insertions = {}      # A hash of Symbol.name => true that indicates Symbol.name that should never be inserted during error recovery
+         @risky_insertions     = {}      # A hash of Symbol.name => true that indicates Symbol.name *could* be dangerous at runtime and should be checked
       end
       
       
@@ -405,6 +410,32 @@ module Plan
          @lookahead = options.keys
          
          #
+         # Make a list of acceptable error recovery insertions for this state.
+         
+         options.each do |symbol_name, items|
+            universally_bad = false
+            risky           = false
+            
+            items.each do |item|
+               if item.complete? then
+                  risky = true
+               else
+                  universally_bad = true
+               end
+            end
+            
+            items.each do |item|
+               unless item.complete? or item.dangerous_insertion?
+                  universally_bad = false
+                  break
+               end
+            end
+            
+            @risky_insertions[symbol_name] = true if risky
+            @dangerous_insertions[symbol_name] = true if universally_bad
+         end
+         
+         #
          # Select an action for each lookahead terminal.
          
          @lookahead_explanations = Explanations::InitialOptions.new(options) if explain
@@ -694,8 +725,7 @@ module Plan
                stream << indent << output << "   >>> Context >>> " << row[3] << "\n"
             end
          end
-
-
+         
          #
          # Display transitions and reductions, but only if requested.
          
@@ -707,7 +737,11 @@ module Plan
             unless @transitions.empty?
                width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
                @transitions.each do |symbol_name, state|
-                  stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.number) << "\n"
+                  stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.number) 
+                  stream << "  "
+                  stream << " (dangerous insertion)" if @dangerous_insertions.member?(symbol_name)
+                  stream << " (risky insertion)"     if @risky_insertions.member?(symbol_name)
+                  stream << "\n"
                end
             end
          

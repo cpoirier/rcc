@@ -56,6 +56,10 @@ module Interpreter
          return "#{@root_symbol}"
       end
       
+      def terminal?()
+         return false
+      end      
+      
       
       def display( stream, indent = "" )
          stream << indent << "#{@root_symbol} =>" << "\n"

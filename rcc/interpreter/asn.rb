@@ -58,6 +58,9 @@ module Interpreter
          return "#{@root_symbol}"
       end
       
+      def terminal?()
+         return false
+      end
       
       def display( stream, indent = "", inline_candidate = false )
          stream << indent << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"

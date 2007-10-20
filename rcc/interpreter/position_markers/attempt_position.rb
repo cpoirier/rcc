@@ -12,15 +12,15 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module Markers
+module PositionMarkers
 
  
  #============================================================================================================================
  # class AttemptPosition
- #  - a special Position marker used that denotes the root of an Attempt fork
+ #  - a special Position marker used to denote the root of an Attempt fork
  #  - "replaces" the top-of-stack Position
 
-   class AttemptPosition < GeneralPosition
+   class AttemptPosition < PositionMarker
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
@@ -29,8 +29,8 @@ module Markers
       attr_accessor :launch_action
       attr_accessor :attempt_depth
       
-      def initialize( context, node, state, lexer, stream_position, launch_action, expected_productions, error_context = nil, attempt_depth = 0 )
-         super( context, node, state, lexer, stream_position, error_context )
+      def initialize( context, node, state, lexer, stream_position, launch_action, expected_productions, in_recovery = false, last_correction = nil, corrected = false, attempt_depth = 0 )
+         super( context, node, state, lexer, stream_position, in_recovery, last_correction, corrected )
          @launch_action        = launch_action
          @attempt_depth        = attempt_depth
          @expected_productions = expected_productions
@@ -80,7 +80,7 @@ module Markers
    
 
 
-end  # module Markers
+end  # module PositionMarkers
 end  # module Interpreter
 end  # module Rethink
 

@@ -82,7 +82,6 @@ module Plan
          return @number == rhs.number
       end
       
-      
    end # Production
    
 

@@ -12,7 +12,7 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 require "#{$RCCLIB}/interpreter/error.rb"
 require "#{$RCCLIB}/interpreter/csn.rb"
 require "#{$RCCLIB}/interpreter/asn.rb"
-require "#{$RCCLIB}/interpreter/markers/general_position.rb"
+require "#{$RCCLIB}/interpreter/position_markers/position_marker.rb"
 require "#{$RCCLIB}/util/tiered_queue.rb"
 
 
@@ -45,7 +45,6 @@ module Interpreter
          @in_recovery         = false
          @pre_error_positions = []
          @position_registry   = {}   
-         @recovery_registry   = {}
       end
       
       
@@ -66,93 +65,347 @@ module Interpreter
       #  - error corrections will not be run indefinitely
       
       def go( recovery_time_limit = 3, explain_indent = nil )
-         solution       = nil
-         recovery_queue = Util::TieredQueue.new()
+         recovery_time_limit = 30
+         allow_shortcutting  = false
          
-         recovery_time_limit = 15
-
-         #
-         # First, run the initial parse.  With a bit of luck, there'll be no errors, and we can just return 
-         # the solution: no fuss, no muss.
+         start_position     = PositionMarkers::StartPosition.new(@parser_plan.state_table[0], @lexer)
          
-         3.times { STDOUT.puts "" }
-         STDOUT.puts "#{explain_indent}===> PARSING BEGINNING" 
-
-         begin
-            solution = parse_until_error( Markers::StartPosition.new(@parser_plan.state_table[0], @lexer), explain_indent )
-            return solution.node
-         rescue ParseError => e
-            generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
-               recovery_queue.insert( recovery_position, 21 - recovery_position.quality )
-               # recovery_queue.unshift recovery_position
+         error_limit        = 1000000000
+         recovery_queue     = Util::TieredQueue.new()
+         complete_solutions = []
+         partial_solutions  = []
+         recovery_registry  = {}
+         recovery_costs     = {}      # recovery_context.object_id => best cost to recover from it
+         recovered_contexts = {}
+         position           = nil
+         last_position      = nil
+         
+         @in_recovery = false
+         recovery_start_time = nil
+         until @in_recovery and (recovery_queue.empty? or (Time.now - recovery_start_time > recovery_time_limit))
+            if @in_recovery then
+               # puts "RECOVERY QUEUE is:"
+               # recovery_queue.each{|el| puts "   #{el.signature}" }
+               
+               position = recovery_queue.shift
+               next if position.error_count > error_limit
+            else
+               position = start_position
             end
-         end
+            
+            
+            begin
+               last_position = solution = parse_until_error( position, explain_indent )
+               complete_solutions << solution
+               #error_limit = min( error_limit, solution.error_count )
+               
+               
+            #======================================================================================================
+            rescue ParseError => e
+               last_position    = e.position
+               recovery_context = last_position.recovery_context
+               do_discard_bookkeeping = true
 
-         STDOUT.puts "#{explain_indent}===> PARSING FAILED" 
-         
-         
-         #
-         # If we are still here, it's time to start error recovery.  For each recovery_queue position, we'll
-         # look for and apply corrections in depth-first order.  We'll give it recovery_time_limit seconds to 
-         # find the best corrections, and the underlying system will direct this toward real soutions by use 
-         # of position signatures to shortcut out of pointless corrections.
-         
-         5.times { STDOUT.puts "" }
-         STDOUT.puts "#{explain_indent}===> ERROR RECOVERY BEGINNING" 
-
-         @in_recovery = true
-         @pre_error_positions.each do |visited_position|
-            STDERR.puts "adding #{visited_position.signature}"
-            @position_registry[visited_position.signature] = true
-         end
-         
-         error_limit = 1000000000
-         start_time  = Time.now()
-         solutions   = []
-         
-         until recovery_queue.empty? or (Time.now - start_time > recovery_time_limit)
-            restart_position = recovery_queue.shift
-            unless restart_position.correction_count > error_limit
-               begin
-                  solution = parse_until_error( restart_position, explain_indent )
-                  solutions << solution
-               rescue ParseError => e
-                  generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
-                     recovery_queue.insert( recovery_position, 21 - recovery_position.quality )
-                     # recovery_queue.unshift recovery_position
+               #
+               # If the position is correctable, generate correction positions.
+               
+               if last_position.correctable? and !recovery_registry.member?(last_position.signature) then
+                  recovery_registry[last_position.signature] = true
+                  
+                  #
+                  # If the last position is still in recovery from a previous error, we may want to shortcut
+                  # out, if another one of the recoveries for that error already completed with fewer corrections
+                  # than this one is about to have.
+                  
+                  shortcut_out = false
+                  if allow_shortcutting then
+                     # if last_position.in_recovery? then
+                     #    if recovery_costs.member?(recovery_context.object_id) then
+                     #       if recovery_costs[recovery_context.object_id] <= last_position.correction_cost then #  last_position.recovery_cost then
+                     #          shortcut_out = true
+                     #       end
+                     #    end
+                     # end
                   end
-               rescue PositionSeen => e
-                  STDOUT.puts "===> RECOVERY FAILED: results in a parse already tried"
-               end   
+                  
+                  #
+                  # If we aren't shortcutting out, generate corrections for the last_position.
+                  
+                  unless shortcut_out or false
+                     STDOUT.puts "CALCULATING RECOVERIES for: #{e.position.signature}"
+
+                     do_discard_bookkeeping = false
+                     recovery_positions     = []
+                     last_position.each_recovery_position do |recovery_position|
+                        STDOUT.puts "TRYING REPAIR at: #{recovery_position.signature}"
+                        lookahead_type = recovery_position.next_token.type
+
+                        #
+                        # Try replacements first, as they have lower cost.
+                        
+                        unless lookahead_type.nil?
+                           recovery_position.state.actions.keys.each do |leader_type|
+                              unless leader_type.nil? or leader_type == lookahead_type or @parser_plan.non_terminal?(leader_type) then
+                                 if recovery_position.next_token.similar_to?(leader_type) then
+                                    STDOUT.puts "   [#{leader_type}] SIMILAR to [#{lookahead_type}]"
+                                    recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, last_position ) 
+                                 else
+                                    STDOUT.puts "   [#{leader_type}] NOT SIMILAR to [#{lookahead_type}]"
+                                 end
+                              end
+                           end
+                        end
+                        
+                        #
+                        # Try insertions second.
+                        
+                        recovery_position.state.actions.keys.each do |leader_type|
+                           unless leader_type.nil? or leader_type == lookahead_type or @parser_plan.non_terminal?(leader_type) then
+                              current_position = recovery_position
+                              state            = current_position.state
+                              dangerous = state.dangerous_insertions.member?(leader_type)
+                              
+                              begin
+                                 while !dangerous and current_position.exists? and state.actions[leader_type].is_a?(Plan::Actions::Reduce)
+                                    current_position = perform_action( current_position, state.actions[leader_type], nil, nil )
+                                    if current_position then
+                                       state     = current_position.state
+                                       dangerous = state.dangerous_insertions.member?(leader_type) if !state.actions[leader_type].is_a?(Plan::Actions::Reduce)
+                                    end
+                                 end
+                              rescue 
+                                 dangerous = true
+                              end
+                              
+                              if dangerous then
+                                 STDOUT.puts "   WILL NOT TRY INSERTING [#{leader_type}] as it is dangerous"
+                              else
+                                 STDOUT.puts "   WILL TRY INSERTING [#{leader_type}]"
+                                 recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, last_position )
+                              end
+                           end
+                        end
+                     end
+
+                     #
+                     # Add our recovery positions to the recovery queue in an order that will ensure an active and working
+                     # error recovery will continue until it is done, starting with near changes and working "out".
+                     
+                     recovery_positions.each do |recovery_position| 
+                        unless recovery_registry.member?(recovery_position.signature)
+                           recovery_queue.queue recovery_position, recovery_position.correction_cost
+                           recovery_registry[recovery_position.signature] = true
+                           STDOUT.puts "adding recovery_position #{recovery_position.signature} with a recovery cost of #{recovery_position.recovery_cost}"
+                        else
+                           STDOUT.puts "skipping recovery_position #{recovery_position.signature} -- already tried"
+                        end
+                     end
+                  end
+               end
+               
+               
+               #
+               # If the last_position wasn't used to generate new recovery positions, we may need to do some bookkeeping.
+               
+               if do_discard_bookkeeping and recovery_context.exists? then
+
+                  #
+                  # If we are at a recovery_context transition, then we are about to lose a recovery_context, and we have
+                  # some work to do.
+                  #
+                  # 1) As a last resort, we may want to consider deleting tokens, to see if we can get around the error.  
+                  # Unfortunately, deleting tokens is very difficult, as lexing is context-sensitive, and deleting a token 
+                  # removes context.  Ideally, we'd like to be able to, say, delete everything from a '(' already on the 
+                  # stack to a ')' produced by a lexer (if we could identify such a production in one of the stack position 
+                  # states).  But that proves far more difficult than it sounds.  For now, we'll just delete the next token 
+                  # after the recovery_context and hope we can continue.
+                  #
+                  # 2) If this is a partial solution for another error, we should capture it, in case none of the error
+                  # recoveries reach a solution.
+                  
+                  if recovery_queue.empty? or (recovery_context.object_id != recovery_queue[0].last_correction.recovery_context.object_id) then
+                     discarded = true
+                     unless recovery_costs.member?(recovery_context.object_id)
+                        recovered_position = recovery_context.correct_by_deletion( recovery_context )
+                        if recovered_position.state.actions.member?(recovered_position.next_token.type) then
+                           recovery_queue.queue recovered_position, recovered_position.correction_cost
+                           discarded = false
+                        end
+                     end
+                     
+                     if discarded and !recovery_costs.member?(recovery_context.object_id) then
+                        partial_solutions << recovery_context
+                     end
+                  end
+               end
+
+               
+            #======================================================================================================
+            rescue PositionSeen => e
+               last_position = e.position
+               STDOUT.puts "#{explain_indent}===> RECOVERY FAILED: results in a parse already tried" unless explain_indent.nil?
+            end
+
+
+            #
+            # Update the recovery_cost for the last error.  We'll use this when deciding if to pursue
+            # other recovery options from the same error.
+            
+            unless last_position.last_correction.nil?
+               last_error = last_position.last_correction.recovery_context
+               if !recovery_costs.member?(last_error.object_id) or recovery_costs[last_error.object_id] > last_position.last_correction.correction_cost then # recovery_cost then
+                  recovery_costs[last_error.object_id] = last_position.last_correction.correction_cost   # recovery_cost
+               end
+            end
+            
+            
+            #
+            # The first time through only, switch to error recovery mode.
+
+            if !@in_recovery then
+               @in_recovery = true
+               recovery_start_time = Time.now
+               
+               unless recovery_queue.empty?
+                  @pre_error_positions.each do |visited_position|
+                     STDERR.puts "adding #{visited_position.signature}"
+                     @position_registry[visited_position.signature] = true
+                  end
+               end
             end
          end
          
-         STDOUT.puts "#{explain_indent}===> ERROR RECOVERY COMPLETE" 
-
          
-         #
-         # So, we now have a tree of corrected (or partially-corrected) parses that completed (or got to an Attempt).  
-         # We must now pick the ones to report to the user.  Presumably, errors are not intentional, so they shouldn't 
-         # be too frequent.  We'll therefore pick those solutions that have the fewest errors.  For now, if there's 
-         # more than one choice, we'll let the user sort it out.
          
-         solutions.each do |solution|
-            STDOUT.puts "#{explain_indent}"
-            STDOUT.puts "#{explain_indent}"
-            STDOUT.puts "#{explain_indent}"
-            STDOUT.puts "#{explain_indent}===> POSSIBLE SOLUTION"
-            solution.node.display(STDOUT, explain_indent)
+         STDERR.puts "PARSING/ERROR RECOVERY COMPLETED in #{Time.now - recovery_start_time}s"
+         STDERR.puts "   complete solutions: #{complete_solutions.length}"
+         STDERR.puts "   partial solutions:  #{partial_solutions.length}"
+         
+         best = 100000000
+         complete_solutions.each do |solution|
+            best = min( best, solution.correction_cost )
+            STDERR.puts "   #{solution.correction_cost}"
          end
-
-         # work
-         # if accepted_corrections.empty? then
-         #    situation.corrections << failure
-         # else
-         #    accepted_corrections.sort!{ |a, b| a.situation.corrections.length <=> b.situation.corrections.length }
+         
+         STDERR.puts "   outputting solutions with #{best} corrections or less"
+         
+         count = 0
+         complete_solutions.each do |solution|
+            # next if solution.correction_cost > best
+            count += 1
+            
+            STDOUT.puts ""
+            STDOUT.puts ""
+            STDOUT.puts "ABSTRACT SYNTAX TREE: #{solution.correction_cost}" 
+            STDOUT.puts "========================"
+            STDOUT.puts ""
+            
+            solution.node.format().each do |line|
+               STDOUT.puts line
+            end
+         end
+         
+         STDERR.puts "   total output: #{count}"
+         
          # 
-         #    fewest_errors         = accepted_corrections[0].situation.correction.length
-         #    @corrections          = accepted_corrections.select{ |c| c.situation.corrections.length == fewest_errors }
+         # 
+         # 
+         # 
+         # 
+         # recovery_time_limit = 5
+         # 
+         # #
+         # # First, run the initial parse.  With a bit of luck, there'll be no errors, and we can just return 
+         # # the solution: no fuss, no muss.
+         # 
+         # 3.times { STDOUT.puts "" }
+         # STDOUT.puts "#{explain_indent}===> PARSING BEGINNING" 
+         # 
+         # begin
+         #    solution = parse_until_error( PositionMarkers::StartPosition.new(@parser_plan.state_table[0], @lexer), explain_indent )
+         #    return solution.node
+         # rescue ParseError => e
+         #    generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
+         #       # recovery_queue.insert( recovery_position, 1 + recovery_position.correction_density )
+         #       recovery_queue.insert( recovery_position, 21 - recovery_position.quality )
+         #       # recovery_queue.unshift recovery_position
+         #    end
          # end
+         # 
+         # STDOUT.puts "#{explain_indent}===> PARSING FAILED" 
+         # 
+         # 
+         # #
+         # # If we are still here, it's time to start error recovery.  For each recovery_queue position, we'll
+         # # look for and apply corrections in depth-first order.  We'll give it recovery_time_limit seconds to 
+         # # find the best corrections, and the underlying system will direct this toward real soutions by use 
+         # # of position signatures to shortcut out of pointless corrections.
+         # 
+         # 5.times { STDOUT.puts "" }
+         # STDOUT.puts "#{explain_indent}===> ERROR RECOVERY BEGINNING" 
+         # 
+         # @in_recovery = true
+         # @pre_error_positions.each do |visited_position|
+         #    STDERR.puts "adding #{visited_position.signature}"
+         #    @position_registry[visited_position.signature] = true
+         # end
+         # 
+         # error_limit = 1000000000
+         # start_time  = Time.now()
+         # solutions   = []
+         # 
+         # until recovery_queue.empty? or (Time.now - start_time > recovery_time_limit)
+         #    restart_position = recovery_queue.shift
+         #    unless restart_position.correction_count > error_limit or restart_position.active_correction_count >= 3
+         #       begin
+         #          solution = parse_until_error( restart_position, explain_indent )
+         #          solutions << solution
+         #       rescue ParseError => e
+         #          generate_recovery_positions( e.position, explain_indent ).reverse_each do |recovery_position|
+         #             # recovery_queue.insert( recovery_position, 1 + recovery_position.correction_density )
+         #             recovery_queue.insert( recovery_position, 21 - recovery_position.quality )
+         #             # recovery_queue.unshift recovery_position
+         #          end
+         #       rescue PositionSeen => e
+         #          STDOUT.puts "===> RECOVERY FAILED: results in a parse already tried"
+         #       end   
+         #    end
+         # end
+         # 
+         # STDOUT.puts "#{explain_indent}===> ERROR RECOVERY COMPLETE" 
+         # 
+         # 
+         # #
+         # # So, we now have a tree of corrected (or partially-corrected) parses that completed (or got to an Attempt).  
+         # # We must now pick the ones to report to the user.  Presumably, errors are not intentional, so they shouldn't 
+         # # be too frequent.  We'll therefore pick those solutions that have the fewest errors.  For now, if there's 
+         # # more than one choice, we'll let the user sort it out.
+         # 
+         # solutions.each do |solution|
+         #    STDOUT.puts "#{explain_indent}"
+         #    STDOUT.puts "#{explain_indent}"
+         #    STDOUT.puts "#{explain_indent}"
+         #    STDOUT.puts "#{explain_indent}===> POSSIBLE SOLUTION"
+         #    
+         #    if solution.recovery_context.nil? then
+         #       bug("wft?")
+         #    else
+         #       solution.recovery_context.display(STDOUT, explain_indent)
+         #    end
+         #    # solution.node.display(STDOUT, explain_indent)
+         # end
+         # 
+         # # work
+         # # if accepted_corrections.empty? then
+         # #    situation.corrections << failure
+         # # else
+         # #    accepted_corrections.sort!{ |a, b| a.situation.corrections.length <=> b.situation.corrections.length }
+         # # 
+         # #    fewest_errors         = accepted_corrections[0].situation.correction.length
+         # #    @corrections          = accepted_corrections.select{ |c| c.situation.corrections.length == fewest_errors }
+         # # end
+         # 
+         # return nil
          
          return nil
          
@@ -213,7 +466,7 @@ module Interpreter
             # for details.  Note that we shoud never get a FlowControl exception from our launch action, as the
             # thing that created the AttemptPosition already verified the lookahead.
             
-            if position.is_a?(Markers::AttemptPosition) then
+            if position.is_a?(PositionMarkers::AttemptPosition) then
                attempt_depth = position.attempt_depth
                next_position = perform_action( position, position.launch_action, position.next_token, explain_indent )
                
@@ -308,7 +561,7 @@ module Interpreter
             state      = position.state
             next_token = position.next_token( explain_indent )
             
-            position.display( explain_indent ) unless explain_indent.nil?
+            position.display( STDOUT, explain_indent ) unless explain_indent.nil?
             
             #
             # Select the next action.
@@ -364,6 +617,7 @@ module Interpreter
       
       def perform_action( position, action, next_token, explain_indent )
          next_position = nil
+         check_position = false
          
          case action
             when Plan::Actions::Shift
@@ -380,12 +634,14 @@ module Interpreter
                
                nodes = []
                top_position = position
-               corrected    = false
+               has_terminal = false
                production.symbols.length.times do |i|
+                  has_terminal = true if position.node.terminal?
                   nodes.unshift position.node
-                  corrected = true if position.corrected?
                   position  = position.pop( production, top_position )
                end
+               
+               check_position = true if has_terminal
                
                #
                # Get the goto state from the now-top-of-stack State: it will be the next state.
@@ -420,18 +676,21 @@ module Interpreter
          # signature.  If in the initial (pre-error) parse phase, we'll just save the position object for later
          # signature production.  We do this as a cost savings measure.  go() will take care over moving the 
          # @pre_error_positions into the @signature_registry, when the time comes.
-         
-         if @in_recovery then
-            if @position_registry.member?(next_position.signature) then
-               STDERR.puts "position seen: #{next_position.signature}"
-               raise PositionSeen.new( next_position )
-            else
-               STDERR.puts "recovery adding: #{next_position.signature}"
-               @position_registry[next_position.signature] = true
-            end
-         else
-            @pre_error_positions << next_position
-         end
+
+         # Disabled until we can see if it is still needed after the recovery_cost additions
+         # if @in_recovery then
+         #    if check_position then
+         #       if @position_registry.member?(next_position.signature) then
+         #          STDERR.puts "position seen: #{next_position.signature}"
+         #          raise PositionSeen.new( next_position )
+         #       else
+         #          STDERR.puts "recovery adding: #{next_position.signature}"
+         #          @position_registry[next_position.signature] = true
+         #       end
+         #    end
+         # else
+         #    @pre_error_positions << next_position
+         # end
 
          return next_position
       end
