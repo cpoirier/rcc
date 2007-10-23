@@ -28,24 +28,18 @@ module Corrections
       attr_reader :recovery_context
       attr_reader :previous_correction
       attr_reader :previous_unassociated_correction
-      attr_reader :position_number
-      attr_reader :correction_penalty
-      # attr_reader :recovery_attempts
-      attr_reader :recovery_cost
+      attr_reader :active_from_position
+      attr_reader :active_to_position
+      attr_reader :recovery_attempts
       attr_reader :correction_cost
       attr_reader :error_count
       
-      def recovery_attempts()
-         puts @recovery_context.signature
-         puts @previous_correction.recovery_context.signature unless @previous_correction.nil?
-         return @recovery_attempts
-      end
-      
       def initialize( recovery_context, previous_correction, position_number, correction_penalty = 0 )
-         @recovery_context    = recovery_context
-         @previous_correction = previous_correction
-         @position_number     = position_number                         # The sequence_number of the Position that we correct
-         @correction_penalty  = correction_penalty                      # Any additional user-defined cost for using this correction
+         @recovery_context     = recovery_context
+         @previous_correction  = previous_correction
+         @active_from_position = position_number
+         @active_to_position   = position_number
+         @correction_penalty   = correction_penalty                      # Any additional user-defined cost for using this correction
          
          #
          # Find the last correction not associated with the same original error (recovery context). 
@@ -60,6 +54,29 @@ module Corrections
          end
          
          #
+         # Calculate our recovery statistics.  Some are dynamic and will be calculated on demand.
+            
+         @recovery_attempts = 1                                           # The number of corrections (so far) on this @recovery_context
+         @error_count       = 1                                           # The number of recovery_contexts so far (ie. original errors)
+         
+         unless @previous_correction.nil? 
+            if @previous_correction.recovery_context == @recovery_context then
+               @recovery_attempts += @previous_correction.recovery_attempts
+               @error_count        = @previous_correction.error_count
+            else
+               @error_count        = @previous_correction.error_count + 1
+            end
+         end
+      end
+      
+      
+      #
+      # correction_penalty()
+      #  - returns the current total correction penalty for this correction
+      
+      def correction_penalty()
+         
+         #
          # If this is the first correction in a new recovery context, adjust the correction_penalty for proximity to 
          # the previous recovery_context.  We do this to ensure that cascading failures increase the recovery cost at 
          # each step, making it less and less likely to be chosen as the ultimate solution.  
@@ -69,48 +86,49 @@ module Corrections
          # reductions in a row is still significant for the overall parse, even though it doesn't consume any source.
          
          if @previous_correction.exists? and @previous_unassociated_correction.object_id == @previous_correction.object_id then
-            distance   = @recovery_context.sequence_number - @previous_unassociated_correction.recovery_context.sequence_number
-            
-            if distance == 0 then
-               STDERR.puts @recovery_context.signature
-               STDERR.puts @previous_unassociated_correction.recovery_context.signature
-               bug( "wtf?" )
-            end
-            
+            distance = @recovery_context.sequence_number - @previous_unassociated_correction.active_to_position
             adjustment = @previous_unassociated_correction.recovery_cost / distance
-            if adjustment >= 0.25 then
-               @correction_penalty += adjustment
-            end
-         end
-         
-         #
-         # Calculate our recovery statistics.
-            
-         @recovery_attempts = 1                                           # The number of corrections (so far) on this @recovery_context
-         @recovery_cost     = intrinsic_cost() + @correction_penalty      # The cost of the corrections (so far) on this @recovery_context
-         @correction_cost   = @recovery_cost                              # The total cost of all corrections so far
-         @error_count       = 1                                           # The number of recovery_contexts so far (ie. original errors)
-         
-         unless @previous_correction.nil? 
-            if @previous_correction.recovery_context == @recovery_context then
-               @recovery_attempts += @previous_correction.recovery_attempts
-               @recovery_cost     += @previous_correction.recovery_cost
-               @error_count        = @previous_correction.error_count
-            else
-               @error_count        = @previous_correction.error_count + 1
-            end
-
-            @correction_cost += @previous_correction.correction_cost
+            return @correction_penalty + (adjustment >= 0.25 ? adjustment : 0)
+         else
+            return @correction_penalty
          end
       end
       
       
       #
-      # increment_position_number()
-      #  - increments the position number
+      # recovery_cost()
+      #  - returns a number indicating how much this recovery cost, in relative terms
       
-      def increment_position_number()
-         @position_number += 1
+      def recovery_cost()
+         cost = intrinsic_cost() + correction_penalty()
+         
+         unless @previous_correction.nil?
+            cost += @previous_correction.recovery_cost
+         end 
+         
+         return cost
+      end
+      
+      
+      #
+      # correction_cost()
+      #  - returns a number indicating how much all recoveries cost
+      
+      def correction_cost()
+         if @previous_correction.nil? then
+            return recovery_cost()
+         else
+            return recovery_cost() + @previous_correction.correction_cost
+         end
+      end
+      
+      
+      #
+      # expand_scope()
+      #  - expands the scope of this correction by one position
+      
+      def expand_scope( to_position )
+         @active_to_position = to_position
       end
       
       

@@ -31,6 +31,7 @@ module Plan
       attr_accessor :start_item           # Indicates if the Item is a start item in its State
       attr_reader   :signature            # A signature for this Item's primary data (production and mark) 
       attr_reader   :shifted_from_item
+      
                                   
       def initialize( production, at = 0, follow_contexts = [], production_sets = nil, shifted_from_item = nil )
          @production       = production
@@ -61,7 +62,7 @@ module Plan
       end
       
       def eql?( rhs )
-         return false unless rhs.is_a?(Item)
+         return false unless rhs.is_a?(Item) 
          return self.signature == rhs.signature
       end
       
@@ -92,35 +93,6 @@ module Plan
       end
       
       
-      #
-      # dangerous_insertion?()
-      #  - returns true if inserting the leader of this item during recovery would be dangerous (would cause a loop)
-      #  - a false return doesn't guarantee the insertion is safe
-      
-      def dangerous_insertion?()
-         return false if complete?        
-         return false if @production.symbols.length != 2
-        
-         #
-         # It's dangerous if we have: NT(x) => . terminal NT(x) 
-
-         if @production.symbols[0].terminal? then
-            return false if @at > 0
-            return false if @production.symbols[1].terminal?
-            return @production.symbols[1].name == @production.name
-           
-         #
-         # It's dangerous if we have: NT(x) => NT(x) . terminal
-        
-         else
-            return false if @at != 1
-            return false unless @production.symbols[1].terminal?
-            return @production.symbols[0].name == @production.name
-         end
-      
-         return false
-      end
-
       # #
       # # recovery_dead_end?()
       # #  - returns true if error recovery should not voluntarily enter this production
@@ -475,6 +447,7 @@ module Plan
       def display( stream, indent = "" )
          stream << indent << self.to_s << "     >>>  " << self.followers.join("|") << "\n"
       end
+
 
      
    end # Item

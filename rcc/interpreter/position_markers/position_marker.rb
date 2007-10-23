@@ -34,9 +34,12 @@ module PositionMarkers
       attr_reader   :last_correction
       attr_accessor :alternate_recovery_positions
       attr_accessor :sequence_number
+      attr_reader   :position_registry
 
-      def initialize( context, node, state, lexer, stream_position, in_recovery = false, last_correction = nil, corrected = false )
-         @context          = context
+      def initialize( context, node, state, lexer, stream_position, in_recovery = false, last_correction = nil, corrected = false, position_registry = nil )
+         bug( "you must supply a context or a position registry!" ) if context.nil? and position_registry.nil?
+         
+         @context           = context
          @node             = node
          @state            = state
          @signature        = nil
@@ -54,6 +57,15 @@ module PositionMarkers
          @stream_position  = stream_position
          @next_token       = nil
          @sequence_number  = (@context.nil? ? 0 : @context.sequence_number + 1)
+         
+         #
+         # The Position registry is how to system keeps track of where it's been.  The State table is a big graph, and,
+         # during error recovery, we walk it, looking for a way to alter the source to make it work.  The Position registry
+         # is how we identify when we're about to start a loop, and is shared by ALL Positions in the same "fork".  The data 
+         # stored in the Position registry is the set of Position signatures we've already encountered.  At ATTEMPT forks, 
+         # we fork the Position registry, so that each fork is free to try what it needs to.
+         
+         @position_registry = position_registry.nil? ? @context.position_registry : position_registry
       end
 
 
@@ -147,7 +159,7 @@ module PositionMarkers
       
       def each_recovery_position()
          last_corrected_position = -1
-         last_corrected_position = @last_correction.position_number unless @last_correction.nil?
+         last_corrected_position = @last_correction.active_to_position unless @last_correction.nil?
          
          position = self
          until position.nil?
@@ -243,6 +255,7 @@ module PositionMarkers
       # push()
       #  - creates a new Position that uses this as its context
       #  - returns the new Position
+      #  - raises Parser::PositionSeen if you attempt to push() to a Position we've already been
 
       def push( node, state, reduce_position = nil )
          next_position    = nil
@@ -256,24 +269,31 @@ module PositionMarkers
             next_in_recovery = false if node.follow_position > @last_correction.recovery_context.stream_position
          end
          
-         
          #
-         # Generate the new position and return it.  We patch up the sequence number if reducing, as it will
-         # be generated as following us, not the popped top-of-stack.
+         # Generate the new position.  We patch up the sequence number if reducing, as it will be generated as 
+         # following us, not the popped top-of-stack.
          
          if reduce_position.nil? then
             next_position = PositionMarker.new( self, node, state, @lexer, node.follow_position, next_in_recovery, @last_correction, false )
          else
             next_position = PositionMarker.new( self, node, state, @lexer, node.follow_position, next_in_recovery, reduce_position.last_correction, reduce_position.corrected? )
-            if reduce_position.last_correction.exists? and reduce_position.last_correction.position_number == reduce_position.sequence_number then
-               reduce_position.last_correction.increment_position_number
-            end
-         end
-
-         unless reduce_position.nil?
-            next_position.sequence_number = reduce_position.sequence_number + 1
+            next_position.adjust_sequence_number( reduce_position )
          end
          
+         #
+         # Register the Position with the registry, and report any errors. 
+         
+         if @position_registry.member?(next_position.signature) then
+            STDOUT.puts "  raising PositionSeen on #{next_position.signature}"
+            raise Parser::PositionSeen.new( next_position )
+         else
+            STDOUT.puts "  returning #{next_position.signature}"
+            @position_registry[next_position.signature] = true
+         end
+         
+         #
+         # Return the new Position.
+
          return next_position
       end
 
@@ -295,7 +315,7 @@ module PositionMarkers
       #  - call this on the original Position for each of your potential branches, then use the AttemptPositions instead
 
       def fork( launch_action, expected_productions = nil )
-         return AttemptPosition.new( @context, @node, @state, @lexer, @stream_position, launch_action, expected_productions, @in_recovery, @last_correction, @corrected )
+         return AttemptPosition.new( @context, @node, @state, @lexer, @stream_position, launch_action, expected_productions, @position_registry.clone(), @in_recovery, @last_correction, @corrected )
       end
 
 
@@ -316,7 +336,7 @@ module PositionMarkers
          # Create the correction and a new Position to replace this one.  
          
          corrected_sequence_number = @sequence_number
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, true, Corrections::Insertion.new(token, in_recovery? ? @last_correction.recovery_context : recovery_context, @last_correction, corrected_sequence_number), true )
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, true, Corrections::Insertion.new(token, in_recovery? ? @last_correction.recovery_context : recovery_context, @last_correction, corrected_sequence_number), true, @position_registry.clone )
          corrected_position.sequence_number = corrected_sequence_number
 
          return corrected_position
@@ -341,7 +361,7 @@ module PositionMarkers
          # Create the correction and a new Position to replace this one.  
 
          corrected_sequence_number = @sequence_number
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, true, Corrections::Replacement.new(token, replaced_token, in_recovery? ? @last_correction.recovery_context : recovery_context, @last_correction, corrected_sequence_number), true )
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, true, Corrections::Replacement.new(token, replaced_token, in_recovery? ? @last_correction.recovery_context : recovery_context, @last_correction, corrected_sequence_number), true, @position_registry.clone )
          corrected_position.sequence_number = corrected_sequence_number
 
          return corrected_position
@@ -376,223 +396,33 @@ module PositionMarkers
       #
       # signature()
       #  - returns a String that identifies this Position within the Parse
-      #  - if another Position returns the same signature, it has the same nodes on the "stack", is in the same state,
-      #    and the lookahead is at the same place in the source
+      #  - if another Position returns the same signature, it should not continue, as we'll already have gone there
 
-      def signature( include_lookahead_position = true )
+      def signature()
          if @signature.nil? then
-            @signature = (@context.nil? ? "" : @context.signature(false) + "|") + Parser.describe_type(@node.nil? ? nil : @node.type) + "," + @state.number.to_s
+            
+            #
+            # This version of the signature is much simpler than the first versions.  We consider two things:
+            # the state number; and the source extent of our Node.  This is all that is needed to verify if two
+            # signatures are identical, and putting too much information in the signature is why the previous
+            # versions proved unhelpful for loop detection.
+            #
+            # When in a state, only one thing determines the next action: the lookahead.  Therefore, if we are
+            # in the same state, and the lookahead is at the same position in the source, the same behaviour is 
+            # going to result.  In other words, we are in a loop.
+            #
+            # However: a REDUCE can move the parse without changing the state or the lookahead position.  Consider 
+            # the expression "e + e + e" in a right-associative grammar.  If we reduce the right "e + e" to "e", we 
+            # likely end up in the same state, with the same lookahead, but we have, in fact, made progress.  
+            # Therefore, we include the start position of the node, as well as its end.
+            
+            @signature = "#{@node.first_token.rewind_position}:#{@state.number}:#{@node.follow_position}"
+            
          end
 
-         if include_lookahead_position then
-            return @signature + "||#{Token.description(next_token().type)} #{next_token().start_position},#{next_token().follow_position}"
-         else
-            return @signature
-         end
+         return @signature
       end
 
-
-      # #
-      # # correction_count()
-      # #  - returns the number of corrections done to get to this position
-      # 
-      # def correction_count( cache = false )
-      #    correction_count = 0
-      # 
-      #    if @correction_count.nil? then
-      #       correction_count = @recovery_context.correction_count(true) + 1 unless @recovery_context.nil?
-      #       @correction_count = correction_count if cache
-      #    else
-      #       correction_count = @correction_count
-      #    end
-      # 
-      #    return correction_count
-      # end
-      # 
-      # 
-      # #
-      # # active_correction_count()
-      # #  - returns the number of corrections currently on the stack
-      # 
-      # def active_correction_count()
-      #    @active_correction_count = (corrected? ? 1 : 0) + (@context.nil? ? 0 : @context.active_correction_count()) if @active_correction_count.nil?
-      #    return @active_correction_count
-      # end
-      # 
-      # 
-      # #
-      # # last_active_correction()
-      # #  - returns the last correction currently on the stack
-      # 
-      # def last_active_correction()
-      #    if @last_active_correction.nil? then
-      #       if corrected? then
-      #          @last_active_correction = self
-      #       elsif @context.nil? then
-      #          @last_active_correction = nil
-      #       else
-      #          @last_active_correction = @context.last_active_correction()
-      #       end 
-      #    end
-      # 
-      #    return @last_active_correction
-      # end
-      # 
-      # 
-      # #
-      # # distance_to_last_active_correction()
-      # #  - returns the number steps to the last correction still on the stack, counted by sequence number
-      # #  - don't call this if there are no errors on the stack
-      # 
-      # def distance_to_last_active_correction()
-      #    if @distance_to_last_active_correction.nil? then
-      #       if last_correction = last_active_correction() then
-      #          @distance_to_last_active_correction = @sequence_number - last_correction.sequence_number
-      #       end
-      #    end
-      # 
-      #    return @distance_to_last_active_correction
-      # end
-      # 
-      # #
-      # # distance_past_recovery_context()
-      # 
-      # def distance_past_recovery_context()
-      #    return nil if @recovery_context.nil?
-      #    return @sequence_number - @recovery_context.sequence_number
-      # end
-      # 
-      # 
-      # #
-      # # baseline_quality()
-      # #  - returns a number between 0 and 20 that indicates the quality of the position with respect to 
-      # #    error recovery (higher numbers indicate better quality)
-      # #  - this version does not take into account recovery successes since the last correction
-      # 
-      # def baseline_quality()
-      #    return @baseline_quality if defined?(@baseline_quality)
-      # 
-      #    #
-      #    # The idea is to give some estimate of how well error recovery is proceeding.  If there are no
-      #    # corrections left on the stack, we have maximum quality of 20.  If this position is a correction,
-      #    # we subtract the @correction_cost from either 12 (if the first error) or our context position's
-      #    # recovery-adjusted quality.  Finally, if we are in between corrections, we use the last 
-      #    # correction's baseline_quality, so it can be adjusted for the recovery.
-      # 
-      #    active_corrections = active_correction_count()
-      #    if active_corrections == 0 then
-      #       @baseline_quality = 20
-      #    elsif corrected? then
-      #       if active_corrections == 1 then
-      #          @baseline_quality = 12 - @correction_cost
-      #       else
-      #          @baseline_quality = @context.quality - @correction_cost - (2 ^ (active_corrections - 1))
-      #       end
-      #    else
-      #       @baseline_quality = @context.baseline_quality
-      #    end
-      # 
-      #    #
-      #    # Ensure the quality range is 0 to 20 and return it.
-      # 
-      #    @baseline_quality = max( min(@baseline_quality, 20), 0 )
-      #    return @baseline_quality
-      # end
-      # 
-      # 
-      # #
-      # # quality()
-      # #  - returns a number between 0 and 20 that indicates the quality of the position with respect to 
-      # #    error recovery (higher numbers indicate better quality)
-      # #  - this version does take into account recovery successes since the last correction
-      # 
-      # def quality()
-      #    return @quality if defined?(@quality)
-      #    @quality = baseline_quality()
-      # 
-      #    #
-      #    # Adjust the baseline quality up as we get further from the last correction on the stack.
-      # 
-      #    @quality += self.class.reduce_distance( distance_to_last_active_correction() )
-      #    @quality += self.class.reduce_distance( distance_past_recovery_context() )
-      # 
-      #    #
-      #    # Ensure the quality range is 0 to 20 and return it.
-      # 
-      #    @quality = max( min(@quality, 20), 0 )
-      #    return @quality
-      # end
-      # 
-      # 
-      # def correction_density()
-      #    if @correction_density.nil? then
-      #       @correction_count = (corrected? ? 1 : 0)
-      #       @correction_span  = 1
-      # 
-      #       end_at   = @recovery_context.sequence_number
-      #       start_at = @sequence_number
-      # 
-      #       context = @context
-      #       pending_count = 0
-      #       until context.nil?
-      #          pending_count += 1
-      # 
-      #          if context.corrected? then
-      #             if context.recovery_context.sequence_number == end_at then
-      #                @correction_count += 1
-      #                @correction_span  += pending_count
-      #                pending_count = 0
-      #                start_at = context.sequence_number
-      #             else
-      #                break
-      #             end
-      #          end
-      # 
-      #          context = context.context
-      #       end
-      #    end
-      # 
-      #    # return ((@correction_count + (@correction_count - 1) / @correction_span) * 20).ceil
-      #    if end_at - start_at == 0 then
-      #       return @correction_count
-      #    else
-      #       return ((@correction_count / (end_at - start_at)) * 20).ceil
-      #    end
-      # end
-      # 
-      # 
-      # #
-      # # ::reduce_distance()
-      # #  - reduces a distance to a "relative size" as follows:
-      # #      0     - 0
-      # #      1-2   - 1
-      # #      3-5   - 2
-      # #      6-9   - 3
-      # #      10-14 - 4
-      # #      15+   - 5
-      # 
-      # def self.reduce_distance( distance )
-      #    if distance.nil? then
-      #       return 0
-      #    elsif distance <= 0 then
-      #       return 0
-      #    elsif true then
-      #       return distance
-      # 
-      # 
-      # 
-      #    elsif distance < 3 then
-      #       return 1
-      #    elsif distance < 6 then
-      #       return 2
-      #    elsif distance < 10 then
-      #       return 3
-      #    elsif distance < 15 then
-      #       return 4
-      #    else
-      #       return 5
-      #    end
-      # end
 
 
 
@@ -637,6 +467,29 @@ module PositionMarkers
          # end
          stream.puts "#{explain_indent}#{stack_bar}"
          @state.display( stream, "#{explain_indent}| " )
+      end
+
+
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Support
+    #---------------------------------------------------------------------------------------------------------------------
+
+    protected
+    
+
+      #
+      # adjust_sequence_number()
+      #  - adjusts the sequence_number of this Position to follow another Position
+
+      def adjust_sequence_number( preceding_position )
+         @sequence_number = preceding_position.sequence_number + 1
+         if @corrected then
+            @last_correction.expand_scope( @sequence_number )
+         end
       end
 
 

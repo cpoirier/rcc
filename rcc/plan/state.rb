@@ -14,6 +14,7 @@ require "#{$RCCLIB}/model/form.rb"
 require "#{$RCCLIB}/plan/item.rb"
 require "#{$RCCLIB}/plan/actions/action.rb"
 require "#{$RCCLIB}/plan/explanations/explanation.rb"
+require "#{$RCCLIB}/plan/predicates/predicate.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
 
 module RCC
@@ -59,8 +60,7 @@ module Plan
       attr_reader :explanations
       attr_reader :lookahead_explanations
       attr_reader :lexer_plan
-      attr_reader :dangerous_insertions
-      attr_reader :risky_insertions
+      attr_reader :recovery_predicates
       
       def initialize( state_number, start_items = [], context_state = nil  )
          @number       = state_number    # The number of this State within the overall ParserPlan
@@ -85,8 +85,11 @@ module Plan
          @context_states = {}            # States that refer to us via transitions or reductions
          @context_states[context_state.number] = true unless context_state.nil?
          
-         @dangerous_insertions = {}      # A hash of Symbol.name => true that indicates Symbol.name that should never be inserted during error recovery
-         @risky_insertions     = {}      # A hash of Symbol.name => true that indicates Symbol.name *could* be dangerous at runtime and should be checked
+         #
+         # Recovery plan
+         
+         @recovery_predicates = {}  
+         @used_to_states      = {}
       end
       
       
@@ -408,38 +411,13 @@ module Plan
          end
          
          @lookahead = options.keys
-         
-         #
-         # Make a list of acceptable error recovery insertions for this state.
-         
-         options.each do |symbol_name, items|
-            universally_bad = false
-            risky           = false
-            
-            items.each do |item|
-               if item.complete? then
-                  risky = true
-               else
-                  universally_bad = true
-               end
-            end
-            
-            items.each do |item|
-               unless item.complete? or item.dangerous_insertion?
-                  universally_bad = false
-                  break
-               end
-            end
-            
-            @risky_insertions[symbol_name] = true if risky
-            @dangerous_insertions[symbol_name] = true if universally_bad
-         end
+
          
          #
          # Select an action for each lookahead terminal.
          
          @lookahead_explanations = Explanations::InitialOptions.new(options) if explain
-         
+
          options.each do |symbol_name, items|
 
             explanations          = []
@@ -581,7 +559,8 @@ module Plan
             # BUG: At some point, k>1 could eliminate some backtracking, and would be especially useful for 
             # reduce/reduce conflicts.
             
-            actions = []
+            actions               = []
+            action_items          = []
             chosen_shift_actions  = []
             chosen_reduce_actions = []
             
@@ -597,10 +576,12 @@ module Plan
                shift = valid_shifts[0]
                if symbol_name.nil? then
                   actions << Actions::Accept.new( shift.production )
+                  action_items << shift
                else
                   shift_action = Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions )
                   chosen_shift_actions << shift_action
                   actions              << shift_action
+                  action_items         << shift
                end
             end
             
@@ -608,6 +589,7 @@ module Plan
                reduce_action = Actions::Reduce.new( reduction.production )
                chosen_reduce_actions << reduce_action
                actions               << reduce_action
+               action_items          << reduction
             end
             
             actions.concat( error_actions )
@@ -632,8 +614,82 @@ module Plan
                explanations << Explanations::SelectedAction.new( @actions[symbol_name] )
                @explanations[symbol_name] = explanations 
             end
+            
+            
+            #
+            # Finally, generate a recovery plan for the current symbol, if applicable.
+            
+            generate_recovery_plan( symbol_name, action_items )
          end
+         
+         
       end
+      
+      
+      #
+      # generate_recovery_plan()
+      #  - generates a recovery predicate for the specified symbol_name
+      
+      def generate_recovery_plan( symbol_name, items )
+         predicate = nil
+         item      = items[0]
+         
+         if item.exists? and item.leader.exists? and item.leader.terminal? then
+            predicate = Predicates::TryIt.new()
+         
+            #
+            # For REDUCE operations, we use the lookahead token only if a (run-time) context State
+            # can SHIFT the token.
+            
+            if item.complete? then 
+               predicate = Predicates::ContextPredicate.new()
+               
+            #
+            # For SHIFT operations, we only consider one way to get to any particular State.  This
+            # ensures we don't try both e => e + e and e => e - e, for instance, which would not
+            # materially change the results.  We use the one earlier in the grammar.
+            
+            elsif @used_to_states.member?(@transitions[symbol_name].number) then
+               predicate = nil 
+               
+            #
+            # If we are here, it's a SHIFT and we will be choosing predicates.
+            
+            else
+               @used_to_states[@transitions[symbol_name].number] = true
+               
+            
+               #
+               # Forms that begin and end with a terminal are special.  We can consider them "matched" pairs.
+               #
+               #   e => . ( e )      ==> insert ( only if ) is the error
+               #   e => ( . e )      ==> not applicable (leader is a non-terminal)
+               #   e => ( e . )      ==> TryIt
+               #   e => ( e ) .      ==> REDUCE (already handled)
+            
+               if item.at == 0 and item.production.symbols[0].terminal? and item.production.symbols[-1].terminal? then
+                  predicate = Predicates::CheckErrorType.new( item.production.symbols[-1] )
+               
+               #
+               # Prefix and postfix forms that result in the same type as one of their terms are a dead-end.
+               #   e => . - e        ==> bad, bad idea
+               #   e => - . e        ==> not applicable (leader is a non-terminal)
+               #   e => - e .        ==> REDUCE (already handled)
+               #
+               #   e => . e ++       ==> not applicable (leader is a non-terminal)
+               #   e => e . ++       ==> bad, bad idea
+               #   e => e ++ .       ==> REDUCE (already handled)
+               
+               elsif item.production.symbols.length == 2 and item.leader.terminal? and item.production.symbols[0].terminal? ^ item.production.symbols[1].terminal? and item.production.symbols[(item.at - 1).abs].name == item.production.name then
+                  predicate = nil
+                  
+               end
+            end
+         end
+         
+         @recovery_predicates[symbol_name] = predicate unless predicate.nil? 
+      end
+      
       
       
       #
@@ -738,9 +794,6 @@ module Plan
                width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
                @transitions.each do |symbol_name, state|
                   stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.number) 
-                  stream << "  "
-                  stream << " (dangerous insertion)" if @dangerous_insertions.member?(symbol_name)
-                  stream << " (risky insertion)"     if @risky_insertions.member?(symbol_name)
                   stream << "\n"
                end
             end

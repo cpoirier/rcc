@@ -11,61 +11,45 @@
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
-module Interpreter
-module PositionMarkers
+module Plan
+module Predicates
 
  
  #============================================================================================================================
- # class StartPosition
- #  - a special Position marker that denotes the start position of the Parser
+ # class Predicate
+ #  - base class for recovery option Predicates
 
-   class StartPosition < PositionMarker
+   class Predicate
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      def initialize()
+      end
 
-      def initialize( state, lexer )
-         super( nil, nil, state, lexer, 0, false, nil, false, {} )
+      def to_s()
+         return self.class.name
+      end
+      
+      def display( stream, explain_indent = "" )
+         stream << explain_indent << self.to_s << "\n" unless explain_indent.nil?
       end
       
 
-      #
-      # pop()
-      #  - tells this Position it is being "popped" from the working set
-      #  - returns our context Position
       
-      def pop( production )
-         return @context
-      end
-      
-      
-      #
-      # description()
-      #  - return a description of this Position (node data only)
-      
-      def description()
-         return ""
-      end
-
-
-      #
-      # signature()
-      #  - the start position signature is special, because there is no Node to measure for extent
-      
-      def signature()
-         return ":#{@state.number}:0"
-      end
-      
-      
-      
-   end # StartPosition
+   end # Predicate
    
 
 
-end  # module PositionMarkers
-end  # module Interpreter
+end  # module Predicates
+end  # module Plan
 end  # module Rethink
 
 
+
+
+ 
+require "#{$RCCLIB}/plan/predicates/check_context.rb"
+require "#{$RCCLIB}/plan/predicates/check_error_type.rb"
+require "#{$RCCLIB}/plan/predicates/try_it.rb"
