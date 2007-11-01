@@ -418,6 +418,7 @@ module Plan
          
          @lookahead_explanations = Explanations::InitialOptions.new(options) if explain
 
+         recovery_data = {}
          options.each do |symbol_name, items|
 
             explanations          = []
@@ -617,10 +618,16 @@ module Plan
             
             
             #
-            # Finally, generate a recovery plan for the current symbol, if applicable.
+            # Finally, stash the recovery data so we can generate a recovery plan.
             
-            generate_recovery_plan( symbol_name, action_items )
+            recovery_data[symbol_name] = action_items
          end
+
+
+         #
+         # Generate a recovery plan for the state.
+         
+         generate_recovery_plan( recovery_data )
          
          
       end
@@ -630,64 +637,148 @@ module Plan
       # generate_recovery_plan()
       #  - generates a recovery predicate for the specified symbol_name
       
-      def generate_recovery_plan( symbol_name, items )
-         predicate = nil
-         item      = items[0]
+      def generate_recovery_plan( recovery_data )
          
-         if item.exists? and item.leader.exists? and item.leader.terminal? then
-            predicate = Predicates::TryIt.new()
+         #
+         # Pass 1: figure out which of our Items should be considered further.
+         #
+         # If the we have several ways to get to the same place, we want to consider only taking
+         # one of the paths.  For instance, we wouldn't want to try both of these Items:
+         #
+         #   e => e . + e
+         #   e => e . - e
+         #
+         # What would be the point?  If the + gets us somewhere, the - will get us to the same place.
+         # Similarly, if the + gets us nowhere, the - won't either.  That said, if we had these Items:
+         #
+         #   e => e . + e
+         #   e => e . * e
+         #   e => e . * e + ( id )
+         #
+         # Now we have a problem.  * is worth trying even if + fails, because it leads to more than
+         # one place.  In this case, we want to eliminate +, not *, as it can't get us anywhere * can't.  
+         # That said, there may be cases where both forms diverge, in which case, both must stay in.
          
-            #
-            # For REDUCE operations, we use the lookahead token only if a (run-time) context State
-            # can SHIFT the token.
-            
-            if item.complete? then 
-               predicate = Predicates::ContextPredicate.new()
+         recoverable_items = @items.select{|item| (item.leader.nil? or item.leader.terminal?) }
+         
+         #
+         # Start by grouping the shiftable items (this technique does nothing for reduce) by:
+         #    product symbol, length, leader index, and item form (less the leader)
+         
+         items_by_form = {}
+         recoverable_items.each do |item|
+            unless item.complete?
+               production = item.production
+               prefix     = item.prefix.collect{|symbol| symbol.to_s}.join(":")
+               suffix     = item.rest.slice(1..-1).collect{|symbol| symbol.to_s}.join(":")
+               key = "#{production.rule_name}|#{production.length}|#{item.at}|#{prefix}::#{suffix}"
                
-            #
-            # For SHIFT operations, we only consider one way to get to any particular State.  This
-            # ensures we don't try both e => e + e and e => e - e, for instance, which would not
-            # materially change the results.  We use the one earlier in the grammar.
-            
-            elsif @used_to_states.member?(@transitions[symbol_name].number) then
-               predicate = nil 
-               
-            #
-            # If we are here, it's a SHIFT and we will be choosing predicates.
-            
-            else
-               @used_to_states[@transitions[symbol_name].number] = true
-               
-            
-               #
-               # Forms that begin and end with a terminal are special.  We can consider them "matched" pairs.
-               #
-               #   e => . ( e )      ==> insert ( only if ) is the error
-               #   e => ( . e )      ==> not applicable (leader is a non-terminal)
-               #   e => ( e . )      ==> TryIt
-               #   e => ( e ) .      ==> REDUCE (already handled)
-            
-               if item.at == 0 and item.production.symbols[0].terminal? and item.production.symbols[-1].terminal? then
-                  predicate = Predicates::CheckErrorType.new( item.production.symbols[-1] )
-               
-               #
-               # Prefix and postfix forms that result in the same type as one of their terms are a dead-end.
-               #   e => . - e        ==> bad, bad idea
-               #   e => - . e        ==> not applicable (leader is a non-terminal)
-               #   e => - e .        ==> REDUCE (already handled)
-               #
-               #   e => . e ++       ==> not applicable (leader is a non-terminal)
-               #   e => e . ++       ==> bad, bad idea
-               #   e => e ++ .       ==> REDUCE (already handled)
-               
-               elsif item.production.symbols.length == 2 and item.leader.terminal? and item.production.symbols[0].terminal? ^ item.production.symbols[1].terminal? and item.production.symbols[(item.at - 1).abs].name == item.production.name then
-                  predicate = nil
-                  
-               end
+               items_by_form[key] = [] unless items_by_form.member?(key)
+               items_by_form[key] << item
             end
          end
          
-         @recovery_predicates[symbol_name] = predicate unless predicate.nil? 
+         #
+         # Select the minimum number of items necessary to ensure at least one item is represented
+         # from each form.  We'll take the cross-product of the groups and pick the first, shortest
+         # combination.  
+         
+         leader_options = []
+         items_by_form.each do |key, items|
+            leader_options << items.collect{|item| item.leader}
+         end
+
+         recoverable_shift_symbol_names = []
+         unless leader_options.empty?
+            matrix = leader_options[0].collect{|e| [e]}
+            1.upto(leader_options.length-1) do |index|
+               old_matrix = matrix
+               matrix     = []
+               
+               leader_options[index].each do |element|
+                  old_matrix.each do |row|
+                     matrix << row + [element]
+                  end
+               end
+            end
+            
+            count = matrix.inject(1000000000){ |current, row| row.uniq!; min(current, row.length) }
+
+            matrix.each do |row|
+               if row.length == count then
+                  recoverable_shift_symbol_names = row.collect{ |symbol| symbol.name }
+                  break
+               end
+            end
+         end
+
+         
+         #
+         # Phase 2: Given the list of acceptable shift recoveries, go through and generate recovery
+         # options for both shift and reduce actions.
+         
+         recovery_data.each do |symbol_name, recoverable_items|
+            predicate = nil
+            recoverable_items.each do |item|
+               predicate = Predicates::TryIt.new( item.minimal_phrasing? )
+               
+               #
+               # For REDUCE operations, we use the lookahead token only if a (run-time) context State
+               # can SHIFT the token.
+         
+               if item.complete? then 
+                  predicate = Predicates::CheckContext.new()
+            
+               #
+               # For SHIFT operations, exclude anything not on our recoverable_shift_symbols list.
+         
+               elsif !recoverable_shift_symbol_names.member?(symbol_name) then
+                  predicate = nil 
+               
+               #
+               # If we are here, it's a SHIFT and we will be choosing predicates.
+         
+               else
+                  @used_to_states[@transitions[symbol_name].number] = true
+               
+                  #
+                  # If this is not a primary form, we do not insert tokens.
+         
+                  if item.production.minimal_phrasing? then
+         
+                     #
+                     # Forms that begin and end with a terminal are special.  We can consider them "matched" pairs.
+                     #
+                     #   e => . ( e )      ==> insert ( only if ) is the error
+                     #   e => ( . e )      ==> not applicable (leader is a non-terminal)
+                     #   e => ( e . )      ==> TryIt
+                     #   e => ( e ) .      ==> REDUCE (already handled)
+         
+                     if item.at == 0 and item.production.symbols.length > 1 and item.production.symbols[0].terminal? and item.production.symbols[-1].terminal? then
+                        predicate = Predicates::CheckErrorType.new( item.production.symbols[-1] )
+         
+                     #
+                     # Prefix and postfix forms that result in the same type as one of their terms are a dead-end.
+                     #   e => . - e        ==> bad, bad idea
+                     #   e => - . e        ==> not applicable (leader is a non-terminal)
+                     #   e => - e .        ==> REDUCE (already handled)
+                     #
+                     #   e => . e ++       ==> not applicable (leader is a non-terminal)
+                     #   e => e . ++       ==> bad, bad idea
+                     #   e => e ++ .       ==> REDUCE (already handled)
+            
+                     elsif item.production.symbols.length == 2 and item.leader.terminal? and item.production.symbols[0].terminal? ^ item.production.symbols[1].terminal? and item.production.symbols[(item.at - 1).abs].name == item.production.name then
+                        predicate = nil
+         
+                     end
+                  end
+               end
+            
+               break unless predicate.is_a?(Predicates::TryIt)
+            end
+         
+            @recovery_predicates[symbol_name] = predicate unless predicate.nil? 
+         end
       end
       
       

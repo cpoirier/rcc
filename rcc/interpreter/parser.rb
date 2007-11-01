@@ -42,6 +42,7 @@ module Interpreter
          @build_ast           = build_ast
          @work_queue          = []
          @in_recovery         = false
+         @recovery_queue      = Util::TieredQueue.new()
       end
       
       
@@ -65,22 +66,39 @@ module Interpreter
          recovery_time_limit = 5
          allow_shortcutting  = false
          
-         start_position     = PositionMarkers::StartPosition.new(@parser_plan.state_table[0], @lexer)
-         error_limit        = 1000000000
-         recovery_queue     = Util::TieredQueue.new()
-         complete_solutions = []
-         partial_solutions  = []
-         recovery_costs     = {}      # recovery_context.object_id => best cost to recover from it
-         recovered_contexts = {}
-         position           = nil
+         start_position         = PositionMarkers::StartPosition.new(@parser_plan.state_table[0], @lexer)
+         correction_limit       = 1000000000
+         error_queue            = [] 
+         complete_solutions     = []
+         position               = nil
          
          @in_recovery = false
          recovery_start_time = nil
-         until @in_recovery and (recovery_queue.empty? or (Time.now - recovery_start_time > recovery_time_limit))
+         until @in_recovery and ((@recovery_queue.empty? and error_queue.empty?) or (Time.now - recovery_start_time > recovery_time_limit))
+
             if @in_recovery then
-               position = recovery_queue.shift
-               next if position.error_count > error_limit
-               
+
+               #
+               # If the @recovery_queue is empty, pick the best options from the error_queue and generate new
+               # recovery positions.  The best options are those with a correction cost lower than the any 
+               # complete solutions we've already found, and lower than any of the other errors in the queue.
+
+               if @recovery_queue.empty? then
+                  discard_threshold = error_queue.inject(correction_limit) {|current, position| min(current, position.correction_cost) }
+                  error_queue.each do |error_position|
+                     if error_position.correction_cost <= discard_threshold then
+                        generate_recovery_positions( error_position, correction_limit )
+                     end
+                  end
+               end
+
+               #
+               # Pick up the next recovery position for processing.  Don't bother if, since it was created,
+               # it has become a bad option (by correction_cost).
+
+               position = @recovery_queue.shift
+               next if allow_shortcutting and position.correction_cost > correction_limit
+
                STDOUT.puts ""
                STDOUT.puts ""
                STDOUT.puts ""
@@ -89,158 +107,39 @@ module Interpreter
                STDOUT.puts "================================================================================"
                STDOUT.puts "TRYING RECOVERY.  Current cost = #{position.last_correction.recovery_cost}/#{position.last_correction.correction_cost}"
                STDOUT.puts ""
+
             else
                position = start_position
-            end
-            
-            
-            begin
-               solution = position = parse_until_error( position, explain_indent )
-               complete_solutions << solution
-               #error_limit = min( error_limit, solution.error_count )
-               
-               
-            #======================================================================================================
-            rescue ParseError => e
-               position         = e.position
-               recovery_context = position.recovery_context
-               do_discard_bookkeeping = true
-
-               # #
-               # # If the position is correctable, generate corrected positions.
-               # 
-               # if position.correctable? then
-
-                  #
-                  # If the last position is still in recovery from a previous error, we may want to shortcut
-                  # out, if another one of the recoveries for that error already completed with fewer corrections
-                  # than this one is about to have.
-                  
-                  shortcut_out = false
-                  # if allow_shortcutting then
-                  #    if position.in_recovery? then
-                  #       if recovery_costs.member?(recovery_context.object_id) then
-                  #          if recovery_costs[recovery_context.object_id] <= position.recovery_cost then
-                  #             shortcut_out = true
-                  #          end
-                  #       end
-                  #    end
-                  # end
-                  
-                  #
-                  # If we aren't shortcutting out, generate corrections for the position.  We'll sort them
-                  # into the recovery_queue after they are all generated.
-                   
-                  unless shortcut_out  
-                     STDOUT.puts "CALCULATING RECOVERIES for: #{e.position.signature}"
-
-                     do_discard_bookkeeping = false
-                     recovery_positions     = []
-                     position.each_recovery_position do |recovery_position|
-                        STDOUT.puts "TRYING REPAIR at: #{recovery_position.signature}"
-
-                        lookahead_type = recovery_position.next_token.type
-                        recovery_position.state.recovery_predicates.each do |symbol_name, predicate|
-                           STDOUT.puts "for #{Parser.describe_type(symbol_name)}: #{predicate.class.name}"
-                        end
-                        
-                        recovery_position.state.actions.keys.each do |leader_type|
-                           unless leader_type.nil? or leader_type == lookahead_type or @parser_plan.non_terminal?(leader_type)
-                              
-                              #
-                              # Token replacement is one option.  But we never attempt to replace the EOS marker.
-
-                              unless lookahead_type.nil?
-                                 if recovery_position.next_token.similar_to?(leader_type) then
-                                    STDOUT.puts "   [#{leader_type}] SIMILAR to [#{lookahead_type}]"
-                                    recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, position ) 
-                                 else
-                                    STDOUT.puts "   [#{leader_type}] NOT SIMILAR to [#{lookahead_type}]"
-                                 end
-                              end
-                              
-                              #
-                              # Token insertion is another option.  
-                              
-                              STDOUT.puts "   WILL TRY INSERTING [#{leader_type}]"
-                              recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, position )
-                              
-                           end
-                        end
-                     end
-                  end
-                  
-                  #
-                  # Move the corrected positions onto the recovery_queue.  We try to ensure that the corrections
-                  # closest to the original error get attempted first.
-                  
-                  recovery_positions.each do |recovery_position|
-                     recovery_cost = recovery_position.recovery_cost
-                     
-                     if recovery_position.recovery_cost > 3 then
-                        recovery_queue.queue recovery_position, recovery_cost
-                     else
-                        recovery_queue.insert recovery_position, recovery_cost
-                     end
-                  end
-               # end
-               
-               
-               #
-               # If the position wasn't used to generate new recovery positions, we may need to do some bookkeeping.
-               
-               if do_discard_bookkeeping and recovery_context.exists? then
-
-                  #
-                  # If we are at a recovery_context transition, then we are about to lose a recovery_context, and we have
-                  # some work to do.
-                  #
-                  # 1) As a last resort, we may want to consider deleting tokens, to see if we can get around the error.  
-                  # Unfortunately, deleting tokens is very difficult, as lexing is context-sensitive, and deleting a token 
-                  # removes context.  Ideally, we'd like to be able to, say, delete everything from a '(' already on the 
-                  # stack to a ')' produced by a lexer (if we could identify such a production in one of the stack position 
-                  # states).  But that proves far more difficult than it sounds.  For now, we'll just delete the next token 
-                  # after the recovery_context and hope we can continue.
-                  #
-                  # 2) If this is a partial solution for another error, we should capture it, in case none of the error
-                  # recoveries reach a solution.
-                  
-                  if recovery_queue.empty? or (recovery_context.object_id != recovery_queue[0].last_correction.recovery_context.object_id) then
-                     discarded = true
-                     unless recovery_costs.member?(recovery_context.object_id)
-                        recovered_position = recovery_context.correct_by_deletion( recovery_context )
-                        if recovered_position.state.actions.member?(recovered_position.next_token.type) then
-                           recovery_queue.insert recovered_position, recovered_position.recovery_cost
-                           discarded = false
-                        end
-                     end
-                     
-                     if discarded and !recovery_costs.member?(recovery_context.object_id) then
-                        partial_solutions << recovery_context
-                     end
-                  end
-               end
-
-               
-            #======================================================================================================
-            rescue PositionSeen => e
-               position = e.position
-               STDOUT.puts "#{explain_indent}===> RECOVERY FAILED: results in a parse already tried" unless explain_indent.nil?
             end
 
 
             #
-            # Update the recovery_cost for the last error.  We'll use this when deciding if to pursue
-            # other recovery options from the same error.
-            
-            unless position.last_correction.nil?
-               last_error = position.last_correction.recovery_context
-               if !recovery_costs.member?(last_error.object_id) or recovery_costs[last_error.object_id] > position.last_correction.recovery_cost then
-                  recovery_costs[last_error.object_id] = position.last_correction.recovery_cost
+            # Run the position and handle any errors.
+
+            begin
+               solution = position = parse_until_error( position, explain_indent )
+               complete_solutions << solution
+               correction_limit = min( correction_limit, solution.correction_cost )
+
+            rescue ParseError => e
+               position = e.position
+               if position.correction_cost < correction_limit and position.correctable? then
+                  if position.recovered? then
+                     STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)}"
+                     error_queue << position
+                  else
+                     generate_recovery_positions( position, correction_limit )
+                  end
+               else
+                  STDOUT.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
                end
+               
+            rescue PositionSeen => e
+               position = e.position
+               STDOUT.puts "SHOULD THIS HAPPEN ANY MORE?  DISCARDING: #{position.description(true)}"
             end
-            
-            
+
+
             #
             # The first time through only, switch to error recovery mode.
 
@@ -249,24 +148,32 @@ module Interpreter
                recovery_start_time = Time.now
             end
          end
+
+
+         #
+         # Generate a list of partial recoveries for reporting.
+         
+         partial_solutions = []
+         discard_threshold = error_queue.inject(correction_limit) {|current, position| min(current, position.correction_cost) }
+         error_queue.each do |error_position|
+            if error_position.correction_cost <= discard_threshold then
+               partial_solutions << error_position
+            end
+         end
          
          
+         #
+         # Display the results.
          
          STDERR.puts "PARSING/ERROR RECOVERY COMPLETED in #{Time.now - recovery_start_time}s"
          STDERR.puts "   complete solutions: #{complete_solutions.length}"
          STDERR.puts "   partial solutions:  #{partial_solutions.length}"
          
-         best = 100000000
-         complete_solutions.each do |solution|
-            best = min( best, solution.correction_cost )
-            STDERR.puts "   #{solution.correction_cost}"
-         end
-         
-         STDERR.puts "   outputting solutions with #{best} corrections or less"
+         STDERR.puts "   outputting solutions with #{correction_limit} correction cost or better"
          
          count = 0
          complete_solutions.each do |solution|
-            # next if solution.correction_cost > best
+            next if solution.correction_cost > correction_limit
             count += 1
             
             STDOUT.puts ""
@@ -278,6 +185,18 @@ module Interpreter
             solution.node.format().each do |line|
                STDOUT.puts line
             end
+         end
+         
+         partial_solutions.each do |solution|
+            count += 1
+            
+            STDOUT.puts ""
+            STDOUT.puts ""
+            STDOUT.puts "PARTIAL SOLUTION: #{solution.correction_cost}" 
+            STDOUT.puts "========================"
+            STDOUT.puts ""
+            
+            solution.display( STDOUT, "" )
          end
          
          STDERR.puts "   total output: #{count}"
@@ -549,6 +468,65 @@ module Interpreter
       end
 
 
+      
+      #
+      # resolve_reference_predicate()
+      #  - searches the Position stack for the first non-reference recovery Predicate matching the leader_type
+
+      def resolve_reference_predicate( position, leader_type )
+         # action = position.state.actions[leader_type]
+         # while action.is_a?(Plan::Actions::Reduce)
+         #    position  = perform_action( position, action, nil, nil )
+         #    predicate = position.state.recovery_predicates[leader_type]
+         #    if predicate.is_a?(Plan::Predicates::CheckContext) then
+         #       action = position.state.actions[leader_type]
+         #    else
+         #       return predicate
+         #    end
+         # end
+         # 
+         # return nil
+         # 
+         # 
+         
+         #
+         # Create a simulated State stack
+         
+         states = []
+         position.each_position do |position|
+            states.unshift position.state
+         end
+         
+         #
+         # Process referals until we find a predicate that isn't one.
+         
+         action = states[-1].actions[leader_type]
+         while action.is_a?(Plan::Actions::Reduce)
+            
+            #
+            # Simulate the current REDUCE
+            
+            action.by_production.symbols.length.times do
+               states.pop
+            end
+            
+            states.push states[-1].transitions[action.by_production.name]
+            
+            #
+            # Get the next recovery predicate and set up for the next attempt.
+            
+            predicate = states[-1].recovery_predicates[leader_type]
+            if predicate.is_a?(Plan::Predicates::CheckContext) then
+               action = states[-1].actions[leader_type]
+            else
+               return predicate
+            end
+         end
+
+         return nil
+      end
+      
+
 
 
 
@@ -656,47 +634,116 @@ module Interpreter
       # generate_recovery_positions()
       #  - given an error position, generates a list of potential recovery positions
       
-      def generate_recovery_positions( position, explain_indent )
-         corrections = []
-         
-         #
-         # Work back from the supplied position to the root.  We will try inserting, replacing, or deleting a 
-         # token at the lookahead for each position.  We generate all potential corrections and let the error
-         # recovery code sort them out.
-         
-         recovery_context = position
-         until position.nil?
-            
-            #
-            # Ensure we don't regenerate the same corrections
+      def generate_recovery_positions( position, correction_limit )
+         recovery_positions = []
+         STDOUT.puts "CALCULATING RECOVERIES for: #{position.description(true)}"
 
-            if @recovery_registry.member?(position.signature) then
-               STDOUT.puts "===> RECOVERY SKIPPED FOR: #{position.signature}"
-            else
-               @recovery_registry[position.signature] = true
-            
+         #
+         # First, generate insertions and deletions at each stack point still available for error correction
+         # (ie. not already corrected).
+         
+         error_type = position.next_token.type
+         position.each_recovery_position do |recovery_position|
+            STDOUT.puts "   TRYING REPAIR at: #{recovery_position.description(true)}"
+            lookahead_type = recovery_position.next_token.type
+
+            #
+            # Apply the recovery Predicates from the State, and create corrected positions for any that
+            # pass.
+
+            recovery_position.state.recovery_predicates.each do |leader_type, predicate|
+               STDOUT.puts "      APPLYING PREDICATE FOR CORRECTION #{Parser.describe_type(leader_type)}"
+               next if leader_type.nil? or leader_type == lookahead_type
+
                #
-               # Never muck with a faked token -- infinite loops lie there . . . .
-            
-               unless position.next_token.faked?
-                  lookahead_type = position.next_token.type
-                  position.state.actions.keys.each do |leader_type|
-                     STDOUT.puts "mucking around with #{leader_type}"
-                     unless leader_type.nil? or leader_type == lookahead_type or @parser_plan.non_terminal?(leader_type) then
-                        corrections << position.correct_by_insertion( leader_type, recovery_context )
-                        corrections << position.correct_by_replacement( leader_type, recovery_context ) if position.next_token.similar_to?(leader_type)
+               # Process the predicate and set flags for our recovery options.
+
+               predicate = resolve_reference_predicate( position, leader_type ) if predicate.is_a?(Plan::Predicates::CheckContext)
+               next if predicate.nil?
+
+               replace = predicate.replace?
+               insert  = predicate.insert?
+
+               case predicate
+                  when Plan::Predicates::CheckErrorType
+                     unless error_type == predicate.error_type 
+                        replace = false
+                        insert  = false
                      end
+               end
+
+               #
+               # Token replacement is one option.  But we never attempt to replace the EOS marker.
+
+               if replace and !lookahead_type.nil? then
+                  if recovery_position.next_token.similar_to?(leader_type) then
+                     STDOUT.puts "         [#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE"
+                     begin
+                        recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, position ) 
+                     rescue PositionSeen => e
+                        STDOUT.puts "            ===> dead end"
+                     end
+                  else
+                     STDOUT.puts "         [#{leader_type}] NOT SIMILAR to [#{lookahead_type}]; WON'T TRY REPLACE"
                   end
-               
-                  corrections << position.correct_by_deletion( recovery_context )
+               end
+
+               #
+               # Token insertion is another option.
+
+               if insert then
+                  STDOUT.puts "         WILL TRY INSERTING [#{leader_type}]"
+                  begin
+                     recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, position )
+                  rescue PositionSeen => e
+                     STDOUT.puts "            ===> dead end"
+                  end
                end
             end
-            
-            position = position.context
+
+
+            #
+            # We can also try deleting tokens until we find something we can use.  
+            # BUG: THIS IS BORKED BY PositionSeen
+
+            deleted_tokens = []
+
+            begin
+               recovered_position = recovery_position.correct_by_deletion( position )
+               until recovered_position.nil?
+                  deleted_tokens << recovered_position.last_correction.deleted_token
+                  break if recovered_position.next_token.type.nil? or recovered_position.state.actions.member?(recovered_position.next_token.type)
+
+                  recovered_position = recovered_position.correct_by_deletion( position )
+               end
+            rescue PositionSeen => e
+               deleted_tokens
+            end
+
+            STDOUT.puts "      WILL TRY DELETING [#{deleted_tokens.collect{|t| t.description}.join(", ")}]"
+
+            recovery_positions.unshift recovered_position unless recovered_position.nil?
          end
-         
-         return corrections
+
+
+         #
+         # Move the corrected positions on @recovery_queue.  We try to ensure that the corrections closts to the
+         # original error get attempted first, but this will not override lower-cost solutions further away.
+
+         STDOUT.puts "   QUEUING GENERATED RECOVERIES"
+         recovery_positions.each do |recovery_position|
+            correction_cost = recovery_position.correction_cost
+            if correction_cost <= correction_limit then
+               STDOUT.puts "      QUEUING POSITION #{recovery_position.description(true)} @ #{recovery_position.correction_cost}"
+               @recovery_queue.insert recovery_position, correction_cost
+            else
+               STDOUT.puts "      TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
+            end
+         end  
       end
+
+
+
 
 
 

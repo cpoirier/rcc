@@ -29,8 +29,8 @@ module PositionMarkers
       attr_accessor :launch_action
       attr_accessor :attempt_depth
       
-      def initialize( context, node, state, lexer, stream_position, launch_action, expected_productions, position_registry, in_recovery = false, last_correction = nil, corrected = false, attempt_depth = 0 )
-         super( context, node, state, lexer, stream_position, in_recovery, last_correction, corrected, position_registry )
+      def initialize( context, node, state, lexer, stream_position, launch_action, expected_productions, in_recovery = false, last_correction = nil, corrected = false, attempt_depth = 0 )
+         super( context, node, state, lexer, stream_position, in_recovery, last_correction, corrected )
          @launch_action        = launch_action
          @attempt_depth        = attempt_depth
          @expected_productions = expected_productions

@@ -27,7 +27,7 @@ module PositionMarkers
 
 
       def initialize( state, lexer )
-         super( nil, nil, state, lexer, 0, false, nil, false, {} )
+         super( nil, nil, state, lexer, 0, false, nil, false )
       end
       
 
@@ -45,20 +45,15 @@ module PositionMarkers
       # description()
       #  - return a description of this Position (node data only)
       
-      def description()
-         return ""
+      def description( include_next_token = false )
+         if include_next_token then
+            return " | #{next_token().description}"
+         else
+            return ""
+         end
       end
 
 
-      #
-      # signature()
-      #  - the start position signature is special, because there is no Node to measure for extent
-      
-      def signature()
-         return ":#{@state.number}:0"
-      end
-      
-      
       
    end # StartPosition
    

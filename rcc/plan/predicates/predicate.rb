@@ -25,9 +25,19 @@ module Predicates
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
+      def initialize( insert = true, replace = true )
+         @insert  = insert
+         @replace = replace
       end
-
+      
+      def insert?()
+         return @insert
+      end
+      
+      def replace?()
+         return @replace
+      end
+      
       def to_s()
          return self.class.name
       end

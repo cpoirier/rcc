@@ -31,15 +31,31 @@ module Corrections
       attr_reader :active_from_position
       attr_reader :active_to_position
       attr_reader :recovery_attempts
+      attr_reader :recovery_registry
       attr_reader :correction_cost
       attr_reader :error_count
       
       def initialize( recovery_context, previous_correction, position_number, correction_penalty = 0 )
-         @recovery_context     = recovery_context
-         @previous_correction  = previous_correction
-         @active_from_position = position_number
-         @active_to_position   = position_number
-         @correction_penalty   = correction_penalty                      # Any additional user-defined cost for using this correction
+         bug( "wtf are you doing?" ) if recovery_context.nil?
+         
+         @recovery_context      = recovery_context
+         @previous_correction   = previous_correction
+         @active_from_position  = position_number
+         @active_to_position    = position_number
+         @correction_penalty    = correction_penalty     # Any additional user-defined cost for using this correction
+         
+         # #
+         # # During operations, we'll need to ensure we don't fall into an endless loop of directionless
+         # # corrections.  We'll want to ensure no contiguous correction leaves us in the same spot as
+         # # any other.  In order to manage this, we'll copy forward any already-registered signatures 
+         # # from our contiguous predecessors.  Our position will call back into mark_position() on 
+         # # construction.
+         # 
+         # @contiguous_correction = (previous_correction.exists? && (position_number == previous_correction.active_to_position + 1))
+         # @recovery_registry     = []
+         # if @contiguous_correction then
+         #    @recovery_registry = [] + @previous_correction.recovery_registry
+         # end
          
          #
          # Find the last correction not associated with the same original error (recovery context). 
@@ -86,7 +102,10 @@ module Corrections
          # reductions in a row is still significant for the overall parse, even though it doesn't consume any source.
          
          if @previous_correction.exists? and @previous_unassociated_correction.object_id == @previous_correction.object_id then
-            distance = @recovery_context.sequence_number - @previous_unassociated_correction.active_to_position
+            # STDERR.puts "#{@active_from_position} - #{@previous_unassociated_correction.active_to_position}"
+            # STDERR.puts "   #{@recovery_context.description(true)}"
+            # STDERR.puts "   #{@previous_unassociated_correction.recovery_context.description(true)}"
+            distance = max(1, @active_from_position - @previous_unassociated_correction.active_to_position)
             adjustment = @previous_unassociated_correction.recovery_cost / distance
             return @correction_penalty + (adjustment >= 0.25 ? adjustment : 0)
          else
@@ -102,9 +121,9 @@ module Corrections
       def recovery_cost()
          cost = intrinsic_cost() + correction_penalty()
          
-         unless @previous_correction.nil?
+         if @previous_correction.exists? and @previous_correction.recovery_context.object_id == @recovery_context.object_id then
             cost += @previous_correction.recovery_cost
-         end 
+         end
          
          return cost
       end
@@ -115,10 +134,11 @@ module Corrections
       #  - returns a number indicating how much all recoveries cost
       
       def correction_cost()
+         cost = intrinsic_cost() + correction_penalty()
          if @previous_correction.nil? then
-            return recovery_cost()
+            return cost
          else
-            return recovery_cost() + @previous_correction.correction_cost
+            return cost + @previous_correction.correction_cost
          end
       end
       
@@ -210,6 +230,31 @@ module Corrections
          
          return seed
       end
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Coordination
+    #---------------------------------------------------------------------------------------------------------------------
+
+    protected
+      
+      #
+      # associate_position()
+      #  - used by Position to associate itself with this Correction (solves a chicken-and-egg problem)
+      #  - raises Parser::PositionSeen if allowing the Position would be a bad idea
+      
+      def associate_position( position )
+         signature = position.signature
+         if @recovery_registry.member?(signature) then
+            raise Parser::PositionSeen.new(position)
+         else
+            @recovery_registry << signature
+         end
+      end 
+      
+      
       
       
    end # Correction

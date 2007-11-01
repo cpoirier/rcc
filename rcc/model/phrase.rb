@@ -26,13 +26,24 @@ module Model
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :symbols
+      attr_writer :minimal
       
-      def initialize( symbols = [] )
+      def initialize( symbols = [], minimal = true )
          @symbols = symbols.is_a?(Array) ? symbols : [ symbols ]
+         @minimal = minimal
       end
       
       def []( index )
          return @symbols[index]
+      end
+      
+      
+      #
+      # minimal?
+      #  - returns true if this Phrase contains no optional elements
+      
+      def minimal?()
+         return @minimal
       end
       
       
@@ -72,7 +83,7 @@ module Model
       #  - returns a new Phrase by adding the symbols in this Phrase with those of that supplied
       
       def +( rhs )
-         return Phrase.new( @symbols + rhs.symbols )
+         return Phrase.new( @symbols + rhs.symbols, @minimal && rhs.minimal? )
       end
       
       
@@ -109,7 +120,7 @@ module Model
       #  - parameters follow Array.slice()
        
       def slice(*parameters)
-         return Phrase.new( @symbols.slice(*parameters) )
+         return Phrase.new( @symbols.slice(*parameters), @minimal )
       end
       
       

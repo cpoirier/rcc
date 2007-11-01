@@ -49,19 +49,20 @@ module Plan
       attr_reader   :slot_mappings
       attr_accessor :ast_class
 
-      def initialize( number, rule_name, label, label_number, symbols, associativity, form_id, form = nil )
-         @number         = number
-         @rule_name      = rule_name
-         @name           = rule_name.intern
-         @label          = label
-         @label_number   = label_number
-         @symbols        = symbols
-         @associativity  = associativity
-         @form_id        = form_id
-         @form_number    = form_number
-         @form           = form
-         @slot_mappings  = {}
-         @ast_class      = nil
+      def initialize( number, rule_name, label, label_number, symbols, associativity, form_id, form = nil, minimal_phrasing = true )
+         @number           = number
+         @rule_name        = rule_name
+         @name             = rule_name.intern
+         @label            = label
+         @label_number     = label_number
+         @symbols          = symbols
+         @associativity    = associativity
+         @form_id          = form_id
+         @form_number      = form_number
+         @form             = form
+         @minimal_phrasing = minimal_phrasing
+         @slot_mappings    = {}
+         @ast_class        = nil
          
          #
          # Map the slots for our Symbols.
@@ -72,14 +73,37 @@ module Plan
             end
          end
       end
-
-    
+      
+      
+      def length()
+         return @symbols.length
+      end
+      
+      
+      #
+      # minimal_phrasing?()
+      #  - if true, this Production represents a simplest phrasing of the Form (ie. no optional tokens)
+      
+      def minimal_phrasing?()
+         return @minimal_phrasing
+      end
+      
+      
       def to_s()
          return "#{@rule_name} => #{@symbols.join(" ")}"
       end
 
       def ==( rhs )
          return @number == rhs.number
+      end
+      
+      
+      #
+      # matched_form?
+      #  - returns true if the form starts and ends with a terminal
+      
+      def matched_form?()
+         
       end
       
    end # Production

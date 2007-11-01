@@ -56,7 +56,12 @@ module FormElements
          #
          # Our Forms are our child forms plus an empty Form.
          
-         return [ Model::Phrase.new() ].concat( @element.phrases(@label.nil? ? label : @label) )
+         optional_phrases = @element.phrases(@label.nil? ? label : @label)
+         optional_phrases.each do |optional_phrase|
+            optional_phrase.minimal = false
+         end
+         
+         return [ Model::Phrase.new() ].concat( optional_phrases )
       end
          
     

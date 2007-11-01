@@ -65,14 +65,20 @@ module Plan
             
             #
             # Build our Productions.
-            
+            # 
+            # BUG: Presently, we allow only the first phrasing of any Form to be recoverable.  This eliminates error
+            # recoveries where optional tokens are inserted.  Unfortunately, we've allowed somewhat too much flexibility
+            # in the grammar language, in that you can produce phrasing with optional clauses.  If you are in the middle
+            # of one of these clauses, you should be allowed to error correct it.  With the current scheme, though, that
+            # won't happen.  This should be fixed, at some point.
+
             form.phrases.each do |phrase|
                label        = form.label.nil? ? form.rule.name : form.label
                label_number = production_labels.member?(label) ? production_labels[label].length + 1 : 1
                
                symbols    = phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?, model.slot) }
-               production = Production.new( productions.length + 1, form.rule.name, label, label_number, symbols, form.associativity, form.id_number, form )
-               
+               production = Production.new( productions.length + 1, form.rule.name, label, label_number, symbols, form.associativity, form.id_number, form, phrase.minimal? )
+
                productions << production
                form_lookup[form.id_number] << production
                

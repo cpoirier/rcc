@@ -26,7 +26,8 @@ module Predicates
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
+      def initialize( insert = true, replace = true )
+         super( insert, replace )
       end
       
    end # TryIt

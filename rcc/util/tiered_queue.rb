@@ -119,6 +119,22 @@ module Util
          
          return nil
       end
+      
+      
+      #
+      # first()
+      #  - returns the next object from the queue WITHOUT removing it from the queue
+      
+      def first()
+         @tiers.each do |tier|
+            unless tier.empty?()
+               return tier[0]
+            end
+         end
+         
+         return nil
+      end
+      
 
 
     protected

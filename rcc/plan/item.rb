@@ -66,6 +66,10 @@ module Plan
          return self.signature == rhs.signature
       end
       
+      def minimal_phrasing?()
+         return @production.minimal_phrasing?
+      end
+      
       # 
       # rule_name()
       #  - returns the name of the underlying rule

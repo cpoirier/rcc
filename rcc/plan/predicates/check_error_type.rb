@@ -26,8 +26,12 @@ module Predicates
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( error_type )
-         @error_type = error_type
+      attr_reader :error_type
+      
+      def initialize( error_symbol, insert = true, replace = true )
+         super( insert, replace )
+         
+         @error_type = error_symbol.name
       end
       
    end # CheckErrorType

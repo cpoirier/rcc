@@ -25,9 +25,13 @@ module Corrections
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( recovery_context, previous_correction, position_number, correction_penalty = 0 )
+      attr_reader :deleted_token
+      
+      def initialize( deleted_token, recovery_context, previous_correction, position_number, correction_penalty = 0 )
          super( recovery_context, previous_correction, position_number, correction_penalty )
+         @deleted_token  = deleted_token
       end
+      
             
       #
       # intrinsic_cost()
