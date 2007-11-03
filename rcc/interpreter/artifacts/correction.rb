@@ -12,33 +12,39 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module Corrections
+module Artifacts
 
  
  #============================================================================================================================
- # class Insertion
- #  - represents a single token insertion into the source text
+ # class Correction
+ #  - base class for a source correction created during error recovery
 
-   class Insertion < Correction
+   class Correction
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :inserted_token
+      def initialize( penalty = 0 )
+         @penalty = penalty
+      end
       
-      def initialize( inserted_token, recovery_context, previous_correction, position_number, correction_penalty = 0 )
-         super( recovery_context, previous_correction, position_number, correction_penalty )
-         @inserted_token = inserted_token
+      
+      #
+      # cost()
+      #  - returns the cost of this particular Correction
+      
+      def cost()
+         return intrinsic_cost() + @penalty
       end
       
       
       #
       # intrinsic_cost()
-      #  - returns the intrinsic cost of this type of correction
+      #  - returns the intrinsic cost of this type of Correction
       
       def intrinsic_cost()
-         return 2
+         return 0
       end
       
       
@@ -47,18 +53,29 @@ module Corrections
       #  - returns true if this correction inserts a token into the stream
       
       def inserts_token?()
-         return true
+         return false
       end
       
       
+      #
+      # deletes_token?()
+      #  - returns true if this correction deletes a token from the stream
       
+      def deletes_token?()
+         return false
+      end
+
       
    end # Correction
    
 
 
 
-end  # module Corrections
+end  # module Artifacts
 end  # module Interpreter
 end  # module Rethink
 
+
+require "#{$RCCLIB}/interpreter/artifacts/insertion.rb"
+require "#{$RCCLIB}/interpreter/artifacts/replacement.rb"
+require "#{$RCCLIB}/interpreter/artifacts/deletion.rb"

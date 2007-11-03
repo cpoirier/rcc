@@ -31,36 +31,30 @@ module PositionMarkers
       attr_reader   :node
       attr_reader   :state
       attr_reader   :stream_position
-      attr_reader   :last_correction
       attr_accessor :alternate_recovery_positions
       attr_accessor :sequence_number
 
-      def initialize( context, node, state, lexer, stream_position, in_recovery = false, last_correction = nil, corrected = false )
+      def initialize( context, node, state, lexer, stream_position, next_token = nil )
          @context         = context
          @node            = node
          @state           = state
          @signature       = nil
-         @in_recovery     = in_recovery
-         @last_correction = last_correction
-         @corrected       = corrected
          @alternate_recovery_positions = []
-         
-         bug( "wtf?" ) if @corrected and @last_correction.nil?
          
          #
          # Token management
 
          @lexer            = lexer
          @stream_position  = stream_position
-         @next_token       = nil
+         @next_token       = next_token
          @sequence_number  = (@context.nil? ? 0 : @context.sequence_number + 1)
          
          #
          # Register the Position with any recovery context.  This may raise Parser::PositionSeen.
-         
-         if !recovered? and @last_correction.inserts_token? then
-            @last_correction.recovery_context.mark_recovery_progress( self )
-         end
+         #
+         # if !recovered? and @last_correction.inserts_token? then
+         #    @last_correction.recovery_context.mark_recovery_progress( self )
+         # end
       end
       
       
@@ -75,25 +69,11 @@ module PositionMarkers
       #  - returns the next_token from this Position
 
       def next_token( explain_indent = nil )
-         if @corrected and @last_correction.inserts_token? then
-            return @last_correction.inserted_token 
-         else
-            if @next_token.nil?
-               unless explain_indent.nil? then
-                  lexer_explanation = "Lexing with prioritized symbols: #{@state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
-
-                  STDOUT.puts ""
-                  STDOUT.puts ""
-                  STDOUT.puts "#{explain_indent}#{"-" * lexer_explanation.length}"
-                  STDOUT.puts "#{explain_indent}#{lexer_explanation}"
-               end
-
-               @next_token = @lexer.next_token( @stream_position, @state.lexer_plan, explain_indent )
-               @next_token.rewind_position = @stream_position
-            end
-
-            return @next_token
+         if @next_token.nil?
+            @next_token = self.class.lex_token( @state, @lexer, @stream_position, explain_indent = nil )
          end
+
+         return @next_token
       end
       
       
@@ -111,88 +91,15 @@ module PositionMarkers
 
 
       #
-      # in_recovery?
-      #  - returns true if this position is part of an uncomplete error recovery
-      
-      def in_recovery?()
-         return @in_recovery
-      end
-      
-      
-      #
-      # corrected?
-      #  - returns true if this position was the result of a correction
-      
-      def corrected?()
-         return @corrected
-      end
-      
-      
-      #
-      # corrected_token?
-      #  - returns true if the next_token is faked
-      
-      def corrected_token?()
-         return next_token.faked?
-      end
-      
-      
-      #
-      # correctable?()
-      #  - returns true if this position can be corrected
-      
-      def correctable?( error_tolerance = 3 )
-         return true  if recovered?
-
-         return false if @corrected and @last_correction.inserts_token?
-         return @last_correction.recovery_attempts < error_tolerance
-      end
-      
-      
-      #
-      # recovered?
-      #  - returns true if this position is past an error recovery (or there's never been an error)
-      
-      def recovered?()
-         return !@in_recovery
-         # return true if @last_correction.nil?
-         # if @stream_position > @last_correction.recovery_context.stream_position then
-         #    
-         #    #
-         #    # We want to make sure the token that caused the error has actually been REDUCEd off
-         #    # the stack.  If it hasn't, we're probably not really past the error.
-         #    
-         #    recovered = true
-         #    each_position do |position|
-         #       break if position.stream_position < @last_correction.recovery_context.stream_position
-         #       if position.node.is_a?(Token) then
-         #          if position.stream_position == @last_correction.recovery_context.stream_position then
-         #             recovered = false
-         #             break
-         #          end
-         #       end
-         #    end
-         #    
-         #    return recovered
-         # else
-         #    return false
-         # end
-      end
-      
-      
-      #
       # each_recovery_position()
       #  - calls your block once for this position and each context position on the stack at which it 
       #    is valid to look to for error recovery options
       #  - you will never receive a recovery position that would stomp on an existing correction
       
       def each_recovery_position()
-         recovery_stream_position = -1
-         recovery_stream_position = @last_correction.recovery_context.stream_position unless @last_correction.nil?
-         
          position = self
          until position.nil?
-            break if position.stream_position < recovery_stream_position
+            break if position.node.corrected? or position.next_token.corrected?
             yield( position )
             position = position.context
          end
@@ -219,57 +126,6 @@ module PositionMarkers
          return @context.attempt_context
       end
       
-      
-      #
-      # error_count()
-      #  - returns the number of errors we've encountered getting to here
-      
-      def error_count()
-         return 0 if @last_correction.nil?
-         return @last_correction.error_count
-      end
-      
-      
-      #
-      # recovery_attempts()
-      #  - returns the number of corrections (so far) on any active recovery context
-      
-      def recovery_attempts()
-         return 0 if !@corrected and recovered? 
-         return @last_correction.recovery_attempts
-      end
-      
-      
-      #
-      # recovery_cost()
-      #  - returns the cost of corrections (so far) on any active recovery context
-      
-      def recovery_cost()
-         return 0 if (recovered? and not @corrected)
-         return @last_correction.recovery_cost
-      end
-      
-      
-      #
-      # correction_cost()
-      #  - returns the overall cost of corrections to this point in the parse
-      
-      def correction_cost()
-         return 0 if @last_correction.nil?
-         return @last_correction.correction_cost 
-      end
-      
-      
-      #
-      # recovery_context()
-      #   - returns the recovery_context from the last correction
-      
-      def recovery_context()
-         return nil if @last_correction.nil?
-         return @last_correction.recovery_context
-      end
-      
-      
 
 
 
@@ -285,39 +141,14 @@ module PositionMarkers
       #  - raises Parser::PositionSeen if you attempt to push() to a Position we've already been
 
       def push( node, state, reduce_position = nil )
-         next_position    = nil
-         next_in_recovery = @in_recovery
-         
-         #
-         # If we are reducing during an error recovery, we stay in recovery unless our its recovery_context tokens 
-         # are off the stack.
-         
-         if reduce_position.exists? and reduce_position.in_recovery? then
-            next_in_recovery = true
-            error_point      = reduce_position.last_correction.recovery_context.stream_position
-            if node.follow_position > error_point then
-               next_in_recovery = false
-               self.each_position do |position|
-                  if position.stream_position <= error_point then
-                     if position.node.is_a?(Token) and position.node.follow_position >= error_point then
-                        next_in_recovery = true
-                     end
-                     break
-                  end
-               end
-            end
-         end
+         next_position = nil
          
          #
          # Generate the new position.  We patch up the sequence number if reducing, as it will be generated as 
          # following us, not the popped top-of-stack.
          
-         if reduce_position.nil? then
-            next_position = PositionMarker.new( self, node, state, @lexer, node.follow_position, next_in_recovery, @last_correction, false )
-         else
-            next_position = PositionMarker.new( self, node, state, @lexer, node.follow_position, next_in_recovery, reduce_position.last_correction, reduce_position.corrected? )
-            next_position.adjust_sequence_number( reduce_position )
-         end
+         next_position = PositionMarker.new( self, node, state, @lexer, node.follow_position )
+         next_position.adjust_sequence_number( reduce_position ) if reduce_position.exists?
          
          #
          # Return the new Position.
@@ -343,7 +174,7 @@ module PositionMarkers
       #  - call this on the original Position for each of your potential branches, then use the AttemptPositions instead
 
       def fork( launch_action, expected_productions = nil )
-         return AttemptPosition.new( @context, @node, @state, @lexer, @stream_position, launch_action, expected_productions, @in_recovery, @last_correction, @corrected )
+         return AttemptPosition.new( @context, @node, @state, @lexer, @stream_position, launch_action, expected_productions )
       end
 
 
@@ -351,22 +182,21 @@ module PositionMarkers
       # correct_by_insertion()
       #  - produces a new position similar to this one, but with a manufactured token on lookahead
 
-      def correct_by_insertion( type, recovery_context )
+      def correct_by_insertion( type )
          
          #
          # Create the token to insert.
          
          @lexer.set_position( @stream_position )
-         token = @lexer.locate_token( Token.fake(type, @stream_position) )
+         token = @lexer.locate_token( Artifacts::Token.fake(type, @stream_position) )
          token.rewind_position = @stream_position
+         token.taint( Artifacts::Insertion.new(token) )
                   
          #
          # Create the correction and a new Position to replace this one.  
          
-         corrected_sequence_number = @sequence_number
-         correction         = Corrections::Insertion.new( token, in_recovery? ? @last_correction.recovery_context : recovery_context, @last_correction, corrected_sequence_number )
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, true, correction, true )
-         corrected_position.sequence_number = corrected_sequence_number
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, token )
+         corrected_position.sequence_number = @sequence_number
 
          return corrected_position
       end
@@ -376,23 +206,22 @@ module PositionMarkers
       # correct_by_replacement()
       #  - produces a new position similar to this one, but with a manufactured token on lookahead, in place of the next token
 
-      def correct_by_replacement( type, recovery_context )
+      def correct_by_replacement( type )
 
          #
          # Grab the copy of the token we are replacing and create the token to insert.
          
          replaced_token = next_token()
          @lexer.set_position( @stream_position )
-         token = @lexer.locate_token( Token.fake(type, replaced_token.follow_position) )
+         token = @lexer.locate_token( Artifacts::Token.fake(type, replaced_token.follow_position) )
          token.rewind_position = @stream_position
+         token.taint( Artifacts::Replacement.new(token, replaced_token) )
 
          #
          # Create the correction and a new Position to replace this one.  
 
-         corrected_sequence_number = @sequence_number
-         correction         = Corrections::Replacement.new( token, replaced_token, in_recovery? ? @last_correction.recovery_context : recovery_context, @last_correction, corrected_sequence_number )
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, true, correction, true )
-         corrected_position.sequence_number = corrected_sequence_number
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, token )
+         corrected_position.sequence_number = @sequence_number
 
          return corrected_position
       end
@@ -402,19 +231,21 @@ module PositionMarkers
       # correct_by_deletion()
       #  - produces a new position similar to this one, but with the second next token on lookahead
       
-      def correct_by_deletion( recovery_context )
+      def correct_by_deletion( explain_indent = nil )
          
          #
-         # Grab the copy of the token we are deleting.
+         # Re-arrange our lookahead.  We taint the new next Token to get the Correction in place,
+         # then untaint it, as the Token is real.
          
          deleted_token = next_token()
+         token = self.class.lex_token( @state, @lexer, deleted_token.follow_position, explain_indent )
+         token.taint( Artifacts::Deletion.new(deleted_token) )
+         token.untaint()
 
          #
          # Create the correction and a new Position to replace this one.
          
-         corrected_sequence_number = @sequence_number
-         correction         = Corrections::Deletion.new( deleted_token, in_recovery? ? @last_correction.recovery_context : recovery_context, @last_correction, corrected_sequence_number )
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, self.next_token.follow_position, true, correction, true )
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, deleted_token.follow_position, token )
          corrected_position.sequence_number = @sequence_number
 
          return corrected_position
@@ -561,6 +392,28 @@ module PositionMarkers
          end
       end
 
+
+      #
+      # ::lex_token()
+      #  - returns the next_token from this Position
+
+      def self.lex_token( state, lexer, stream_position, explain_indent = nil )
+         unless explain_indent.nil? then
+            lexer_explanation = "Lexing with prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
+
+            STDOUT.puts ""
+            STDOUT.puts ""
+            STDOUT.puts "#{explain_indent}#{"-" * lexer_explanation.length}"
+            STDOUT.puts "#{explain_indent}#{lexer_explanation}"
+         end
+
+         next_token = lexer.next_token( stream_position, state.lexer_plan, explain_indent )
+         next_token.rewind_position = stream_position
+         
+         return next_token
+      end
+      
+      
 
 
 

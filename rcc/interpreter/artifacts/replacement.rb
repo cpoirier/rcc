@@ -12,7 +12,7 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module Corrections
+module Artifacts
 
  
  #============================================================================================================================
@@ -28,8 +28,8 @@ module Corrections
       attr_reader :inserted_token
       attr_reader :deleted_token
       
-      def initialize( inserted_token, deleted_token, recovery_context, previous_correction, position_number, correction_penalty = 0 )
-         super( recovery_context, previous_correction, position_number, correction_penalty )
+      def initialize( inserted_token, deleted_token, penalty = 0 )
+         super( penalty )
          @inserted_token = inserted_token
          @deleted_token  = deleted_token
       end
@@ -43,8 +43,7 @@ module Corrections
          return 1
       end
       
-      
-      
+            
       #
       # inserts_token?
       
@@ -53,13 +52,21 @@ module Corrections
       end
       
       
+      #
+      # deletes_token?()
+      #  - returns true if this correction deletes a token from the stream
+      
+      def deletes_token?()
+         return true
+      end
+      
       
    end # Replacement
    
 
 
 
-end  # module Corrections
+end  # module Artifacts
 end  # module Interpreter
 end  # module Rethink
 

@@ -12,58 +12,53 @@ require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/envir
 
 module RCC
 module Interpreter
-module PositionMarkers
+module Artifacts
 
  
  #============================================================================================================================
- # class StartPosition
- #  - a special Position marker that denotes the start position of the Parser
+ # class Deletion
+ #  - represents a single token insertion into the source text
 
-   class StartPosition < PositionMarker
+   class Deletion < Correction
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-
-      def initialize( state, lexer )
-         super( nil, nil, state, lexer, 0 )
+      attr_reader :deleted_token
+      
+      def initialize( deleted_token, penalty = 0 )
+         super( penalty )
+         @deleted_token  = deleted_token
       end
       
-
+            
       #
-      # pop()
-      #  - tells this Position it is being "popped" from the working set
-      #  - returns our context Position
+      # intrinsic_cost()
+      #  - returns the intrinsic cost of this type of correction
       
-      def pop( production )
-         return @context
+      def intrinsic_cost()
+         return 3
       end
       
       
       #
-      # description()
-      #  - return a description of this Position (node data only)
+      # deletes_token?()
+      #  - returns true if this correction deletes a token from the stream
       
-      def description( include_next_token = false )
-         if include_next_token then
-            return " | #{next_token().description}"
-         else
-            return ""
-         end
-      end
-
-
-      def start_position?
+      def deletes_token?()
          return true
       end
       
-   end # StartPosition
+      
+      
+      
+   end # Deletion
    
 
 
-end  # module PositionMarkers
+
+end  # module Artifacts
 end  # module Interpreter
 end  # module Rethink
-
 

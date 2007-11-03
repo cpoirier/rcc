@@ -9,38 +9,35 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/interpreter/artifacts/node.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
+
 
 module RCC
 module Interpreter
+module Artifacts
 
  
  #============================================================================================================================
  # class ASN
  #  - a Node in an Abstract Syntax Tree produced by the Interpreter
 
-   class ASN
+   class ASN < Node
       
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :root_symbol    # The Symbol this CSN represents
       attr_reader :slots          # The named Symbols that comprise it
       attr_reader :ast_class 
       attr_reader :first_token
       attr_reader :last_token
-      attr_reader :token_count
-      
-      alias :symbol :root_symbol
-      alias :type   :root_symbol
       
       def initialize( production, component_symbols )
-         @root_symbol = production.name
+         super( production.name, component_symbols )
          @ast_class   = production.ast_class
          @slots       = Util::OrderedHash.new()
-         @token_count = component_symbols.inject(0) {|sum, symbol| symbol.token_count }
          @first_token = component_symbols[0].first_token
          @last_token  = component_symbols[-1].last_token
          
@@ -49,18 +46,6 @@ module Interpreter
          end
       end
       
-      def follow_position()
-         return @last_token.follow_position
-      end
-      
-      
-      def description()
-         return "#{@root_symbol}"
-      end
-      
-      def terminal?()
-         return false
-      end
       
       def display( stream, indent = "", inline_candidate = false )
          stream << indent << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"
@@ -132,46 +117,10 @@ module Interpreter
       
       
       
-
-
-    #---------------------------------------------------------------------------------------------------------------------
-    # Error Recovery 
-    #---------------------------------------------------------------------------------------------------------------------
-
-
-      #
-      # tainted?
-      #  - returns true if this ASN carries Correction taint
-      
-      def tainted?()
-         return @tainted
-      end
-      
-      
-      #
-      # untaint()
-      #  - clears the taint from this ASN (any Correction is still linked)
-      
-      def untaint()
-         @tainted = false
-      end
-      
-      
-      #
-      # correction()
-      #  - returns the last Correction object associated from within this ASN
-      
-      def correction()
-         return nil if !defined(@correction)
-         return @correction 
-      end
-    
-      
-    
-      
    end # ASN
    
 
 
+end  # module Artifacts
 end  # module Interpreter
 end  # module Rethink

@@ -13,6 +13,7 @@ require "#{$RCCLIB}/model/token.rb"
 
 module RCC
 module Interpreter
+module Artifacts
 
  
  #============================================================================================================================
@@ -187,7 +188,7 @@ module Interpreter
       #  - returns true if this Token carries Correction taint
       
       def tainted?()
-         return (defined(@correction) and @correction.exists?)
+         return (defined(@corrections) and @corrections.exists? and !@corrections.empty?)
       end
       
       
@@ -197,34 +198,51 @@ module Interpreter
       #  - associates a Correction describing the taint
       
       def taint( correction )
-         @correction = correction
+         @corrections = [] if !defined(@corrections) or @corrections.nil?
+         @corrections << correction
+         
+         if correction.deletes_token? then
+            deleted_token = correction.deleted_token
+            if deleted_token.corrected? then
+               @corrections = deleted_token.corrections + @corrections
+            end
+         end
       end
       
       
       #
-      # correction()
-      #  - returns any Correction object associated with this Token
+      # corrected?()
+      #  - returns true if there are any Corrections associated with this Token
+      #  - for Tokens (only), tainted? implies corrected? and vice versa
       
-      def correction()
-         return nil if !defined(@correction)
-         return @correction 
+      def corrected?()
+         return (defined(@corrections) and @corrections.exists? and !@corrections.empty?)
       end
-      
-      alias last_correction correction
       
       
       #
-      # correction_cost()
-      #  - returns the cost of any Correction associated with this Token, or 0
+      # corrections()
+      #  - returns any Correction objects associated with this Token
       
-      def correction_cost()
-         return 0 if !defined(@correction) or @correction.nil?
-         return @correction.cost
+      def corrections()
+         return [] if !defined(@corrections)
+         return @corrections 
+      end
+      
+      
+      #
+      # corrections_cost()
+      #  - returns the cost of any Corrections associated with this Token, or 0
+      
+      def corrections_cost()
+         return 0 if !defined(@corrections) or @corrections.nil?
+         return @corrections.inject(0) { |current, correction| current + correction.cost }
       end
       
       
    end # Token
    
 
+end  # module Artifacts
 end  # module Interpreter
 end  # module Rethink
