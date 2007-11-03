@@ -35,27 +35,15 @@ module Corrections
       attr_reader :correction_cost
       attr_reader :error_count
       
-      def initialize( recovery_context, previous_correction, position_number, correction_penalty = 0 )
+      def initialize( recovery_context, previous_correction, recovery_extent, position_number, correction_penalty = 0 )
          bug( "wtf are you doing?" ) if recovery_context.nil?
          
          @recovery_context      = recovery_context
          @previous_correction   = previous_correction
+         @recovery_extent       = recovery_extent        # Stream positions range *definitely* in the correction
          @active_from_position  = position_number
          @active_to_position    = position_number
          @correction_penalty    = correction_penalty     # Any additional user-defined cost for using this correction
-         
-         # #
-         # # During operations, we'll need to ensure we don't fall into an endless loop of directionless
-         # # corrections.  We'll want to ensure no contiguous correction leaves us in the same spot as
-         # # any other.  In order to manage this, we'll copy forward any already-registered signatures 
-         # # from our contiguous predecessors.  Our position will call back into mark_position() on 
-         # # construction.
-         # 
-         # @contiguous_correction = (previous_correction.exists? && (position_number == previous_correction.active_to_position + 1))
-         # @recovery_registry     = []
-         # if @contiguous_correction then
-         #    @recovery_registry = [] + @previous_correction.recovery_registry
-         # end
          
          #
          # Find the last correction not associated with the same original error (recovery context). 
@@ -83,6 +71,15 @@ module Corrections
                @error_count        = @previous_correction.error_count + 1
             end
          end
+      end
+      
+      
+      #
+      # covers?()
+      #  - returns true if this Correction's recovery covers the specified Position
+      
+      def covers?( position )
+         
       end
       
       

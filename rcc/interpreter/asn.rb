@@ -130,6 +130,45 @@ module Interpreter
          return chart
       end
       
+      
+      
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Error Recovery 
+    #---------------------------------------------------------------------------------------------------------------------
+
+
+      #
+      # tainted?
+      #  - returns true if this ASN carries Correction taint
+      
+      def tainted?()
+         return @tainted
+      end
+      
+      
+      #
+      # untaint()
+      #  - clears the taint from this ASN (any Correction is still linked)
+      
+      def untaint()
+         @tainted = false
+      end
+      
+      
+      #
+      # correction()
+      #  - returns the last Correction object associated from within this ASN
+      
+      def correction()
+         return nil if !defined(@correction)
+         return @correction 
+      end
+    
+      
+    
+      
    end # ASN
    
 

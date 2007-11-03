@@ -54,6 +54,9 @@ module PositionMarkers
       end
 
 
+      def start_position?
+         return true
+      end
       
    end # StartPosition
    

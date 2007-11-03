@@ -769,7 +769,7 @@ module Plan
             
                      elsif item.production.symbols.length == 2 and item.leader.terminal? and item.production.symbols[0].terminal? ^ item.production.symbols[1].terminal? and item.production.symbols[(item.at - 1).abs].name == item.production.name then
                         predicate = nil
-         
+                        
                      end
                   end
                end

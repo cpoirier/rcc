@@ -24,8 +24,11 @@
       begin
          yield()
       rescue Exception => e
-         raise e unless error_classes.member?(e.class)
+         raise e unless error_classes.empty? or error_classes.member?(e.class)
+         return false
       end
+      
+      return true
    end
             
 

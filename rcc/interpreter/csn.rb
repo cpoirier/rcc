@@ -37,8 +37,15 @@ module Interpreter
          @root_symbol       = root_symbol
          @component_symbols = component_symbols
          @token_count       = component_symbols.inject(0) {|sum, symbol| symbol.token_count }
+         
+         @tainted = false
+         @component_symbols.each do |symbol|
+            if symbol.tainted? then
+               @tainted = true
+               @last_correction = symbol.last_correction
+            end
+         end
       end
-      
       
       def first_token
          return @component_symbols[0].first_token
@@ -70,6 +77,42 @@ module Interpreter
          end
       end
       
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Error Recovery 
+    #---------------------------------------------------------------------------------------------------------------------
+
+
+      #
+      # tainted?
+      #  - returns true if this CSN carries Correction taint
+      
+      def tainted?()
+         return @tainted
+      end
+      
+      
+      #
+      # untaint()
+      #  - clears the taint from this CSN (any Correction is still linked)
+      
+      def untaint()
+         @tainted = false
+      end
+      
+      
+      #
+      # last_correction()
+      #  - returns the last Correction object associated with this CSN
+      
+      def last_correction()
+         return nil if !defined(@correction)
+         return @correction 
+      end
+    
       
    end # CSN
    

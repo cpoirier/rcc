@@ -176,6 +176,53 @@ module Interpreter
 
 
 
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Error Recovery 
+    #---------------------------------------------------------------------------------------------------------------------
+
+
+      #
+      # tainted?
+      #  - returns true if this Token carries Correction taint
+      
+      def tainted?()
+         return (defined(@correction) and @correction.exists?)
+      end
+      
+      
+      #
+      # taint()
+      #  - marks this Token as tainted
+      #  - associates a Correction describing the taint
+      
+      def taint( correction )
+         @correction = correction
+      end
+      
+      
+      #
+      # correction()
+      #  - returns any Correction object associated with this Token
+      
+      def correction()
+         return nil if !defined(@correction)
+         return @correction 
+      end
+      
+      alias last_correction correction
+      
+      
+      #
+      # correction_cost()
+      #  - returns the cost of any Correction associated with this Token, or 0
+      
+      def correction_cost()
+         return 0 if !defined(@correction) or @correction.nil?
+         return @correction.cost
+      end
+      
+      
    end # Token
    
 

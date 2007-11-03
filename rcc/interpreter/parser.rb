@@ -67,7 +67,8 @@ module Interpreter
          allow_shortcutting  = false
          
          start_position         = PositionMarkers::StartPosition.new(@parser_plan.state_table[0], @lexer)
-         correction_limit       = 1000000000
+         hard_correction_limit  = 1000000000
+         soft_correction_limit  = 1000000000
          error_queue            = [] 
          complete_solutions     = []
          position               = nil
@@ -84,12 +85,15 @@ module Interpreter
                # complete solutions we've already found, and lower than any of the other errors in the queue.
 
                if @recovery_queue.empty? then
-                  discard_threshold = error_queue.inject(correction_limit) {|current, position| min(current, position.correction_cost) }
+                  soft_correction_limit = hard_correction_limit
+                  
+                  discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.correction_cost) }
                   error_queue.each do |error_position|
                      if error_position.correction_cost <= discard_threshold then
-                        generate_recovery_positions( error_position, correction_limit )
+                        generate_recovery_positions( error_position, soft_correction_limit )
                      end
                   end
+                  
                end
 
                #
@@ -97,7 +101,7 @@ module Interpreter
                # it has become a bad option (by correction_cost).
 
                position = @recovery_queue.shift
-               next if allow_shortcutting and position.correction_cost > correction_limit
+               next if position.nil? or (allow_shortcutting and position.correction_cost > soft_correction_limit)
 
                STDOUT.puts ""
                STDOUT.puts ""
@@ -119,16 +123,18 @@ module Interpreter
             begin
                solution = position = parse_until_error( position, explain_indent )
                complete_solutions << solution
-               correction_limit = min( correction_limit, solution.correction_cost )
-
+               hard_correction_limit = min( hard_correction_limit, solution.correction_cost )
+               soft_correction_limit = min( hard_correction_limit, soft_correction_limit    )
+               
             rescue ParseError => e
                position = e.position
-               if position.correction_cost < correction_limit and position.correctable? then
+               if position.correction_cost < soft_correction_limit and position.correctable? then
                   if position.recovered? then
                      STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)}"
                      error_queue << position
+                     soft_correction_limit = min( soft_correction_limit, position.correction_cost ) if @in_recovery
                   else
-                     generate_recovery_positions( position, correction_limit )
+                     generate_recovery_positions( position, soft_correction_limit )
                   end
                else
                   STDOUT.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
@@ -136,7 +142,7 @@ module Interpreter
                
             rescue PositionSeen => e
                position = e.position
-               STDOUT.puts "SHOULD THIS HAPPEN ANY MORE?  DISCARDING: #{position.description(true)}"
+               STDOUT.puts "DISCARDING LOOPED RECOVERY: #{position.description(true)}"
             end
 
 
@@ -154,7 +160,7 @@ module Interpreter
          # Generate a list of partial recoveries for reporting.
          
          partial_solutions = []
-         discard_threshold = error_queue.inject(correction_limit) {|current, position| min(current, position.correction_cost) }
+         discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.correction_cost) }
          error_queue.each do |error_position|
             if error_position.correction_cost <= discard_threshold then
                partial_solutions << error_position
@@ -169,11 +175,11 @@ module Interpreter
          STDERR.puts "   complete solutions: #{complete_solutions.length}"
          STDERR.puts "   partial solutions:  #{partial_solutions.length}"
          
-         STDERR.puts "   outputting solutions with #{correction_limit} correction cost or better"
+         STDERR.puts "   outputting solutions with #{hard_correction_limit} correction cost or better"
          
          count = 0
          complete_solutions.each do |solution|
-            next if solution.correction_cost > correction_limit
+            next if solution.correction_cost > hard_correction_limit
             count += 1
             
             STDOUT.puts ""
@@ -644,6 +650,14 @@ module Interpreter
          
          error_type = position.next_token.type
          position.each_recovery_position do |recovery_position|
+            
+            #
+            # Testing has revealed that corrections at the start position are both costly and largely unhelpful.  
+            # As of now, we just won't do them any more.  We also won't continue if we can't mark the current
+            # position in the recovery progress log (ie. we've been here already).
+
+            next if recovery_position.start_position? # WRONG, I THINK: or !ignore_errors{ position.mark_recovery_progress(recovery_position) }
+
             STDOUT.puts "   TRYING REPAIR at: #{recovery_position.description(true)}"
             lookahead_type = recovery_position.next_token.type
 

@@ -58,10 +58,16 @@ module PositionMarkers
          #
          # Register the Position with any recovery context.  This may raise Parser::PositionSeen.
          
-         if @in_recovery then
-            @last_correction.recovery_context.add_recovery_position( self ) if @last_correction.inserts_token?
+         if !recovered? and @last_correction.inserts_token? then
+            @last_correction.recovery_context.mark_recovery_progress( self )
          end
       end
+      
+      
+      def start_position?()
+         return false
+      end
+      
 
 
       #
@@ -148,28 +154,29 @@ module PositionMarkers
       #  - returns true if this position is past an error recovery (or there's never been an error)
       
       def recovered?()
-         return true if @last_correction.nil?
-         if @stream_position > @last_correction.recovery_context.stream_position then
-            
-            #
-            # We want to make sure the token that caused the error has actually been REDUCEd off
-            # the stack.  If it hasn't, we're probably not really past the error.
-            
-            recovered = true
-            each_position do |position|
-               break if position.stream_position < @last_correction.recovery_context.stream_position
-               if position.node.is_a?(Token) then
-                  if position.stream_position == @last_correction.recovery_context.stream_position then
-                     recovered = false
-                     break
-                  end
-               end
-            end
-            
-            return recovered
-         else
-            return false
-         end
+         return !@in_recovery
+         # return true if @last_correction.nil?
+         # if @stream_position > @last_correction.recovery_context.stream_position then
+         #    
+         #    #
+         #    # We want to make sure the token that caused the error has actually been REDUCEd off
+         #    # the stack.  If it hasn't, we're probably not really past the error.
+         #    
+         #    recovered = true
+         #    each_position do |position|
+         #       break if position.stream_position < @last_correction.recovery_context.stream_position
+         #       if position.node.is_a?(Token) then
+         #          if position.stream_position == @last_correction.recovery_context.stream_position then
+         #             recovered = false
+         #             break
+         #          end
+         #       end
+         #    end
+         #    
+         #    return recovered
+         # else
+         #    return false
+         # end
       end
       
       
@@ -263,22 +270,6 @@ module PositionMarkers
       end
       
       
-      #
-      # add_recovery_position()
-      #  - when used as a recovery context, adds a Position to our registry
-      #  - raises Parser::PositionSeen if the Position has already been tried during this recovery
-      
-      def add_recovery_position( position )
-         @recovery_registry = {} if @recovery_registry.nil?
-         if @recovery_registry.member?(position.signature) then
-            raise Parser::PositionSeen.new( position )
-         else
-            @recovery_registry[position.signature] = true
-         end
-      end
-
-
-
 
 
 
@@ -298,11 +289,23 @@ module PositionMarkers
          next_in_recovery = @in_recovery
          
          #
-         # If we are in recovery, and this push() shifts us past the recovery context stream position,
-         # we are done with error recovery.
+         # If we are reducing during an error recovery, we stay in recovery unless our its recovery_context tokens 
+         # are off the stack.
          
-         if @in_recovery then
-            next_in_recovery = false if node.follow_position > @last_correction.recovery_context.stream_position
+         if reduce_position.exists? and reduce_position.in_recovery? then
+            next_in_recovery = true
+            error_point      = reduce_position.last_correction.recovery_context.stream_position
+            if node.follow_position > error_point then
+               next_in_recovery = false
+               self.each_position do |position|
+                  if position.stream_position <= error_point then
+                     if position.node.is_a?(Token) and position.node.follow_position >= error_point then
+                        next_in_recovery = true
+                     end
+                     break
+                  end
+               end
+            end
          end
          
          #
@@ -418,6 +421,44 @@ module PositionMarkers
       end
 
 
+      #
+      # mark_recovery_anchor()
+      #  - when used as a recovery context, adds an anchor Position to our registry
+      #  - raises Parser::PositionSeen if the Position has already been tried during this recovery
+      
+      def mark_recovery_anchor( position )
+         signature = position.recovery_signature(true)
+         
+         @recovery_registry = {} if @recovery_registry.nil?
+         if @recovery_registry.member?(signature) then
+            raise Parser::PositionSeen.new( position )
+         else
+            @recovery_registry[signature] = true
+         end
+      end
+
+
+      #
+      # mark_recovery_progress()
+      #  - when used as a recovery context, adds a progress Position to our registry
+      #  - raises Parser::PositionSeen if the Position has already been tried during this recovery
+      
+      def mark_recovery_progress( position )
+         anchor_signature   = position.recovery_signature(true)
+         progress_signature = position.recovery_signature()
+          
+         @recovery_registry = {} if @recovery_registry.nil?
+         if @recovery_registry.member?(anchor_signature) or @recovery_registry.member?(progress_signature) then
+            raise Parser::PositionSeen.new( position )
+         else
+            @recovery_registry[progress_signature] = true
+         end
+      end
+
+
+
+
+
 
 
 
@@ -427,37 +468,24 @@ module PositionMarkers
     #---------------------------------------------------------------------------------------------------------------------
 
       #
-      # signature()
-      #  - returns a String that identifies this Position within the Parse
+      # recovery_signature()
+      #  - returns a String that identifies this Position within a recovery
       #  - should only be called on error Positions
 
-      def signature()
-         if @signature.nil? then
-            
-            #
-            # This version of the signature is much simpler than the first versions.  We consider two things:
-            # the state number; and the source extent of our Node.  This is all that is needed to verify if two
-            # signatures are identical, and putting too much information in the signature is why the previous
-            # versions proved unhelpful for loop detection.
-            #
-            # When in a state, only one thing determines the next action: the lookahead.  Therefore, if we are
-            # in the same state, and the lookahead is at the same position in the source, the same behaviour is 
-            # going to result.  In other words, we are in a loop.
-            #
-            # However: a REDUCE can move the parse without changing the state or the lookahead position.  Consider 
-            # the expression "e + e + e" in a right-associative grammar.  If we reduce the right "e + e" to "e", we 
-            # likely end up in the same state, with the same lookahead, but we have, in fact, made progress.  
-            # Therefore, we include the start position of the node, as well as its end.
-
-            
+      def recovery_signature( anchor_signature = false )
+         if @recovery_signature.nil? then
             if @node.nil? then
-               @signature = "0:#{@state.number}:0|#{Parser.describe_type(next_token().type)}"
+               @recovery_signature = "0:#{@state.number}:0"
             else
-               @signature = "#{@node.first_token.rewind_position}:#{@state.number}:#{@node.follow_position}|#{Parser.describe_type(next_token().type)}"
+               @recovery_signature = "#{@node.first_token.rewind_position}:#{@state.number}:#{@node.follow_position}"
             end
          end
 
-         return @signature
+         if anchor_signature then
+            return @recovery_signature
+         else
+            return "#{@recovery_signature}|#{Parser.describe_type(next_token().type)}"
+         end
       end
 
 
@@ -476,9 +504,9 @@ module PositionMarkers
       def description( include_next_token = false )
          if @description.nil? then
             if @context.nil? or @context.node.nil? then
-               @description = @node.nil? ? "" : "#{@sequence_number}:#{@node.description}"
+               @description = @node.nil? ? "" : "#{@sequence_number}:#{@node.description}#{@in_recovery ? " C" : ""}"
             else
-               @description = @context.description + ", " + (@node.nil? ? "$" : "#{@sequence_number}:#{@node.description}")
+               @description = @context.description + ", " + (@node.nil? ? "$" : "#{@sequence_number}:#{@node.description}#{@in_recovery ? " C" : ""}")
             end
          end
 
