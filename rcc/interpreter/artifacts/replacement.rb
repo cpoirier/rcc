@@ -28,8 +28,8 @@ module Artifacts
       attr_reader :inserted_token
       attr_reader :deleted_token
       
-      def initialize( inserted_token, deleted_token, penalty = 0 )
-         super( penalty )
+      def initialize( inserted_token, deleted_token, unwind_limit, original_error_position, penalty = 0 )
+         super( unwind_limit, original_error_position, penalty )
          @inserted_token = inserted_token
          @deleted_token  = deleted_token
       end

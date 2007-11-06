@@ -9,7 +9,7 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/interpreter/token.rb"
+require "#{$RCCLIB}/interpreter/artifacts/token.rb"
 require "#{$RCCLIB}/interpreter/source.rb"
 
 
@@ -92,9 +92,9 @@ module Interpreter
          
          if token.nil? then
             if input_remaining?() then
-               return locate_token( Token.new(consume()), false )
+               return locate_token( Artifacts::Token.new(consume()), false )
             else
-               return Token.end_of_file( @position, @line_number, @column_number, @descriptor )
+               return Artifacts::Token.end_of_file( @position, @line_number, @column_number, @descriptor )
             end
          else
             return token
@@ -216,7 +216,7 @@ module Interpreter
                   puts "#{explain_indent}     attempting pattern matches:" unless explain_indent.nil?
                   lexer_plan.patterns.each do |pattern, symbol_name|
                      if match = consume_match(pattern) then
-                        token = locate_token( Token.new(match), symbol_name )
+                        token = locate_token( Artifacts::Token.new(match), symbol_name )
                         puts "#{explain_indent}     matched #{symbol_name}" unless explain_indent.nil?
                         break
                      else
@@ -278,7 +278,7 @@ module Interpreter
       
             if token.nil? and state.accepted.member?(c) then
                puts "#{explain_indent}     la(#{base_la}) is #{prep(c)}, which is accepted by this state; producing type #{state.accepted[c]}" unless explain_indent.nil?
-               token = locate_token( Token.new(consume(base_la)), state.accepted[c] )
+               token = locate_token( Artifacts::Token.new(consume(base_la)), state.accepted[c] )
             end
          end
 

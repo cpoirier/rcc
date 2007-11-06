@@ -9,9 +9,9 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/interpreter/error.rb"
-require "#{$RCCLIB}/interpreter/csn.rb"
-require "#{$RCCLIB}/interpreter/asn.rb"
+require "#{$RCCLIB}/interpreter/artifacts/token.rb"
+require "#{$RCCLIB}/interpreter/artifacts/node.rb"
+require "#{$RCCLIB}/interpreter/artifacts/correction.rb"
 require "#{$RCCLIB}/interpreter/position_markers/position_marker.rb"
 require "#{$RCCLIB}/util/tiered_queue.rb"
 
@@ -26,6 +26,12 @@ module Interpreter
  #  - useful for testing stuff out
 
    class Parser
+      
+      Token = Artifacts::Token
+      CSN   = Artifacts::CSN
+      ASN   = Artifacts::ASN
+   
+      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
@@ -87,9 +93,9 @@ module Interpreter
                if @recovery_queue.empty? then
                   soft_correction_limit = hard_correction_limit
                   
-                  discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.correction_cost) }
+                  discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.corrections_cost) }
                   error_queue.each do |error_position|
-                     if error_position.correction_cost <= discard_threshold then
+                     if error_position.corrections_cost <= discard_threshold then
                         generate_recovery_positions( error_position, soft_correction_limit )
                      end
                   end
@@ -109,7 +115,7 @@ module Interpreter
                STDOUT.puts ""
                STDOUT.puts ""
                STDOUT.puts "================================================================================"
-               STDOUT.puts "TRYING RECOVERY.  Current cost = #{position.last_correction.recovery_cost}/#{position.last_correction.correction_cost}"
+               STDOUT.puts "TRYING RECOVERY with cost = #{position.corrections_cost}"
                STDOUT.puts ""
 
             else
@@ -123,18 +129,20 @@ module Interpreter
             begin
                solution = position = parse_until_error( position, explain_indent )
                complete_solutions << solution
-               hard_correction_limit = min( hard_correction_limit, solution.correction_cost )
-               soft_correction_limit = min( hard_correction_limit, soft_correction_limit    )
+               hard_correction_limit = min( hard_correction_limit, solution.corrections_cost )
+               soft_correction_limit = min( hard_correction_limit, soft_correction_limit     )
                
             rescue ParseError => e
                position = e.position
-               if position.correction_cost < soft_correction_limit and position.correctable? then
-                  if position.recovered? then
+               if position.next_token.tainted? then
+                  # we're done -- it's already been corrected and the correction failed
+               elsif position.corrections_cost < soft_correction_limit then
+                  if position.tainted? then
+                     generate_recovery_positions( position, soft_correction_limit, explain_indent )
+                  else
                      STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)}"
                      error_queue << position
-                     soft_correction_limit = min( soft_correction_limit, position.correction_cost ) if @in_recovery
-                  else
-                     generate_recovery_positions( position, soft_correction_limit )
+                     soft_correction_limit = min( soft_correction_limit, position.corrections_cost ) if @in_recovery
                   end
                else
                   STDOUT.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
@@ -160,9 +168,9 @@ module Interpreter
          # Generate a list of partial recoveries for reporting.
          
          partial_solutions = []
-         discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.correction_cost) }
+         discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.corrections_cost) }
          error_queue.each do |error_position|
-            if error_position.correction_cost <= discard_threshold then
+            if error_position.corrections_cost <= discard_threshold then
                partial_solutions << error_position
             end
          end
@@ -179,12 +187,12 @@ module Interpreter
          
          count = 0
          complete_solutions.each do |solution|
-            next if solution.correction_cost > hard_correction_limit
+            next if solution.corrections_cost > hard_correction_limit
             count += 1
             
             STDOUT.puts ""
             STDOUT.puts ""
-            STDOUT.puts "ABSTRACT SYNTAX TREE: #{solution.correction_cost}" 
+            STDOUT.puts "ABSTRACT SYNTAX TREE: #{solution.corrections_cost}" 
             STDOUT.puts "========================"
             STDOUT.puts ""
             
@@ -198,7 +206,7 @@ module Interpreter
             
             STDOUT.puts ""
             STDOUT.puts ""
-            STDOUT.puts "PARTIAL SOLUTION: #{solution.correction_cost}" 
+            STDOUT.puts "PARTIAL SOLUTION: #{solution.corrections_cost}" 
             STDOUT.puts "========================"
             STDOUT.puts ""
             
@@ -417,7 +425,6 @@ module Interpreter
       
       def perform_action( position, action, next_token, explain_indent )
          next_position = nil
-         check_position = false
          
          case action
             when Plan::Actions::Shift
@@ -434,14 +441,22 @@ module Interpreter
                
                nodes = []
                top_position = position
-               has_terminal = false
                production.symbols.length.times do |i|
-                  has_terminal = true if position.node.terminal?
                   nodes.unshift position.node
                   position  = position.pop( production, top_position )
                end
                
-               check_position = true if has_terminal
+               node = @build_ast ? ASN.new(production, nodes) : CSN.new(production.name, nodes)
+               
+               #
+               # Untaint the node if the error recovery is complete.
+               
+               if node.tainted? then
+                  if next_token.rewind_position > node.original_error_position then
+                     STDOUT.puts "UNTAINTING"
+                     node.untaint()
+                  end
+               end
                
                #
                # Get the goto state from the now-top-of-stack State: it will be the next state.
@@ -449,7 +464,7 @@ module Interpreter
                goto_state = position.state.transitions[production.name]
                STDOUT.puts "#{explain_indent}===> PUSH AND GOTO #{goto_state.number}" unless explain_indent.nil?
 
-               next_position = position.push( @build_ast ? ASN.new(production, nodes) : CSN.new(production.name, nodes), goto_state, top_position )
+               next_position = position.push( node, goto_state, top_position )
 
             when Plan::Actions::Attempt
                
@@ -640,7 +655,7 @@ module Interpreter
       # generate_recovery_positions()
       #  - given an error position, generates a list of potential recovery positions
       
-      def generate_recovery_positions( position, correction_limit )
+      def generate_recovery_positions( position, correction_limit, explain_indent = nil )
          recovery_positions = []
          STDOUT.puts "CALCULATING RECOVERIES for: #{position.description(true)}"
 
@@ -649,14 +664,9 @@ module Interpreter
          # (ie. not already corrected).
          
          error_type = position.next_token.type
+         registry   = position.allocate_recovery_registry
          position.each_recovery_position do |recovery_position|
-            
-            #
-            # Testing has revealed that corrections at the start position are both costly and largely unhelpful.  
-            # As of now, we just won't do them any more.  We also won't continue if we can't mark the current
-            # position in the recovery progress log (ie. we've been here already).
-
-            next if recovery_position.start_position? # WRONG, I THINK: or !ignore_errors{ position.mark_recovery_progress(recovery_position) }
+            next if recovery_position.start_position? 
 
             STDOUT.puts "   TRYING REPAIR at: #{recovery_position.description(true)}"
             lookahead_type = recovery_position.next_token.type
@@ -693,7 +703,7 @@ module Interpreter
                   if recovery_position.next_token.similar_to?(leader_type) then
                      STDOUT.puts "         [#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE"
                      begin
-                        recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, position ) 
+                        recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, registry ) 
                      rescue PositionSeen => e
                         STDOUT.puts "            ===> dead end"
                      end
@@ -708,7 +718,7 @@ module Interpreter
                if insert then
                   STDOUT.puts "         WILL TRY INSERTING [#{leader_type}]"
                   begin
-                     recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, position )
+                     recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, registry )
                   rescue PositionSeen => e
                      STDOUT.puts "            ===> dead end"
                   end
@@ -723,12 +733,12 @@ module Interpreter
             deleted_tokens = []
 
             begin
-               recovered_position = recovery_position.correct_by_deletion( position )
+               recovered_position = recovery_position.correct_by_deletion( registry )
                until recovered_position.nil?
-                  deleted_tokens << recovered_position.last_correction.deleted_token
+                  deleted_tokens << recovered_position.next_token().last_correction.deleted_token
                   break if recovered_position.next_token.type.nil? or recovered_position.state.actions.member?(recovered_position.next_token.type)
 
-                  recovered_position = recovered_position.correct_by_deletion( position )
+                  recovered_position = recovered_position.correct_by_deletion( registry )
                end
             rescue PositionSeen => e
                deleted_tokens
@@ -746,10 +756,10 @@ module Interpreter
 
          STDOUT.puts "   QUEUING GENERATED RECOVERIES"
          recovery_positions.each do |recovery_position|
-            correction_cost = recovery_position.correction_cost
-            if correction_cost <= correction_limit then
-               STDOUT.puts "      QUEUING POSITION #{recovery_position.description(true)} @ #{recovery_position.correction_cost}"
-               @recovery_queue.insert recovery_position, correction_cost
+            corrections_cost = recovery_position.corrections_cost
+            if corrections_cost <= correction_limit then
+               STDOUT.puts "      QUEUING POSITION #{recovery_position.description(true)} @ #{recovery_position.corrections_cost}"
+               @recovery_queue.insert recovery_position, corrections_cost
             else
                STDOUT.puts "      TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
             end

@@ -30,6 +30,7 @@ module Artifacts
 
       attr_reader :root_symbol         # The Symbol this Node represents
       attr_reader :token_count         # The number of Tokens in this and all sub CSNs
+      attr_reader :original_error_position
       
       alias :symbol :root_symbol
       alias :type   :root_symbol
@@ -37,9 +38,9 @@ module Artifacts
       def initialize( root_symbol, component_symbols )
          @root_symbol = root_symbol
          @token_count = component_symbols.inject(0) {|sum, symbol| symbol.token_count }
-         
+
          @tainted = false
-         @component_symbols.each do |symbol|
+         component_symbols.each do |symbol|
             @tainted = true if symbol.tainted?
             
             if symbol.corrected? then
@@ -47,6 +48,9 @@ module Artifacts
                @corrections.concat( symbol.corrections )
             end
          end
+         
+         @original_error_position = 0
+         @original_error_position = @corrections[-1].original_error_position if defined?(@corrections) and !@corrections.empty?
       end
       
       def follow_position()
@@ -82,7 +86,7 @@ module Artifacts
       
       #
       # untaint()
-      #  - clears the taint from this CSN (any Correction is still linked)
+      #  - clears the taint from this Node (any Correction is still linked)
       
       def untaint()
          @tainted = false
@@ -91,21 +95,30 @@ module Artifacts
       
       #
       # corrected?()
-      #  - returns true if there are any Corrections associated with this Token
-      #  - for Tokens (only), tainted? implies corrected? and vice versa
+      #  - returns true if there are any Corrections associated with this Node
       
       def corrected?()
-         return (defined(@corrections) and @corrections.exists? and !@corrections.empty?)
+         return (defined?(@corrections) and @corrections.exists? and !@corrections.empty?)
       end
       
       
       #
       # corrections()
-      #  - returns any Correction objects associated with this Token
+      #  - returns any Correction objects associated with this Node
       
       def corrections()
-         return [] if !defined(@corrections)
+         return [] if !defined?(@corrections)
          return @corrections 
+      end
+      
+      
+      #
+      # last_correction()
+      #  - returns the last Correction object associated with this Node, or nil
+      
+      def last_correction()
+         return nil if !defined?(@corrections) or @corrections.nil? or @corrections.empty?
+         return @corrections[-1]
       end
       
       
@@ -114,7 +127,7 @@ module Artifacts
       #  - returns the cost of any Corrections associated with this Token, or 0
       
       def corrections_cost()
-         return 0 if !defined(@corrections) or @corrections.nil?
+         return 0 if !defined?(@corrections) or @corrections.nil?
          return @corrections.inject(0) { |current, correction| current + correction.cost }
       end
       
@@ -127,3 +140,8 @@ module Artifacts
 end  # module Artifacts
 end  # module Interpreter
 end  # module Rethink
+
+
+
+require "#{$RCCLIB}/interpreter/artifacts/asn.rb"
+require "#{$RCCLIB}/interpreter/artifacts/csn.rb"

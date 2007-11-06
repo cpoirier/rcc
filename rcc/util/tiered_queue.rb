@@ -68,26 +68,26 @@ module Util
       # queue()
       #  - adds the supplied object to the end of the specified tier
       
-      def queue( object, tier_number )
-         ensure_tiers( tier_number ) if @extend
+      def queue( object, tier_index )
+         ensure_tiers( tier_index ) if @extend
          
          @length += 1
-         @tiers[tier_number - 1] << object
+         @tiers[tier_index] << object
       end
       
       
       #
       # queue_all()
       #  - queues up the supplied objects at the end of the specified tier
-      #  - if you pass nil for tier_number, supply a block to calculate it from the object
+      #  - if you pass nil for tier_index, supply a block to calculate it from the object
       
-      def queue_all( objects, tier_number = nil )
+      def queue_all( objects, tier_index = nil )
          objects.each do |object|
-            if tier_number.nil? then
-               calculated_tier_number = yield( object )
-               queue( object, calculated_tier_number )
+            if tier_index.nil? then
+               calculated_tier_index = yield( object )
+               queue( object, calculated_tier_index )
             else
-               queue( object, tier_number )
+               queue( object, tier_index )
             end
          end
       end
@@ -97,11 +97,11 @@ module Util
       # insert()
       #  - adds the supplied object to the start of the specified tier
       
-      def insert( object, tier_number )
-         ensure_tiers(tier_number) if @extend
+      def insert( object, tier_index )
+         ensure_tiers(tier_index) if @extend
          
          @length += 1
-         @tiers[tier_number - 1].unshift object
+         @tiers[tier_index].unshift object
       end
             
       
@@ -139,9 +139,9 @@ module Util
 
     protected
       
-      def ensure_tiers( to )
-         if to > @tiers.length then
-            (to - @tiers.length).times do
+      def ensure_tiers( index )
+         if index >= @tiers.length then
+            (index + 1 - @tiers.length).times do
                @tiers << []
             end
          end

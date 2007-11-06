@@ -188,7 +188,7 @@ module Artifacts
       #  - returns true if this Token carries Correction taint
       
       def tainted?()
-         return (defined(@corrections) and @corrections.exists? and !@corrections.empty?)
+         return (defined?(@corrections) and @corrections.exists? and !@corrections.empty?)
       end
       
       
@@ -198,7 +198,7 @@ module Artifacts
       #  - associates a Correction describing the taint
       
       def taint( correction )
-         @corrections = [] if !defined(@corrections) or @corrections.nil?
+         @corrections = [] if !defined?(@corrections) or @corrections.nil?
          @corrections << correction
          
          if correction.deletes_token? then
@@ -216,7 +216,7 @@ module Artifacts
       #  - for Tokens (only), tainted? implies corrected? and vice versa
       
       def corrected?()
-         return (defined(@corrections) and @corrections.exists? and !@corrections.empty?)
+         return (defined?(@corrections) and @corrections.exists? and !@corrections.empty?)
       end
       
       
@@ -225,8 +225,18 @@ module Artifacts
       #  - returns any Correction objects associated with this Token
       
       def corrections()
-         return [] if !defined(@corrections)
+         return [] if !defined?(@corrections)
          return @corrections 
+      end
+      
+      
+      #
+      # last_correction()
+      #  - returns the latest Correction object associated with this Token (or nil)
+      
+      def last_correction
+         return nil if !defined?(@corrections) or @corrections.nil? or @corrections.empty?
+         return @corrections[-1]
       end
       
       
@@ -235,7 +245,7 @@ module Artifacts
       #  - returns the cost of any Corrections associated with this Token, or 0
       
       def corrections_cost()
-         return 0 if !defined(@corrections) or @corrections.nil?
+         return 0 if !defined?(@corrections) or @corrections.nil?
          return @corrections.inject(0) { |current, correction| current + correction.cost }
       end
       

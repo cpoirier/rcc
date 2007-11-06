@@ -25,8 +25,13 @@ module Artifacts
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( penalty = 0 )
-         @penalty = penalty
+      attr_reader :original_error_position   # the position within the source at which the initial error occurred
+      attr_reader :unwind_limit
+      
+      def initialize( unwind_limit, original_error_position, penalty = 0 )
+         @original_error_position = original_error_position
+         @unwind_limit = unwind_limit
+         @penalty      = penalty
       end
       
       
