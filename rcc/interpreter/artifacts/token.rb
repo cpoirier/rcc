@@ -26,12 +26,12 @@ module Artifacts
       attr_reader   :start_position
       attr_writer   :faked
 
-      def locate( start_position, line_number, column_number, source_descriptor, type = nil, faked = false, follow_position = nil )
+      def locate( start_position, line_number, column_number, source, type = nil, faked = false, follow_position = nil )
          @rewind_position = start_position
          @start_position  = start_position
          @faked           = faked unless faked.nil?
          @follow_position = follow_position unless follow_position.nil?
-         super( line_number, column_number, source_descriptor, type, nil )
+         super( line_number, column_number, source, type, nil )
          
          return self
       end
@@ -64,6 +64,10 @@ module Artifacts
          return true
       end
 
+      def sample()
+         return nil unless @source_descriptor.is_a?(Source)
+         return @source_descriptor.line(@start_position)
+      end
 
 
 
@@ -247,6 +251,15 @@ module Artifacts
       def corrections_cost()
          return 0 if !defined?(@corrections) or @corrections.nil?
          return @corrections.inject(0) { |current, correction| current + correction.cost }
+      end
+      
+      
+      #
+      # treat_as_recovered?()
+      #  - returns true if this Token should be treated as recovered (even if it isn't)
+      
+      def treat_as_recovered?()
+         return false
       end
       
       

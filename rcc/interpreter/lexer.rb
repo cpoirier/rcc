@@ -47,7 +47,7 @@ module Interpreter
       #  - sets a Token's position to the current position
       
       def locate_token( token, type_override = nil )
-         return token.locate( @position, @line_number, @column_number, @descriptor, type_override, nil )
+         return token.locate( @position, @line_number, @column_number, @source, type_override, nil )
       end
       
       

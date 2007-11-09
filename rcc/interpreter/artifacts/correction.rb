@@ -70,6 +70,17 @@ module Artifacts
          return false
       end
 
+
+      #
+      # sample()
+      
+      def sample()
+         if deletes_token?() then
+            return @deleted_token.sample
+         else
+            return @inserted_token.sample
+         end
+      end
       
    end # Correction
    

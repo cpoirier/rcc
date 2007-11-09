@@ -754,7 +754,7 @@ module Plan
                      #   e => ( e . )      ==> TryIt
                      #   e => ( e ) .      ==> REDUCE (already handled)
          
-                     if item.at == 0 and item.production.symbols.length > 1 and item.production.symbols[0].terminal? and item.production.symbols[-1].terminal? then
+                     if item.at == 0 and item.production.symbols.length == 3 and item.production.symbols[0].terminal? and item.production.symbols[-1].terminal? then
                         predicate = Predicates::CheckErrorType.new( item.production.symbols[-1] )
          
                      #
@@ -898,6 +898,13 @@ module Plan
                   stream << " (*)" if item.object_id == @chosen_reduction.object_id
                   stream << "\n"
                end
+            end
+            
+            #
+            # Display the recovery options.
+            
+            @recovery_predicates.each do |symbol, predicate|
+               stream << indent << "   Recovery predicate for #{symbol}: #{predicate.class.name}" << "\n"
             end
          end
          

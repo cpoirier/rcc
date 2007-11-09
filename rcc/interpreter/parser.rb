@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/interpreter/artifacts/solution.rb"
 require "#{$RCCLIB}/interpreter/artifacts/token.rb"
 require "#{$RCCLIB}/interpreter/artifacts/node.rb"
 require "#{$RCCLIB}/interpreter/artifacts/correction.rb"
@@ -27,9 +28,10 @@ module Interpreter
 
    class Parser
       
-      Token = Artifacts::Token
-      CSN   = Artifacts::CSN
-      ASN   = Artifacts::ASN
+      Solution = Artifacts::Solution
+      Token    = Artifacts::Token
+      CSN      = Artifacts::CSN
+      ASN      = Artifacts::ASN
    
       
       
@@ -64,13 +66,13 @@ module Interpreter
 
 
       #
-      # go()
-      #  - go() drives the parser through attempts and error corrections as far as it can go
+      # parse()
+      #  - parse() drives the parser through attempts and error corrections as far as it can go
       #  - error corrections will not be run indefinitely
       
-      def go( recovery_time_limit = 3, explain_indent = nil )
-         recovery_time_limit = 5
-         allow_shortcutting  = false
+      def parse( recovery_time_limit = 3, explain_indent = nil )
+         recovery_time_limit = 3
+         allow_shortcutting  = true
          
          start_position         = PositionMarkers::StartPosition.new(@parser_plan.state_table[0], @lexer)
          hard_correction_limit  = 1000000000
@@ -81,6 +83,7 @@ module Interpreter
          
          @in_recovery = false
          recovery_start_time = nil
+         start_time          = Time.now
          until @in_recovery and ((@recovery_queue.empty? and error_queue.empty?) or (Time.now - recovery_start_time > recovery_time_limit))
 
             if @in_recovery then
@@ -91,15 +94,31 @@ module Interpreter
                # complete solutions we've already found, and lower than any of the other errors in the queue.
 
                if @recovery_queue.empty? then
+                  STDOUT.puts ""
+                  STDOUT.puts ""
+                  STDOUT.puts ""
+                  STDOUT.puts ""
+                  STDOUT.puts ""
+                  STDOUT.puts "================================================================================"
+                  STDOUT.puts "RESETTING FOR NEXT ERROR"
                   soft_correction_limit = hard_correction_limit
                   
                   discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.corrections_cost) }
+                  
+                  error_positions = {}
                   error_queue.each do |error_position|
                      if error_position.corrections_cost <= discard_threshold then
-                        generate_recovery_positions( error_position, soft_correction_limit )
+                        signature = error_position.recovery_signature()
+                        if error_positions.member?(signature) then
+                           error_positions[signature].join_position( error_position )
+                        else
+                           error_positions[signature] = error_position
+                           generate_recovery_positions( error_position, soft_correction_limit )
+                        end
                      end
                   end
                   
+                  error_queue.clear
                end
 
                #
@@ -107,7 +126,7 @@ module Interpreter
                # it has become a bad option (by correction_cost).
 
                position = @recovery_queue.shift
-               next if position.nil? or (allow_shortcutting and position.correction_cost > soft_correction_limit)
+               next if position.nil? or (allow_shortcutting and position.corrections_cost > soft_correction_limit)
 
                STDOUT.puts ""
                STDOUT.puts ""
@@ -126,6 +145,7 @@ module Interpreter
             #
             # Run the position and handle any errors.
 
+            pass_start_time = Time.now()
             begin
                solution = position = parse_until_error( position, explain_indent )
                complete_solutions << solution
@@ -140,10 +160,14 @@ module Interpreter
                   if position.tainted? then
                      generate_recovery_positions( position, soft_correction_limit, explain_indent )
                   else
-                     STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)}"
                      error_queue << position
                      soft_correction_limit = min( soft_correction_limit, position.corrections_cost ) if @in_recovery
+                     STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
+                     STDOUT.puts "   CORRECTION LIMIT FOR THIS ERROR IS NOW #{soft_correction_limit}"
                   end
+               elsif position.node.treat_as_recovered? then
+                  error_queue << position
+                  STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
                else
                   STDOUT.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
                end
@@ -152,6 +176,8 @@ module Interpreter
                position = e.position
                STDOUT.puts "DISCARDING LOOPED RECOVERY: #{position.description(true)}"
             end
+            
+            STDOUT.puts "PASS TOOK: #{Time.now-pass_start_time}s"
 
 
             #
@@ -175,48 +201,17 @@ module Interpreter
             end
          end
          
+         complete_solutions = complete_solutions.select{|e| e.corrections_cost <= hard_correction_limit}
          
          #
-         # Display the results.
+         # Report errors and corrections.
          
-         STDERR.puts "PARSING/ERROR RECOVERY COMPLETED in #{Time.now - recovery_start_time}s"
+         STDERR.puts "PARSING/ERROR RECOVERY COMPLETED in #{Time.now - start_time}s"
          STDERR.puts "   complete solutions: #{complete_solutions.length}"
          STDERR.puts "   partial solutions:  #{partial_solutions.length}"
-         
          STDERR.puts "   outputting solutions with #{hard_correction_limit} correction cost or better"
          
-         count = 0
-         complete_solutions.each do |solution|
-            next if solution.corrections_cost > hard_correction_limit
-            count += 1
-            
-            STDOUT.puts ""
-            STDOUT.puts ""
-            STDOUT.puts "ABSTRACT SYNTAX TREE: #{solution.corrections_cost}" 
-            STDOUT.puts "========================"
-            STDOUT.puts ""
-            
-            solution.node.format().each do |line|
-               STDOUT.puts line
-            end
-         end
-         
-         partial_solutions.each do |solution|
-            count += 1
-            
-            STDOUT.puts ""
-            STDOUT.puts ""
-            STDOUT.puts "PARTIAL SOLUTION: #{solution.corrections_cost}" 
-            STDOUT.puts "========================"
-            STDOUT.puts ""
-            
-            solution.display( STDOUT, "" )
-         end
-         
-         STDERR.puts "   total output: #{count}"
-         
-         return nil
-         
+         return Solution.new( complete_solutions, partial_solutions )
       end
       
 
@@ -456,6 +451,10 @@ module Interpreter
                      STDOUT.puts "UNTAINTING"
                      node.untaint()
                   end
+               end
+                                 
+               if production.name == "statement".intern then   # BUG: hard-code to test a feature
+                  node.treat_as_recovered()
                end
                
                #
@@ -765,6 +764,7 @@ module Interpreter
             end
          end  
       end
+
 
 
 

@@ -59,27 +59,31 @@
       when nil, "parse", "recovery"
          parser_plan.display( STDOUT, "", true, ARGV[0].nil? ? :reduce_determinants : ARGV[0].intern ) if explain
 
-         source = RCC::Interpreter::Source.new( STDIN.read, "<stdin>" )
-         lexer  = RCC::Interpreter::Lexer.new( source )
-         parser = RCC::Interpreter::Parser.new( parser_plan, lexer )
-         ast    = parser.go( 3, explain ? "" : nil )
-         
+         source   = RCC::Interpreter::Source.new( STDIN.read, "<stdin>" )
+         lexer    = RCC::Interpreter::Lexer.new( source )
+         parser   = RCC::Interpreter::Parser.new( parser_plan, lexer )
+         solution = parser.parse( 3, explain ? "" : nil )
+
          if explain then
             STDOUT.puts ""
             STDOUT.puts ""
             STDOUT.puts ""
          end
-           
-         STDOUT.puts "ABSTRACT SYNTAX TREE" 
-         STDOUT.puts "===================="
-         STDOUT.puts ""
-
-         if ast.nil? then
-            STDOUT.puts "?"
-         else
-            ast.format().each do |line|
-               STDOUT.puts line
+      
+         if solution.valid? then
+            STDOUT.puts "ABSTRACT SYNTAX TREE" 
+            STDOUT.puts "===================="
+            STDOUT.puts ""
+         
+            if ast.nil? then
+               STDOUT.puts "?"
+            else
+               ast.format().each do |line|
+                  STDOUT.puts line
+               end
             end
+         else
+            solution.report_errors( "" )
          end
          
       when "lex"

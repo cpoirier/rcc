@@ -58,7 +58,7 @@ module PositionMarkers
             mark_recovery_progress( self )
          end
          
-         @corrections_cost = @context.nil? ? 0 : @context.corrections_cost + node.corrections_cost
+         @corrections_cost = @context.nil? ? 0 : @context.corrections_cost(false) + node.corrections_cost
       end
       
       
@@ -118,6 +118,7 @@ module PositionMarkers
          until position.nil?
             break if position.stream_position < unwind_limit
             break if position.stream_position == unwind_limit and last_correction.deletes_token?
+            break if position.next_token.corrected?
             
             # position.next_token.rewind_position < corrected? or (position.node.exists? and position.node.corrected?)
             yield( position )
@@ -200,7 +201,7 @@ module PositionMarkers
                break
             end
          end
-         
+
          return error_position
       end
       
@@ -222,6 +223,13 @@ module PositionMarkers
       end
       
       
+      #
+      # corrections()
+      #  - returns all the Corrections
+      
+      def corrections( consider_lookahead = true )
+         return @node.corrections() + (consider_lookahead ? @next_token.corrections : [])
+      end
       
       
       
@@ -399,7 +407,7 @@ module PositionMarkers
          progress_signature = position.recovery_signature()
           
          if @recovery_registry.member?(progress_signature) then
-            raise Parser::PositionSeen.new( position )
+            # raise Parser::PositionSeen.new( position )
          else
             @recovery_registry[progress_signature] = true
          end
@@ -407,8 +415,27 @@ module PositionMarkers
 
 
 
-
-
+      #
+      # join_position()
+      #  - joins an identical position to this one, to avoid duplication in continued parsing
+      #  - generally used during error recovery
+      
+      def join_position( position )
+         @joined_positions = [] unless defined?(@joined_positions)
+         @joined_positions << position
+      end
+      
+      
+      #
+      # joined_positions()
+      #  - returns any joined positions
+      
+      def joined_positions()
+         return [] unless defined?(@joined_positions)
+         return @joined_positions
+      end
+      
+      
 
 
 
@@ -456,9 +483,9 @@ module PositionMarkers
       def description( include_next_token = false )
          if @description.nil? then
             if @context.nil? or @context.node.nil? then
-               @description = @node.nil? ? "" : "#{@sequence_number}:#{@node.description}#{@node.tainted? ? " T" : ""}"
+               @description = @node.nil? ? "" : "#{@sequence_number}:#{@node.description}#{@node.treat_as_recovered? ? " R" : (@node.tainted? ? " T" : "")}"
             else
-               @description = @context.description + ", " + (@node.nil? ? "$" : "#{@sequence_number}:#{@node.description}#{@node.tainted? ? " T" : ""}")
+               @description = @context.description + ", " + (@node.nil? ? "$" : "#{@sequence_number}:#{@node.description}#{@node.treat_as_recovered? ? " R" : (@node.tainted? ? " T" : "")}")
             end
          end
 
@@ -484,7 +511,7 @@ module PositionMarkers
          # if corrected? or true then
          #    stream.puts "#{explain_indent}#{stack_label} #{stack_description} |      CORRECTED LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   quality #{quality()}"
          # else
-            stream.puts "#{explain_indent}#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}"
+            stream.puts "#{explain_indent}#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
          # end
          stream.puts "#{explain_indent}#{stack_bar}"
          @state.display( stream, "#{explain_indent}| " )
