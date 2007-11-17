@@ -189,23 +189,23 @@ module PositionMarkers
       end
 
 
-      #
-      # original_error_position
-      #  - returns the source position of closest original error still on the stack
-      
-      def original_error_position()
-         error_position = @stream_position
-         each_position do |position|
-            if position.node.tainted?() then
-               error_position = position.node.last_correction.original_error_position
-               break
-            end
-         end
-
-         return error_position
-      end
-      
-      
+      # #
+      # # original_error_position
+      # #  - returns the source position of closest original error still on the stack
+      # 
+      # def original_error_position()
+      #    error_position = @stream_position
+      #    each_position do |position|
+      #       if position.node.tainted?() then
+      #          error_position = position.node.last_correction.original_error_position
+      #          break
+      #       end
+      #    end
+      # 
+      #    return error_position
+      # end
+      # 
+      # 
       #
       # last_correction()
       #  - returns the last Correction from the stack and (optionally) next_token
@@ -230,6 +230,18 @@ module PositionMarkers
       def corrections( consider_lookahead = true )
          return @node.corrections() + (consider_lookahead ? @next_token.corrections : [])
       end
+      
+      
+      #
+      # recovery_context
+      #  - returns the recovery_context under which this Position was generated
+      
+      def recovery_context
+         return nil unless tainted?
+         return last_correction().recovery_context
+      end
+      
+      
       
       
       
@@ -309,7 +321,7 @@ module PositionMarkers
       #  - produces a new position similar to this one, but with a manufactured token on lookahead
       #  - pass in the recovery_registry if you want the position (and its followers) checked
 
-      def correct_by_insertion( type, recovery_registry = nil )
+      def correct_by_insertion( type, recovery_context )
          
          #
          # Create the token to insert.
@@ -317,12 +329,12 @@ module PositionMarkers
          @lexer.set_position( @stream_position )
          token = @lexer.locate_token( Artifacts::Token.fake(type, @stream_position) )
          token.rewind_position = @stream_position
-         token.taint( Artifacts::Insertion.new(token, @stream_position, original_error_position()) )
+         token.taint( Artifacts::Insertion.new(token, @stream_position, recovery_context) )
                   
          #
          # Create the correction and a new Position to replace this one.  
          
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, recovery_registry, token )
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, recovery_context.allocate_recovery_registry, token )
          corrected_position.sequence_number = @sequence_number
 
          return corrected_position
@@ -334,8 +346,8 @@ module PositionMarkers
       #  - produces a new position similar to this one, but with a manufactured token on lookahead, in place of the next token
       #  - pass in the recovery_registry if you want the position (and its followers) checked
 
-      def correct_by_replacement( type, recovery_registry = nil )
-
+      def correct_by_replacement( type, recovery_context )
+         
          #
          # Grab the copy of the token we are replacing and create the token to insert.
          
@@ -343,12 +355,12 @@ module PositionMarkers
          @lexer.set_position( @stream_position )
          token = @lexer.locate_token( Artifacts::Token.fake(type, replaced_token.follow_position) )
          token.rewind_position = @stream_position
-         token.taint( Artifacts::Replacement.new(token, replaced_token, @stream_position, original_error_position()) )
+         token.taint( Artifacts::Replacement.new(token, replaced_token, @stream_position, recovery_context) )
 
          #
          # Create the correction and a new Position to replace this one.  
 
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, recovery_registry, token )
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, @stream_position, recovery_context.allocate_recovery_registry, token )
          corrected_position.sequence_number = @sequence_number
 
          return corrected_position
@@ -360,7 +372,7 @@ module PositionMarkers
       #  - produces a new position similar to this one, but with the second next token on lookahead
       #  - pass in the recovery_registry if you want the position (and its followers) checked
       
-      def correct_by_deletion( recovery_registry = nil, explain_indent = nil )
+      def correct_by_deletion( recovery_context, explain_indent = nil )
          
          #
          # Re-arrange our lookahead.  We taint the new next Token to get the Correction in place,
@@ -368,13 +380,13 @@ module PositionMarkers
          
          deleted_token = next_token( explain_indent )
          token = self.class.lex_token( @state, @lexer, deleted_token.follow_position, explain_indent )
-         token.taint( Artifacts::Deletion.new(deleted_token, deleted_token.follow_position, original_error_position()) )
+         token.taint( Artifacts::Deletion.new(deleted_token, deleted_token.follow_position, recovery_context) )
          token.untaint()
 
          #
          # Create the correction and a new Position to replace this one.
          
-         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, deleted_token.follow_position, recovery_registry, token )
+         corrected_position = PositionMarker.new( @context, @node, @state, @lexer, deleted_token.follow_position, recovery_context.allocate_recovery_registry, token )
          corrected_position.sequence_number = @sequence_number
 
          return corrected_position
@@ -466,6 +478,9 @@ module PositionMarkers
       end
 
 
+      def signature()
+         return description(true)
+      end
       
 
 
@@ -495,6 +510,7 @@ module PositionMarkers
             return @description
          end
       end
+
 
 
       #

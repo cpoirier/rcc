@@ -27,8 +27,8 @@ module Artifacts
 
       attr_reader :deleted_token
       
-      def initialize( deleted_token, unwind_limit, original_error_position, penalty = 0 )
-         super( unwind_limit, original_error_position, penalty )
+      def initialize( deleted_token, unwind_limit, recovery_context, penalty = 0 )
+         super( unwind_limit, recovery_context, penalty )
          @deleted_token  = deleted_token
       end
       

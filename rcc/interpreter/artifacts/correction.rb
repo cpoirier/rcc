@@ -25,14 +25,24 @@ module Artifacts
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :original_error_position   # the position within the source at which the initial error occurred
+      attr_reader :recovery_context   # the position within the source at which the initial error occurred
       attr_reader :unwind_limit
       
-      def initialize( unwind_limit, original_error_position, penalty = 0 )
-         @original_error_position = original_error_position
-         @unwind_limit = unwind_limit
-         @penalty      = penalty
+      def initialize( unwind_limit, recovery_context, penalty = 0 )
+         @recovery_context = recovery_context
+         @unwind_limit     = unwind_limit
+         @penalty          = penalty
       end
+      
+      #
+      # original_error_position
+      #  - returns the *source* position of the original error that caused this Correction
+      
+      def original_error_position()
+         return @recovery_context.stream_position
+      end
+      
+      alias earliest_recovery_position original_error_position
       
       
       #

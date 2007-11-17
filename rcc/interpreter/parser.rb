@@ -661,12 +661,17 @@ module Interpreter
          #
          # First, generate insertions and deletions at each stack point still available for error correction
          # (ie. not already corrected).
+         #
+         # BUG: The registry used to be produced from each start position, regardless of the actual recovery context.
+         # With this version, we are now switching it back to the recovery context.  If things break, that may be
+         # why.
          
          error_type = position.next_token.type
          registry   = position.allocate_recovery_registry
          position.each_recovery_position do |recovery_position|
             next if recovery_position.start_position? 
-
+            recovery_context = recovery_position.tainted? ? recovery_position.recovery_context : position
+            
             STDOUT.puts "   TRYING REPAIR at: #{recovery_position.description(true)}"
             lookahead_type = recovery_position.next_token.type
 
@@ -702,7 +707,7 @@ module Interpreter
                   if recovery_position.next_token.similar_to?(leader_type) then
                      STDOUT.puts "         [#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE"
                      begin
-                        recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, registry ) 
+                        recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, recovery_context ) 
                      rescue PositionSeen => e
                         STDOUT.puts "            ===> dead end"
                      end
@@ -717,7 +722,7 @@ module Interpreter
                if insert then
                   STDOUT.puts "         WILL TRY INSERTING [#{leader_type}]"
                   begin
-                     recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, registry )
+                     recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, recovery_context )
                   rescue PositionSeen => e
                      STDOUT.puts "            ===> dead end"
                   end
@@ -732,12 +737,12 @@ module Interpreter
             deleted_tokens = []
 
             begin
-               recovered_position = recovery_position.correct_by_deletion( registry )
+               recovered_position = recovery_position.correct_by_deletion( recovery_context )
                until recovered_position.nil?
                   deleted_tokens << recovered_position.next_token().last_correction.deleted_token
                   break if recovered_position.next_token.type.nil? or recovered_position.state.actions.member?(recovered_position.next_token.type)
 
-                  recovered_position = recovered_position.correct_by_deletion( registry )
+                  recovered_position = recovered_position.correct_by_deletion( recovery_context )
                end
             rescue PositionSeen => e
                deleted_tokens

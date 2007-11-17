@@ -27,8 +27,8 @@ module Artifacts
 
       attr_reader :inserted_token
       
-      def initialize( inserted_token, unwind_limit, original_error_position, penalty = 0 )
-         super( unwind_limit, original_error_position, penalty )
+      def initialize( inserted_token, unwind_limit, recovery_context, penalty = 0 )
+         super( unwind_limit, recovery_context, penalty )
          @inserted_token = inserted_token
       end
       
