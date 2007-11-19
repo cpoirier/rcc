@@ -123,6 +123,15 @@ module Plan
             end
          end         
          
+         
+         #
+         # Construct a list of exemplars for non-string Terminals.
+         
+         exemplars = {}
+         grammar.definitions.each do |index, definition|
+            exemplars[index.intern] = definition.exemplar unless index.is_a?(Numeric)
+         end
+         
                   
          #
          # Next, get the Grammar's start rule and build it a State.  This will become the base of the complete state table.
@@ -194,7 +203,7 @@ module Plan
          #
          # Return the new ParserPlan.
          
-         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan, ast_classes, grammar.backtracking_enabled? )
+         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan, exemplars, ast_classes, grammar.backtracking_enabled? )
       end
       
       
@@ -208,8 +217,9 @@ module Plan
       attr_reader :state_table       # Our States, in convenient table form
       attr_reader :productions       # Our Productions, in declaration order
       attr_reader :ast_classes       # Our ASTClasses, in declaration order
+      attr_reader :exemplars         
 
-      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil, ast_classes = nil, enable_backtracking = false )         
+      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil, exemplars = nil, ast_classes = nil, enable_backtracking = false )         
          @name                = name
          @state_table         = state_table
          @lexer_plan          = lexer_plan
@@ -217,6 +227,7 @@ module Plan
          @production_sets     = production_sets    
          @precedence_table    = precedence_table    # Production number => tier (tier 0 is highest precedence)
          @ast_classes         = ast_classes
+         @exemplars           = exemplars
          @enable_backtracking = enable_backtracking
       end
       

@@ -189,6 +189,27 @@ module PositionMarkers
       end
 
 
+      #
+      # recovered?
+      #  - returns true if any preceding error has been recovered from
+      #  - returns nil if there are no preceding errors
+      
+      def recovered?()
+         last_correction = last_correction()
+         return nil if last_correction.nil?
+
+         error_position = last_correction.original_error_position
+         each_position do |position|
+            return true  if position.node.nil?
+            return true  if position.node.recoverable?
+            return false if position.node.tainted?
+            return false if position.node.terminal? and position.node.start_position <= error_position
+         end
+
+         bug( "should this ever happen?" )
+      end
+      
+
       # #
       # # original_error_position
       # #  - returns the source position of closest original error still on the stack
@@ -228,7 +249,11 @@ module PositionMarkers
       #  - returns all the Corrections
       
       def corrections( consider_lookahead = true )
-         return @node.corrections() + (consider_lookahead ? @next_token.corrections : [])
+         if @context.nil? then
+            return (@node.nil? ? [] : @node.corrections()) + (consider_lookahead ? @next_token.corrections : [])
+         else
+            return @context.corrections(false) + @node.corrections() + (consider_lookahead ? @next_token.corrections : [])
+         end
       end
       
       
@@ -478,8 +503,20 @@ module PositionMarkers
       end
 
 
-      def signature()
-         return description(true)
+      def signature( include_next_token = true )
+         signature = nil
+         
+         if @context.nil? or @context.node.nil? then
+            signature = @node.nil? ? "" : "#{@node.first_token.rewind_position}:#{@node.description}"
+         else
+            signature = @context.signature(false) + ", " + (@node.nil? ? "$" : "#{@node.first_token.rewind_position}:#{@node.description}")
+         end
+
+         if include_next_token then
+            return "#{signature} | #{next_token().rewind_position}:#{next_token().description}"
+         else
+            return signature
+         end
       end
       
 
@@ -498,9 +535,9 @@ module PositionMarkers
       def description( include_next_token = false )
          if @description.nil? then
             if @context.nil? or @context.node.nil? then
-               @description = @node.nil? ? "" : "#{@sequence_number}:#{@node.description}#{@node.treat_as_recovered? ? " R" : (@node.tainted? ? " T" : "")}"
+               @description = @node.nil? ? "" : "#{@sequence_number}:#{@node.description}#{@node.recoverable? ? " R" : (@node.tainted? ? " T" : "")}"
             else
-               @description = @context.description + ", " + (@node.nil? ? "$" : "#{@sequence_number}:#{@node.description}#{@node.treat_as_recovered? ? " R" : (@node.tainted? ? " T" : "")}")
+               @description = @context.description + ", " + (@node.nil? ? "$" : "#{@sequence_number}:#{@node.description}#{@node.recoverable? ? " R" : (@node.tainted? ? " T" : "")}")
             end
          end
 

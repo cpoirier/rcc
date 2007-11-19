@@ -51,6 +51,13 @@ module Artifacts
       end
       
       
+      #
+      # signature()
+      
+      def signature()
+         return "#{@deleted_token.rewind_position}:#{@deleted_token.follow_position}:#{Parser.describe_type(@deleted_token.type)}:"
+      end
+      
       
       
    end # Deletion

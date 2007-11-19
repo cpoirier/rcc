@@ -39,11 +39,10 @@ module Artifacts
          @root_symbol = root_symbol
          @token_count = component_symbols.inject(0) {|sum, symbol| symbol.token_count }
 
-         @tainted = false
-         @treat_as_recovered = false
+         @tainted     = false
+         @recoverable = false
          component_symbols.each do |symbol|
             @tainted = true if symbol.tainted?
-            @treat_as_recovered = true if symbol.treat_as_recovered?
             
             if symbol.corrected? then
                @corrections = [] if @corrections.nil?
@@ -132,25 +131,17 @@ module Artifacts
          return 0 if !defined?(@corrections) or @corrections.nil?
          return @corrections.inject(0) { |current, correction| current + correction.cost }
       end
-
+      
 
       #
-      # treat_as_recovered()
-      #  - marks this Node as recovered (even if it isn't)
+      # recoverable?
+      #  - returns true if this Node can anchor 
       
-      def treat_as_recovered()
-         @treat_as_recovered = true
+      attr_writer :recoverable
+      
+      def recoverable?()
+         return @recoverable
       end
-      
-      #
-      # treat_as_recovered?
-      #  - returns true if this node should be treated as if recovery has completed (even if it hasn't)
-      #  - this is used when managing shortcutting during error recovery
-      
-      def treat_as_recovered?()
-         return @treat_as_recovered
-      end
-    
       
    end # Node
    

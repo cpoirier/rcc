@@ -39,7 +39,8 @@ module Artifacts
       #  - returns the *source* position of the original error that caused this Correction
       
       def original_error_position()
-         return @recovery_context.stream_position
+         return @recovery_context.next_token.start_position
+         # discarded because probably wrong: return @recovery_context.stream_position
       end
       
       alias earliest_recovery_position original_error_position
@@ -79,7 +80,15 @@ module Artifacts
       def deletes_token?()
          return false
       end
+      
+      
+      #
+      # signature()
 
+      def signature()
+         bug( "you must override Correction.signature()" )
+      end
+      
 
       #
       # sample()
@@ -92,6 +101,19 @@ module Artifacts
          end
       end
       
+      
+      #
+      # line_number()
+      
+      def line_number()
+         if deletes_token?() then
+            return @deleted_token.line_number
+         else
+            return @inserted_token.line_number
+         end
+      end
+
+
    end # Correction
    
 

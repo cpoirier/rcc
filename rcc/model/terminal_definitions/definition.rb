@@ -34,6 +34,10 @@ module TerminalDefinitions
       end
       
       
+      def exemplar()
+         return @definition.to_s
+      end
+      
       
       
    end # Definition

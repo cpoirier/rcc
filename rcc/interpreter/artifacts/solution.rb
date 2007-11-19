@@ -30,11 +30,12 @@ module Artifacts
       attr_reader :error_map
       attr_reader :error_list
       
-      def initialize( complete_solutions, partial_solutions )
+      def initialize( complete_solutions, partial_solutions, exemplars )
          @complete_solutions = complete_solutions
          @partial_solutions  = partial_solutions
          
-         @valid      = (@complete_solutions.length == 1 and @complete_solutions.corrections_cost == 0)
+         @exemplars  = exemplars
+         @valid      = (@complete_solutions.length == 1 and @complete_solutions[0].corrections_cost == 0)
          @error_map  = map_errors()
          @error_list = order_errors()
       end
@@ -62,49 +63,145 @@ module Artifacts
       #  - generate and output error messages based on a list of complete and partial solutions produced by 
       #    the parser
 
-      def report_errors( explain_indent = nil )
+      def report_errors( stream, degrade_factor = 1.0, explain_indent = nil )
          
-         @complete_solutions.each do |solution|
-            STDOUT.puts "#{explain_indent}SOLUTION#{solution.original_error_position.joined_positions.empty? ? "" : " (has alternates)"}"
-            solution.corrections.each do |correction|
-               STDOUT.puts "#{explain_indent}#{correction.class.name}"
-               STDOUT.puts "   #{explain_indent}   DELETE: #{correction.deleted_token.description}"  if correction.deletes_token?
-               STDOUT.puts "   #{explain_indent}   INSERT: #{correction.inserted_token.description}" if correction.inserts_token?
-               STDOUT.puts "   #{explain_indent}   #{correction.sample}"
+         @error_list.each do |error|
+            reliability = (error.reliability(degrade_factor) * 100).to_i
+            chance      = reliability == 100 ? "" : " (#{reliability}% chance)"
+            token       = error.error_token
+            token_text  = '"' + token.to_s.gsub('"', '\\"') + '"'
+            sample      = token.sample
+            
+            #
+            # Output the error header.
+            
+            if token.type == token then
+               stream.puts "Error#{chance}: unexpected #{token_text} at #{error.location}"
+            else
+               stream.puts "Error#{chance}: unexpected #{token.type} #{token_text} at #{error.location}"
             end
+            
+            #
+            # Output a marked sample from the source error.
+            
+            stream.puts "   source: #{sample}"
+            stream.puts "           " + (" " * (token.column_number - 1)) + ("^" * token.to_s.length)
+            
+            #
+            # Output the recoveries.
+            
+            error.recoveries.each do |recovery|
+               underline_extents = {}
+               samples           = {}
+               deltas            = {}
+               
+               #
+               # Corrections can take place on any number of lines.  We'll prepare corrected samples for each.
+               
+               recovery.corrections.each do |correction|
+                  line_number = correction.line_number
+                  
+                  unless samples.member?(correction.line_number)
+                     samples[line_number]           = correction.sample.dup
+                     underline_extents[line_number] = []
+                     deltas[line_number]            = 0
+                  end
+                  
+                  sample       = samples[correction.line_number]
+                  extents      = underline_extents[correction.line_number]
+                  delta        = deltas[line_number]
+                  slice_from   = nil
+                  slice_length = 0
+                  old_text     = ""
+                  text         = ""
+                  prefix       = ""
+                  suffix       = ""
+                  
+                  if correction.deletes_token? then
+                     slice_from   = correction.deleted_token.column_number - 1
+                     slice_length = correction.deleted_token.length
+                     old_text     = correction.deleted_token.to_s
+                  end
+                  
+                  if correction.inserts_token? then
+                     slice_from    = correction.inserted_token.column_number - 1 if slice_from.nil?
+                     inserted_type = correction.inserted_token.type
+                     if @exemplars.member?(inserted_type) then
+                        text = @exemplars[inserted_type]
+                     else
+                        text = inserted_type.to_s
+                     end
+                  end
+                  
+                  if text.length > 0 and text !~ /\s/ then
+                     prefix = " " if slice_from > 0 and sample[delta + slice_from - 1, 1] !~ / /
+                     suffix = " " if sample[delta + slice_from + slice_length, 1] !~ / /
+                  end
+                  
+                  sample[slice_from + delta, slice_length] = "#{prefix}#{text}#{suffix}"
+                  extents << [slice_from + delta + prefix.length, slice_from + delta + text.length]
+                  
+                  deltas[line_number] += prefix.length + text.length + suffix.length - old_text.length
+               end
+               
+               #
+               # Prep and output the corrected samples for this Recovery.
+
+               highest_line_number = samples.keys.inject(0){|highest, line_number| max(highest, line_number)}
+               width = highest_line_number.to_s.length
+               same_line = (samples.length == 1 and samples.keys[0] == error.error_token.line_number)
+               
+               stream.puts "   option:" unless same_line
+               samples.keys.sort.each do |line_number|
+                  sample  = samples[line_number]
+                  extents = underline_extents[line_number]
+                  
+                  underline = ""
+                  extents.each do |extent|
+                     underline << (" " * (extent[0] - underline.length))
+                     underline << ("^" * (extent[1] - extent[0]))
+                  end
+                  
+                  first_line = true
+                  sample.split("\n").each do |line|
+                     line.slice!(0, 1) if !first_line and line.slice(0, 1) == " "
+                     line_underline = underline.slice!(0..(line.length+1))
+                     if !first_line then
+                        stream.puts "           #{line}"
+                        stream.puts "           #{line_underline}"
+                     elsif same_line then
+                        stream.puts "   option: #{line}"
+                        stream.puts "           #{line_underline}"
+                     else
+                        line_text = "line #{line_number.to_s.rjust(width)}"
+                        spaces    = " " * line_text.length
+                     
+                        stream.puts "      #{line_text}: #{line}"
+                        stream.puts "      #{spaces   }  #{line_underline}"
+                     end
+                     
+                     first_line = false
+                  end
+               end
+            end
+
+            stream.puts ""
          end
          
-         # #
-         # # Display the results.
+         
+         # @complete_solutions.each do |position|
+         #    STDERR.puts ""
+         #    STDERR.puts ""
+         #    STDERR.puts ""
+         #    STDOUT.puts "ABSTRACT SYNTAX TREE" 
+         #    STDOUT.puts "===================="
+         #    STDOUT.puts ""
          # 
-         # count = 0
-         # @complete_solutions.each do |solution|
-         #    count += 1
-         #    
-         #    STDOUT.puts ""
-         #    STDOUT.puts ""
-         #    STDOUT.puts "ABSTRACT SYNTAX TREE: #{solution.corrections_cost}" 
-         #    STDOUT.puts "========================"
-         #    STDOUT.puts ""
-         #    
-         #    solution.node.format().each do |line|
-         #       STDOUT.puts line
+         #    position.node.format().each do |line|
+         #       STDERR.puts line
          #    end
          # end
-         # 
-         # @partial_solutions.each do |solution|
-         #    count += 1
-         #    
-         #    STDOUT.puts ""
-         #    STDOUT.puts ""
-         #    STDOUT.puts "PARTIAL SOLUTION: #{solution.corrections_cost}" 
-         #    STDOUT.puts "========================"
-         #    STDOUT.puts ""
-         #    
-         #    solution.display( STDOUT, "" )
-         # end
-         # 
-         # STDERR.puts "   total output: #{count}"
+         
       end
 
 
@@ -126,27 +223,31 @@ module Artifacts
          attr_reader :signature
          attr_reader :recoveries
          attr_reader :ranks
+         attr_reader :context_errors
          attr_reader :incoming_recovery_count
          attr_reader :context_recovery_count
          
          def initialize( recovery_context )
-            @error_token    = recovery_context.next_token
-            @signature      = recovery_context.signature
-            @context_errors = []
-            @recoveries     = []
-            @ranks          = []
-            @reliability    = 1.0
+            @error_token             = recovery_context.next_token
+            @signature               = recovery_context.signature
+            @context_errors          = []
+            @recoveries              = []
+            @recovery_signatures     = []
+            @ranks                   = []
             @incoming_recovery_count = 0
             @context_recovery_count  = 0
          end
          
-         def add_recovery( corrections, next_error )
-            nyi(" ")
-            next_error.context_errors << self unless next_error.context_errors.member?(self)
+         def location()
+            return "#{@error_token.source_descriptor.descriptor} line #{@error_token.line_number}"
          end
          
-         def add_context( context_error )
-            @context_errors << context_error
+         def add_recovery( corrections, next_error )
+            recovery = Recovery.new( corrections, next_error )
+            unless @recovery_signatures.member?(recovery.signature)
+               @recoveries << recovery
+               next_error.context_errors << self unless next_error.nil? or next_error.context_errors.member?(self)
+            end
          end
          
          def average_rank()
@@ -191,15 +292,15 @@ module Artifacts
                   context_error.recoveries.each do |recovery|
                      if recovery.next_error == self then
                         incoming_numerators   << recovery.weight_numerator
-                        incoming_denominators << recovery.incoming_denominators
+                        incoming_denominators << recovery.weight_denominator
                      end
                   end
                end
                
                @weight_denominator = incoming_denominators.inject(1){|product, denominator| product * denominator}
-               @weight_denominator = 0
+               @weight_numerator = 0
                incoming_numerators.length.times do |i|
-                  @weight_denominator += incoming_numerators[i] * (@weight_denominator / incoming_denominators[i])
+                  @weight_numerator += incoming_numerators[i] * (@weight_denominator / incoming_denominators[i])
                end
             end
             
@@ -215,24 +316,25 @@ module Artifacts
             # Recurse.
             
             @recoveries.each do |recovery|
-               recovery.next_error.assign_reliability()
+               recovery.next_error.assign_weight() unless recovery.next_error.nil?
             end
          end
          
          
          #
-         # assign_reliability()
-         #  - assigns a measure of "reliability" indicating how "sure" the recovery system is that this Error
+         # reliability()
+         #  - returns a measure of "reliability" indicating how "sure" the recovery system is that this Error
          #    is a real error
          #  - pass degrade_factor to reduce the reliability of downline errors
          
-         def assign_reliability( degrade_factor = 1.0 )
-            if @weight_numerator == 1 and @weight_denominator == 1 then
-               @reliability = 1.0
-            else
-               @reliability = (@weight_numerator / @weight_denomiator)
-               @reliability *= (degrade_factor ** average_rank()) if degrade_factor != 1.0
-            end
+         def reliability( degrade_factor = 1.0 )
+            bug( "you must assign_weight() before you check reliability()" ) if @weight_numerator.nil? or @weight_denominator.nil?
+            
+            reliability = 1.0
+            reliability = (@weight_numerator.to_f / @weight_denominator.to_f) unless @weight_numerator == 1 and @weight_denominator == 1
+            reliability *= (degrade_factor ** (average_rank() - 1)) if degrade_factor != 1.0
+            
+            return reliability
          end
          
       end
@@ -248,7 +350,13 @@ module Artifacts
          attr_reader   :next_error
          attr_accessor :weight_numerator
          attr_accessor :weight_denominator
+         attr_reader   :signature
          
+         def initialize( corrections, next_error )
+            @corrections = corrections
+            @next_error  = next_error
+            @signature   = @corrections.collect{|correction| correction.signature}.join("|")
+         end
       end
           
           
@@ -284,7 +392,7 @@ module Artifacts
             # Add them to the work queue: [error position, recoveries, next error position].
             
             next_error = nil
-            group_corrections.reverse.each do |group|
+            grouped_corrections.reverse.each do |group|
                work_queue << [group[0].recovery_context, group, next_error]
                next_error = group[0].recovery_context
             end
@@ -307,22 +415,23 @@ module Artifacts
                error_object = error_registry[error_signature]
             else
                error_object = Error.new( error_position )
+               error_registry[error_signature] = error_object
                
                #
                # Add any joined recoveries to the work_queue.
                
                error_position.joined_positions.each do |joined_position|
                   grouped_corrections = []
-                  joined_position.node.corrections.each do |correction|
+                  joined_position.corrections.each do |correction|
                      if grouped_corrections.empty? or correction.recovery_context.signature != grouped_corrections[-1][0].recovery_context.signature then
                         grouped_corrections << [correction]
                      else
                         grouped_corrections[-1] << correction
                      end
                   end
-
+               
                   next_error = error_position
-                  group_corrections.reverse.each do |group|
+                  grouped_corrections.reverse.each do |group|
                      work_queue << [group[0].recovery_context, group, next_error]
                      next_error = group[0].recovery_context
                   end
@@ -332,7 +441,7 @@ module Artifacts
             #
             # Add the corrections to the Error object.
             
-            error_object.add_recovery( corrections, next_error_position ) 
+            error_object.add_recovery( corrections, next_error_position.nil? ? nil : error_registry[next_error_position.signature] )
          end
          
          

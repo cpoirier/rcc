@@ -401,16 +401,18 @@ module Model
                name  = consume( :WORD, "expected Terminal name" )
                        consume( :ARROW )
                value = consume()
-                       consume( :EOS   )
                
                case value.type
                   when :LITERAL
                      @grammar.add_terminal_definition( Model::TerminalDefinitions::Simple.new(value, name) )
                   when :REGEX
-                     @grammar.add_terminal_definition( Model::TerminalDefinitions::Pattern.new(value, name) )
+                     exemplar = consume()
+                     @grammar.add_terminal_definition( Model::TerminalDefinitions::Pattern.new(value, exemplar, name) )
                   else 
                      nyi "exception handling for bad Terminal descriptor"
                end
+               
+               consume( :EOS )
             end
          end
       end

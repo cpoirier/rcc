@@ -51,6 +51,13 @@ module Artifacts
       end
       
       
+      #
+      # signature()
+      
+      def signature()
+         return "#{@inserted_token.rewind_position}:#{@inserted_token.follow_position}::#{Parser.describe_type(@inserted_token.type)}"
+      end
+      
       
       
    end # Insertion

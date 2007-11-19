@@ -26,15 +26,19 @@ module TerminalDefinitions
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( definition, name = nil )
+      attr_reader :exemplar
+      
+      def initialize( definition, exemplar, name = nil )
          super( definition, name )
-         @regexp = nil
+         @exemplar = exemplar
+         @regexp   = nil
       end
       
       def regexp
          @regexp = Regexp.compile( definition.slice(1..-2), Regexp::MULTILINE ) if @regexp.nil?
          return @regexp
       end
+      
       
       
    end # class Pattern

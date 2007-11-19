@@ -83,7 +83,8 @@
                end
             end
          else
-            solution.report_errors( "" )
+            STDERR.puts ""
+            solution.report_errors( STDERR, 0.95, "" )
          end
          
       when "lex"

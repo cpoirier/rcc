@@ -255,10 +255,10 @@ module Artifacts
       
       
       #
-      # treat_as_recovered?()
-      #  - returns true if this Token should be treated as recovered (even if it isn't)
+      # recoverable?()
+      #  - returns true if this Token marks a place at which error recovery can be considered complete
       
-      def treat_as_recovered?()
+      def recoverable?()
          return false
       end
       

@@ -82,6 +82,7 @@ module Interpreter
          position               = nil
          
          @in_recovery = false
+         error_positions     = {}
          recovery_start_time = nil
          start_time          = Time.now
          until @in_recovery and ((@recovery_queue.empty? and error_queue.empty?) or (Time.now - recovery_start_time > recovery_time_limit))
@@ -94,27 +95,34 @@ module Interpreter
                # complete solutions we've already found, and lower than any of the other errors in the queue.
 
                if @recovery_queue.empty? then
-                  STDOUT.puts ""
-                  STDOUT.puts ""
-                  STDOUT.puts ""
-                  STDOUT.puts ""
-                  STDOUT.puts ""
-                  STDOUT.puts "================================================================================"
-                  STDOUT.puts "RESETTING FOR NEXT ERROR"
+                  unless explain_indent.nil?
+                     STDOUT.puts "#{explain_indent}"
+                     STDOUT.puts "#{explain_indent}"
+                     STDOUT.puts "#{explain_indent}"
+                     STDOUT.puts "#{explain_indent}"
+                     STDOUT.puts "#{explain_indent}"
+                     STDOUT.puts "#{explain_indent}================================================================================"
+                     STDOUT.puts "#{explain_indent}RESETTING FOR NEXT ERROR"
+                  end
                   soft_correction_limit = hard_correction_limit
                   
                   discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.corrections_cost) }
                   
-                  error_positions = {}
+                  # error_queue.each do |error_position|
+                  #    if error_position.corrections_cost <= discard_threshold then
+                  #       signature = error_position.signature()
+                  #       if error_positions.member?(signature) then
+                  #          error_positions[signature].join_position( error_position )
+                  #       else
+                  #          error_positions[signature] = error_position
+                  #          generate_recovery_positions( error_position, soft_correction_limit )
+                  #       end
+                  #    end
+                  # end
+                  
                   error_queue.each do |error_position|
                      if error_position.corrections_cost <= discard_threshold then
-                        signature = error_position.recovery_signature()
-                        if error_positions.member?(signature) then
-                           error_positions[signature].join_position( error_position )
-                        else
-                           error_positions[signature] = error_position
-                           generate_recovery_positions( error_position, soft_correction_limit )
-                        end
+                        generate_recovery_positions( error_position, soft_correction_limit )
                      end
                   end
                   
@@ -128,14 +136,16 @@ module Interpreter
                position = @recovery_queue.shift
                next if position.nil? or (allow_shortcutting and position.corrections_cost > soft_correction_limit)
 
-               STDOUT.puts ""
-               STDOUT.puts ""
-               STDOUT.puts ""
-               STDOUT.puts ""
-               STDOUT.puts ""
-               STDOUT.puts "================================================================================"
-               STDOUT.puts "TRYING RECOVERY with cost = #{position.corrections_cost}"
-               STDOUT.puts ""
+               unless explain_indent.nil?
+                  STDOUT.puts "#{explain_indent}"
+                  STDOUT.puts "#{explain_indent}"
+                  STDOUT.puts "#{explain_indent}"
+                  STDOUT.puts "#{explain_indent}"
+                  STDOUT.puts "#{explain_indent}"
+                  STDOUT.puts "#{explain_indent}================================================================================"
+                  STDOUT.puts "#{explain_indent}TRYING RECOVERY with cost = #{position.corrections_cost}"
+                  STDOUT.puts "#{explain_indent}"
+               end
 
             else
                position = start_position
@@ -156,28 +166,38 @@ module Interpreter
                position = e.position
                if position.next_token.tainted? then
                   # we're done -- it's already been corrected and the correction failed
+               elsif position.recovered? then
+                  STDOUT.puts "#{explain_indent}POSITION IS RECOVERED; QUEUEING NEW ERROR PROCESSING: #{position.description(true)};" unless explain_indent.nil?
+                  soft_correction_limit = min( soft_correction_limit, position.corrections_cost )
+                  
+                  signature = position.signature()
+                  if error_positions.member?(signature) then
+                     error_positions[signature].join_position( position )
+                  else
+                     error_positions[signature] = position
+                     error_queue << position
+                  end
                elsif position.corrections_cost < soft_correction_limit then
                   if position.tainted? then
                      generate_recovery_positions( position, soft_correction_limit, explain_indent )
                   else
                      error_queue << position
                      soft_correction_limit = min( soft_correction_limit, position.corrections_cost ) if @in_recovery
-                     STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
-                     STDOUT.puts "   CORRECTION LIMIT FOR THIS ERROR IS NOW #{soft_correction_limit}"
+                     unless explain_indent.nil?
+                        STDOUT.puts "#{explain_indent}QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
+                        STDOUT.puts "#{explain_indent}   CORRECTION LIMIT FOR THIS ERROR IS NOW #{soft_correction_limit}"
+                     end
                   end
-               elsif position.node.treat_as_recovered? then
-                  error_queue << position
-                  STDOUT.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
                else
-                  STDOUT.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
+                  STDOUT.puts "#{explain_indent}TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" unless explain_indent.nil?
                end
                
             rescue PositionSeen => e
                position = e.position
-               STDOUT.puts "DISCARDING LOOPED RECOVERY: #{position.description(true)}"
+               STDOUT.puts "#{explain_indent}DISCARDING LOOPED RECOVERY: #{position.description(true)}" unless explain_indent.nil?
             end
             
-            STDOUT.puts "PASS TOOK: #{Time.now-pass_start_time}s"
+            STDOUT.puts "#{explain_indent}PASS TOOK: #{Time.now-pass_start_time}s" unless explain_indent.nil?
 
 
             #
@@ -211,7 +231,7 @@ module Interpreter
          STDERR.puts "   partial solutions:  #{partial_solutions.length}"
          STDERR.puts "   outputting solutions with #{hard_correction_limit} correction cost or better"
          
-         return Solution.new( complete_solutions, partial_solutions )
+         return Solution.new( complete_solutions, partial_solutions, @parser_plan.exemplars )
       end
       
 
@@ -448,15 +468,20 @@ module Interpreter
                
                if node.tainted? then
                   if next_token.rewind_position > node.original_error_position then
-                     STDOUT.puts "UNTAINTING"
+                     STDOUT.puts "#{explain_indent}UNTAINTING" unless explain_indent.nil?
                      node.untaint()
                   end
                end
-                                 
-               if production.name == "statement".intern then   # BUG: hard-code to test a feature
-                  node.treat_as_recovered()
-               end
                
+               #
+               # Create/transfer recoverability marks, if appropriate.
+               
+               if production.name == "statement".intern then
+                  node.recoverable = true
+               elsif nodes[-1].recoverable? then
+                  node.recoverable = true
+               end
+                                 
                #
                # Get the goto state from the now-top-of-stack State: it will be the next state.
                
@@ -656,7 +681,7 @@ module Interpreter
       
       def generate_recovery_positions( position, correction_limit, explain_indent = nil )
          recovery_positions = []
-         STDOUT.puts "CALCULATING RECOVERIES for: #{position.description(true)}"
+         STDOUT.puts "#{explain_indent}CALCULATING RECOVERIES for: #{position.description(true)}" unless explain_indent.nil?
 
          #
          # First, generate insertions and deletions at each stack point still available for error correction
@@ -672,7 +697,7 @@ module Interpreter
             next if recovery_position.start_position? 
             recovery_context = recovery_position.tainted? ? recovery_position.recovery_context : position
             
-            STDOUT.puts "   TRYING REPAIR at: #{recovery_position.description(true)}"
+            STDOUT.puts "#{explain_indent}   TRYING REPAIR at: #{recovery_position.description(true)}" unless explain_indent.nil?
             lookahead_type = recovery_position.next_token.type
 
             #
@@ -680,7 +705,7 @@ module Interpreter
             # pass.
 
             recovery_position.state.recovery_predicates.each do |leader_type, predicate|
-               STDOUT.puts "      APPLYING PREDICATE FOR CORRECTION #{Parser.describe_type(leader_type)}"
+               STDOUT.puts "#{explain_indent}      APPLYING PREDICATE FOR CORRECTION #{Parser.describe_type(leader_type)}" unless explain_indent.nil?
                next if leader_type.nil? or leader_type == lookahead_type
 
                #
@@ -705,14 +730,14 @@ module Interpreter
 
                if replace and !lookahead_type.nil? then
                   if recovery_position.next_token.similar_to?(leader_type) then
-                     STDOUT.puts "         [#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE"
+                     STDOUT.puts "#{explain_indent}         [#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE" unless explain_indent.nil?
                      begin
                         recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, recovery_context ) 
                      rescue PositionSeen => e
-                        STDOUT.puts "            ===> dead end"
+                        STDOUT.puts "#{explain_indent}            ===> dead end" unless explain_indent.nil?
                      end
                   else
-                     STDOUT.puts "         [#{leader_type}] NOT SIMILAR to [#{lookahead_type}]; WON'T TRY REPLACE"
+                     STDOUT.puts "#{explain_indent}         [#{leader_type}] NOT SIMILAR to [#{lookahead_type}]; WON'T TRY REPLACE" unless explain_indent.nil?
                   end
                end
 
@@ -720,11 +745,11 @@ module Interpreter
                # Token insertion is another option.
 
                if insert then
-                  STDOUT.puts "         WILL TRY INSERTING [#{leader_type}]"
+                  STDOUT.puts "#{explain_indent}         WILL TRY INSERTING [#{leader_type}]" unless explain_indent.nil?
                   begin
                      recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, recovery_context )
                   rescue PositionSeen => e
-                     STDOUT.puts "            ===> dead end"
+                     STDOUT.puts "#{explain_indent}            ===> dead end" unless explain_indent.nil?
                   end
                end
             end
@@ -748,7 +773,7 @@ module Interpreter
                deleted_tokens
             end
 
-            STDOUT.puts "      WILL TRY DELETING [#{deleted_tokens.collect{|t| t.description}.join(", ")}]"
+            STDOUT.puts "#{explain_indent}      WILL TRY DELETING [#{deleted_tokens.collect{|t| t.description}.join(", ")}]" unless explain_indent.nil?
 
             recovery_positions.unshift recovered_position unless recovered_position.nil?
          end
@@ -758,14 +783,14 @@ module Interpreter
          # Move the corrected positions on @recovery_queue.  We try to ensure that the corrections closts to the
          # original error get attempted first, but this will not override lower-cost solutions further away.
 
-         STDOUT.puts "   QUEUING GENERATED RECOVERIES"
+         STDOUT.puts "#{explain_indent}   QUEUING GENERATED RECOVERIES" unless explain_indent.nil?
          recovery_positions.each do |recovery_position|
             corrections_cost = recovery_position.corrections_cost
             if corrections_cost <= correction_limit then
-               STDOUT.puts "      QUEUING POSITION #{recovery_position.description(true)} @ #{recovery_position.corrections_cost}"
+               STDOUT.puts "#{explain_indent}      QUEUING POSITION #{recovery_position.description(true)} @ #{recovery_position.corrections_cost}" unless explain_indent.nil?
                @recovery_queue.insert recovery_position, corrections_cost
             else
-               STDOUT.puts "      TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}"
+               STDOUT.puts "#{explain_indent}      TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" unless explain_indent.nil?
             end
          end  
       end
