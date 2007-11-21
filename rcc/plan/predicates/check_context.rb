@@ -37,5 +37,5 @@ module Predicates
 
 end  # module Predicates
 end  # module Plan
-end  # module Rethink
+end  # module RCC
  

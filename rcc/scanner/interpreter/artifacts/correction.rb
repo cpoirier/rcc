@@ -11,6 +11,7 @@
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
+module Scanner
 module Interpreter
 module Artifacts
 
@@ -121,9 +122,10 @@ module Artifacts
 
 end  # module Artifacts
 end  # module Interpreter
-end  # module Rethink
+end  # module Scanner
+end  # module RCC
 
 
-require "#{$RCCLIB}/interpreter/artifacts/insertion.rb"
-require "#{$RCCLIB}/interpreter/artifacts/replacement.rb"
-require "#{$RCCLIB}/interpreter/artifacts/deletion.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/insertion.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/replacement.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/deletion.rb"

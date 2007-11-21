@@ -9,9 +9,10 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/code_generation/ruby/formatter.rb"
+require "#{$RCCLIB}/scanner/code_generation/ruby/formatter.rb"
 
 module RCC
+module Scanner
 module CodeGeneration
 module Ruby
 
@@ -497,12 +498,13 @@ module Ruby
 
 end  # module Ruby
 end  # module CodeGeneration
-end  # module Rethink
+end  # module Scanner
+end  # module RCC
 
 
 
-require "#{$RCCLIB}/code_generation/ruby/code_oriented_generator.rb"
-require "#{$RCCLIB}/code_generation/ruby/tree_oriented_generator.rb"
+require "#{$RCCLIB}/scanner/code_generation/ruby/code_oriented_generator.rb"
+require "#{$RCCLIB}/scanner/code_generation/ruby/tree_oriented_generator.rb"
 
 
 

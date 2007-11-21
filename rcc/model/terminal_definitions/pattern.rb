@@ -48,4 +48,4 @@ module TerminalDefinitions
 
 end  # module TerminalDefinitions
 end  # module Model
-end  # module Rethink
+end  # module RCC

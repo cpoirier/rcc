@@ -9,9 +9,10 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/interpreter/artifacts/correction.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/correction.rb"
 
 module RCC
+module Scanner
 module Interpreter
 module PositionMarkers
 
@@ -625,8 +626,9 @@ module PositionMarkers
 
 end  # module PositionMarkers
 end  # module Interpreter
-end  # module Rethink
+end  # module Scanner
+end  # module RCC
 
 
-require "#{$RCCLIB}/interpreter/position_markers/start_position.rb"
-require "#{$RCCLIB}/interpreter/position_markers/attempt_position.rb"
+require "#{$RCCLIB}/scanner/interpreter/position_markers/start_position.rb"
+require "#{$RCCLIB}/scanner/interpreter/position_markers/attempt_position.rb"

@@ -47,7 +47,7 @@ module TerminalDefinitions
 
 end  # module TerminalDefinitions
 end  # module Model
-end  # module Rethink
+end  # module RCC
 
 
 require "#{$RCCLIB}/model/terminal_definitions/simple.rb"

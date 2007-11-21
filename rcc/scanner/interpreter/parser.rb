@@ -9,15 +9,16 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/interpreter/artifacts/solution.rb"
-require "#{$RCCLIB}/interpreter/artifacts/token.rb"
-require "#{$RCCLIB}/interpreter/artifacts/node.rb"
-require "#{$RCCLIB}/interpreter/artifacts/correction.rb"
-require "#{$RCCLIB}/interpreter/position_markers/position_marker.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/solution.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/token.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/node.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/correction.rb"
+require "#{$RCCLIB}/scanner/interpreter/position_markers/position_marker.rb"
 require "#{$RCCLIB}/util/tiered_queue.rb"
 
 
 module RCC
+module Scanner
 module Interpreter
 
  
@@ -902,4 +903,5 @@ module Interpreter
 
 
 end  # module Interpreter
-end  # module Rethink
+end  # module Scanner
+end  # module RCC

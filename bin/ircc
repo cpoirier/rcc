@@ -10,8 +10,8 @@
 
    require "#{File.dirname(__FILE__)}/../rcc/environment.rb"
    require "#{$RCCLIB}/model/grammar.rb"
-   require "#{$RCCLIB}/interpreter/lexer.rb"
-   require "#{$RCCLIB}/interpreter/parser.rb"
+   require "#{$RCCLIB}/scanner/interpreter/lexer.rb"
+   require "#{$RCCLIB}/scanner/interpreter/parser.rb"
 
    if ARGV.empty? then
       puts "USAGE: #{File.basename($0)} <grammar file> (explain? <mode>)?"
@@ -59,9 +59,9 @@
       when nil, "parse", "recovery"
          parser_plan.display( STDOUT, "", true, ARGV[0].nil? ? :reduce_determinants : ARGV[0].intern ) if explain
 
-         source   = RCC::Interpreter::Source.new( STDIN.read, "<stdin>" )
-         lexer    = RCC::Interpreter::Lexer.new( source )
-         parser   = RCC::Interpreter::Parser.new( parser_plan, lexer )
+         source   = RCC::Scanner::Interpreter::Source.new( STDIN.read, "<stdin>" )
+         lexer    = RCC::Scanner::Interpreter::Lexer.new( source )
+         parser   = RCC::Scanner::Interpreter::Parser.new( parser_plan, lexer )
          solution = parser.parse( 3, explain ? "" : nil )
 
          if explain then
@@ -88,7 +88,7 @@
          end
          
       when "lex"
-         lexer = RCC::Interpreter::Lexer.new( STDIN, "<stdin>" )
+         lexer = RCC::Scanner::Interpreter::Lexer.new( STDIN, "<stdin>" )
          while token = lexer.next_token( parser_plan.lexer_plan, explain ? "" : nil )
             if explain then
                puts "\n"

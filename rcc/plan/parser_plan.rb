@@ -305,7 +305,7 @@ module Plan
 
 
 end  # module Model
-end  # module Rethink
+end  # module RCC
 
 
 

@@ -43,4 +43,4 @@ module Actions
 
 end  # module Actions
 end  # module Plan
-end  # module Rethink
+end  # module RCC

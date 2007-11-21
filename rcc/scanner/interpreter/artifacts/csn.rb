@@ -9,9 +9,10 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/interpreter/artifacts/node.rb"
+require "#{$RCCLIB}/scanner/interpreter/artifacts/node.rb"
 
 module RCC
+module Scanner
 module Interpreter
 module Artifacts
    
@@ -61,4 +62,5 @@ module Artifacts
 
 end  # module Artifacts
 end  # module Interpreter
-end  # module Rethink
+end  # module Scanner
+end  # module RCC

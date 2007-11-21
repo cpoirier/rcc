@@ -11,6 +11,7 @@
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
+module Scanner
 module CodeGeneration
 
  
@@ -146,7 +147,8 @@ module CodeGeneration
 
 
 end  # module CodeGeneration
-end  # module Rethink
+end  # module Scanner
+end  # module RCC
 
 
 
