@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/plan/explanations/explanation.rb"
 
 module RCC
@@ -33,7 +33,7 @@ module Explanations
       
       
       def to_s()
-         if @actions[0].is_a?(Actions::Shift) then
+         if @actions[0].is_an?(Actions::Shift) then
             return "Shift beats Reduce in general shift/reduce conflicts"
          else
             return "Earliest stated rule wins in reduce/reduce conflicts"

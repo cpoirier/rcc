@@ -16,8 +16,8 @@
 #================================================================================================================================
 
 
-require "#{File.dirname(__FILE__)}/common.rb" 
-require "#{File.dirname(__FILE__)}/node.rb" 
+require "#{File.dirname(File.expand_path(__FILE__))}/common.rb" 
+require "#{File.dirname(File.expand_path(__FILE__))}/node.rb" 
 
 
 %%MODULE_HEADER%%

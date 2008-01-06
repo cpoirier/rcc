@@ -8,13 +8,13 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/correction.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/correction.rb"
 
 module RCC
 module Scanner
-module Interpreter
-module PositionMarkers
+module Artifacts
+module PositionStack
 
  
  #============================================================================================================================
@@ -624,11 +624,11 @@ module PositionMarkers
 
 
 
-end  # module PositionMarkers
-end  # module Interpreter
+end  # module PositionStack
+end  # module Artifacts
 end  # module Scanner
 end  # module RCC
 
 
-require "#{$RCCLIB}/scanner/interpreter/position_markers/start_position.rb"
-require "#{$RCCLIB}/scanner/interpreter/position_markers/attempt_position.rb"
+require "#{$RCCLIB}/scanner/artifacts/position_stack/start_position.rb"
+require "#{$RCCLIB}/scanner/artifacts/position_stack/attempt_position.rb"

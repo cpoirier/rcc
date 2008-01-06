@@ -8,22 +8,31 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/node.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/nodes/subtree.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
 
 
 module RCC
 module Scanner
-module Interpreter
 module Artifacts
+module Nodes
 
  
  #============================================================================================================================
  # class ASN
- #  - a Node in an Abstract Syntax Tree produced by the Interpreter
+ #  - a Subtree Node in an Abstract Syntax Tree produced by the Scanner
 
-   class ASN < Node
+   class ASN < Subtree
+      
+      def self::map( production, component_nodes )
+         slots = Util::OrderedHash.new()
+         production.slot_mappings.each do |index, slot|
+            slots[slot] = component_nodes[index]
+         end
+         
+         return new( production.name, component_nodes, slots, production.ast_class )
+      end
       
       
     #---------------------------------------------------------------------------------------------------------------------
@@ -35,18 +44,17 @@ module Artifacts
       attr_reader :first_token
       attr_reader :last_token
       
-      def initialize( production, component_symbols )
-         super( production.name, component_symbols )
-         @ast_class   = production.ast_class
-         @slots       = Util::OrderedHash.new()
-         @first_token = component_symbols[0].first_token
-         @last_token  = component_symbols[-1].last_token
-         
-         production.slot_mappings.each do |index, slot|
-            @slots[slot] = component_symbols[index]
-         end
+      def initialize( type, component_nodes, slots, ast_class = nil )
+         super( type, component_nodes )
+         @ast_class   = ast_class
+         @slots       = slots
+         @first_token = component_nodes[0].first_token
+         @last_token  = component_nodes[-1].last_token
       end
       
+      def ast_class_name()
+         return @ast_class.name
+      end
       
       def display( stream, indent = "", inline_candidate = false )
          stream << indent << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"
@@ -70,7 +78,7 @@ module Artifacts
          
          child_lines = []
          @slots.each do |slot_name, child|
-            if child.is_a?(ASN) then
+            if child.is_an?(ASN) then
                if child.ast_class.catch_all? and child.slots.length == 1 then
                   leader = slot_name + "."
                   child.format(false).each do |line|
@@ -118,11 +126,12 @@ module Artifacts
       
       
       
+      
    end # ASN
    
 
 
+end  # module Nodes
 end  # module Artifacts
-end  # module Interpreter
 end  # module Scanner
 end  # module RCC

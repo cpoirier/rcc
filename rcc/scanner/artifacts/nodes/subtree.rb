@@ -8,20 +8,20 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/node.rb"
 
 module RCC
 module Scanner
-module Interpreter
 module Artifacts
    
 
  
  #============================================================================================================================
- # class Node
- #  - a base class for Nodes in syntax trees produced by the Interpreter
+ # class Subtree
+ #  - a base class for nodes that contain other nodes
 
-   class Node
+   class Subtree < Node
       
       
       
@@ -29,25 +29,21 @@ module Artifacts
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :root_symbol         # The Symbol this Node represents
-      attr_reader :token_count         # The number of Tokens in this and all sub CSNs
-      attr_reader :original_error_position
+      attr_reader :token_count               # The number of Tokens in this and all sub CSNs
+      attr_reader :original_error_position   # The stream position at which the last original (non-cascade) error occurred
       
-      alias :symbol :root_symbol
-      alias :type   :root_symbol
-      
-      def initialize( root_symbol, component_symbols )
-         @root_symbol = root_symbol
-         @token_count = component_symbols.inject(0) {|sum, symbol| symbol.token_count }
+      def initialize( type, component_nodes )
+         super( type )
+         @token_count = component_nodes.inject(0) {|sum, node| node.token_count }
 
          @tainted     = false
          @recoverable = false
-         component_symbols.each do |symbol|
-            @tainted = true if symbol.tainted?
+         component_nodes.each do |node|
+            @tainted = true if node.tainted?
             
-            if symbol.corrected? then
+            if node.corrected? then
                @corrections = [] if @corrections.nil?
-               @corrections.concat( symbol.corrections )
+               @corrections.concat( node.corrections )
             end
          end
          
@@ -55,18 +51,30 @@ module Artifacts
          @original_error_position = @corrections[-1].original_error_position if defined?(@corrections) and !@corrections.empty?
       end
       
-      def follow_position()
-         return last_token().follow_position()
+      def description()
+         return "#{@type}"
       end
       
-      def description()
-         return "#{@root_symbol}"
+      def follow_position()
+         return last_token().follow_position()
       end
       
       def terminal?()
          return false
       end      
+            
+      def first_token()
+         bug( "you must override first_token()" )
+      end
+
+      def last_token()
+         bug( "you must override last_token()" )
+      end
       
+      def token_count()
+         bug( "you must override token_count()" )
+      end
+
 
 
 
@@ -96,45 +104,6 @@ module Artifacts
       
       
       #
-      # corrected?()
-      #  - returns true if there are any Corrections associated with this Node
-      
-      def corrected?()
-         return (defined?(@corrections) and @corrections.exists? and !@corrections.empty?)
-      end
-      
-      
-      #
-      # corrections()
-      #  - returns any Correction objects associated with this Node
-      
-      def corrections()
-         return [] if !defined?(@corrections)
-         return @corrections 
-      end
-      
-      
-      #
-      # last_correction()
-      #  - returns the last Correction object associated with this Node, or nil
-      
-      def last_correction()
-         return nil if !defined?(@corrections) or @corrections.nil? or @corrections.empty?
-         return @corrections[-1]
-      end
-      
-      
-      #
-      # corrections_cost()
-      #  - returns the cost of any Corrections associated with this Token, or 0
-      
-      def corrections_cost()
-         return 0 if !defined?(@corrections) or @corrections.nil?
-         return @corrections.inject(0) { |current, correction| current + correction.cost }
-      end
-      
-
-      #
       # recoverable?
       #  - returns true if this Node can anchor 
       
@@ -149,11 +118,6 @@ module Artifacts
 
 
 end  # module Artifacts
-end  # module Interpreter
 end  # module Scanner
 end  # module RCC
 
-
-
-require "#{$RCCLIB}/scanner/interpreter/artifacts/asn.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/csn.rb"

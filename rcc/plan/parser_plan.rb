@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
 require "#{$RCCLIB}/model/rule.rb"
 require "#{$RCCLIB}/plan/production.rb"
@@ -268,6 +268,8 @@ module Plan
          end
          
          STDERR.puts "Action compilation duration: #{duration}s" if $show_statistics
+         
+         return self
       end
 
 

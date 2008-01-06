@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/util/recursion_loop_detector.rb"
 
 module RCC
@@ -62,7 +62,7 @@ module Plan
       end
       
       def eql?( rhs )
-         return false unless rhs.is_a?(Item) 
+         return false unless rhs.is_an?(Item) 
          return self.signature == rhs.signature
       end
       

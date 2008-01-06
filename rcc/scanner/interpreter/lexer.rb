@@ -8,9 +8,8 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/token.rb"
-require "#{$RCCLIB}/scanner/interpreter/source.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/nodes/token.rb"
 
 
 module RCC

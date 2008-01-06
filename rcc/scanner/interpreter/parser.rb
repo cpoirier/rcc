@@ -8,12 +8,13 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/solution.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/token.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/node.rb"
-require "#{$RCCLIB}/scanner/interpreter/artifacts/correction.rb"
-require "#{$RCCLIB}/scanner/interpreter/position_markers/position_marker.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/solution.rb"
+require "#{$RCCLIB}/scanner/artifacts/nodes/token.rb"
+require "#{$RCCLIB}/scanner/artifacts/nodes/asn.rb"
+require "#{$RCCLIB}/scanner/artifacts/nodes/csn.rb"
+require "#{$RCCLIB}/scanner/artifacts/correction.rb"
+require "#{$RCCLIB}/scanner/artifacts/position_stack/position_marker.rb"
 require "#{$RCCLIB}/util/tiered_queue.rb"
 
 
@@ -30,9 +31,9 @@ module Interpreter
    class Parser
       
       Solution = Artifacts::Solution
-      Token    = Artifacts::Token
-      CSN      = Artifacts::CSN
-      ASN      = Artifacts::ASN
+      Token    = Artifacts::Nodes::Token
+      CSN      = Artifacts::Nodes::CSN
+      ASN      = Artifacts::Nodes::ASN
    
       
       
@@ -53,6 +54,20 @@ module Interpreter
          @in_recovery         = false
          @recovery_queue      = Util::TieredQueue.new()
       end
+      
+      
+      #
+      # connect()
+      #  - connect a source (lexer) to the Parser for processing
+      
+      def connect( lexeer )
+         @lexer       = lexer
+         @in_recovery = false
+         
+         @work_queue.clear
+         @recovery_queue.clear
+      end
+      
       
       
       #
@@ -462,7 +477,7 @@ module Interpreter
                   position  = position.pop( production, top_position )
                end
                
-               node = @build_ast ? ASN.new(production, nodes) : CSN.new(production.name, nodes)
+               node = @build_ast ? ASN.map(production, nodes) : CSN.new(production.name, nodes)
                
                #
                # Untaint the node if the error recovery is complete.
@@ -852,8 +867,8 @@ module Interpreter
          def initialize( actual_production, expected_productions, top_position )
             super( top_position )
             
-            @actual_production    = actual_production
-            @exptected_production = expected_productions
+            @actual_production   = actual_production
+            @expected_production = expected_productions
          end
       end
       

@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-   $RCCLIB = File.expand_path(File.dirname(__FILE__))
+   $RCCLIB = File.expand_path(File.dirname(File.expand_path(__FILE__)))
    require "#{$RCCLIB}/util/quality.rb"
    
    def max( a, b )
@@ -84,6 +84,25 @@
          
          return hash
       end
+      
+      #
+      # remove_if()
+      #  - just like delete_if(), except it returns an array of the deleted elements
+      
+      def remove_if()
+         removed = []
+         
+         delete_if() do |element|
+            if yield(element) then
+               removed << element
+               true
+            else
+               false
+            end
+         end
+         
+         return removed
+      end
 
    end
    
@@ -96,6 +115,8 @@
       def exists?()
          return !nil?()
       end
+      
+      alias is_an? is_a?
    end
    
    class NilClass

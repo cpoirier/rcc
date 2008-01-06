@@ -8,12 +8,12 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Scanner
-module Interpreter
-module PositionMarkers
+module Artifacts
+module PositionStack
 
  
  #============================================================================================================================
@@ -81,8 +81,8 @@ module PositionMarkers
    
 
 
-end  # module PositionMarkers
-end  # module Interpreter
+end  # module PositionStack
+end  # module Artifacts
 end  # module Scanner
 end  # module RCC
 

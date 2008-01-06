@@ -8,51 +8,113 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/token.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/node.rb"
+
 
 module RCC
 module Scanner
-module Interpreter
 module Artifacts
+module Nodes
 
  
  #============================================================================================================================
  # class Token
  #  - a Token produced at runtime from a source file
 
-   class Token < Model::Token
+   class Token < Node
       
+      attr_reader   :text
+      attr_reader   :line_number          # The line number within the source this token came from
+      attr_reader   :column_number        # The column on which this token starts (if known)
+      attr_reader   :source               # Some string that describes the source of this token
       attr_accessor :rewind_position
       attr_reader   :start_position
       attr_writer   :faked
+      
+      
+      #
+      # initialize()
+      #  - fill a new Token with data
 
-      def locate( start_position, line_number, column_number, source, type = nil, faked = false, follow_position = nil )
-         @rewind_position = start_position
-         @start_position  = start_position
-         @faked           = faked unless faked.nil?
-         @follow_position = follow_position unless follow_position.nil?
-         super( line_number, column_number, source, type, nil )
-         
-         return self
+      def initialize( text, start_position, line_number, column_number, source, type = nil, faked = false, follow_position = nil )
+         super( type.nil? ? text : type )
+         @text = text
+         locate( start_position, line_number, column_number, source, type, faked, follow_position )
       end
+
+      
+      #
+      # locate()
+      #  - updates/sets the position an type information for this Token
+      
+      def locate( start_position, line_number, column_number, source, type = nil, faked = false, follow_position = nil )
+         @rewind_position   = start_position
+         @start_position    = start_position
+         @line_number       = line_number
+         @column_number     = column_number
+         @source            = source
+         @type              = type.nil? ? @type : type
+         @faked             = faked unless faked.nil?
+         @follow_position   = follow_position unless follow_position.nil?
+      end
+      
+      
+      #
+      # type()
+      #  - returns the type of this Token (a Symbol, String, or nil)
+      
+      def type()
+         return (@type.nil? && @text.length > 0 ? @text : @type)
+      end
+      
+      
+      #
+      # faked?()
+      #  - returns true if this Token was inserted into the token stream (as opposed to coming from it)
       
       def faked?()
          return @faked
       end
 
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Node support
+    #---------------------------------------------------------------------------------------------------------------------
+    
+      #
+      # first_token
+      #  - returns the first token in this Node
+      
       def first_token
          return self
       end
+      
+      
+      #
+      # last_token
+      #  - returns the last token in this Node
       
       def last_token
          return self
       end
       
+      
+      #
+      # token_count
+      #  - returns the number of tokens in this Node
+      
       def token_count
          return 1
       end
       
+      
+      #
+      # follow_position()
+      #  - returns the start position of the next Token to be produced from the source stream
+
       def follow_position()
          if defined?(@follow_position) then
             return @follow_position
@@ -60,15 +122,17 @@ module Artifacts
             return @start_position + length()         
          end
       end
+
+
+      #
+      # terminal?
+      #  - returns true if this Node is represents a grammar terminal (as opposed to a non-terminal)
       
       def terminal?()
          return true
       end
 
-      def sample()
-         return nil unless @source_descriptor.is_a?(Source)
-         return @source_descriptor.line(@start_position)
-      end
+
 
 
 
@@ -95,8 +159,8 @@ module Artifacts
       
       def similar_to?( type )
          return @type == type unless type.is_a?(String)
-         return false unless (self.length - type.length).abs < 3
-         return false if self =~ /^\w+$/ and type !~ /^\w+$/
+         return false unless (@text.length - type.length).abs < 3
+         return false if @text =~ /^\w+$/ and type !~ /^\w+$/
          return false if type =~ /^\w+$/ and self !~ /^\w+$/
          
          #
@@ -104,7 +168,7 @@ module Artifacts
          # and compare them.
          
          symbol_chars = type.split("").sort.uniq
-         token_chars  = self.split("").sort.uniq
+         token_chars  = @text.split("").sort.uniq
          intersection = symbol_chars & token_chars
          
          extra_symbol_chars = symbol_chars.length - intersection.length
@@ -114,6 +178,16 @@ module Artifacts
       end
       
       
+      #
+      # sample()
+      #  - returns a sample of the source data from around this Token
+      
+      def sample()
+         return nil unless @source.is_a?(Source)
+         return @source.line(@start_position)
+      end
+
+
       #
       # description()
       
@@ -125,7 +199,7 @@ module Artifacts
          elsif @faked then
             return "FAKE[" + (@type.is_a?(Symbol) ? ":#{@type}" : "#{@type.gsub("\n", "\\n")}") + "]"
          else
-            return "[#{self.gsub("\n", "\\n")}]" + (@type.is_a?(Symbol) ? ":#{@type}" : "")
+            return "[#{@text.gsub("\n", "\\n")}]" + (@type.is_a?(Symbol) ? ":#{@type}" : "")
          end
       end
       
@@ -134,7 +208,7 @@ module Artifacts
       # ::description()
       
       def self.description( token )
-         if token.is_a?(Array) then
+         if token.is_an?(Array) then
             return token.collect{|t| t.description}.join(", ")
          elsif token.is_a?(Token) then
             return token.description
@@ -148,7 +222,7 @@ module Artifacts
       # display()
       
       def display( stream, indent = "" )
-         stream << indent << description << "\n"
+         stream << indent << self.description << "\n"
       end
       
       
@@ -166,7 +240,7 @@ module Artifacts
       #  - builds a fake Token of the specified type
       
       def self.fake( type, follow_position = nil, start_position = nil, line_number = nil, column_number = nil, source_descriptor = nil )
-         return new( "" ).locate( start_position, line_number, column_number, source_descriptor, type, true, follow_position )
+         return new( "", start_position, line_number, column_number, source_descriptor, type, true, follow_position )
       end
       
       
@@ -175,7 +249,7 @@ module Artifacts
       #  - builds an "end of file" Token
       
       def self.end_of_file( start_position, line_number, column_number, source_descriptor )
-         return new( "" ).locate( start_position, line_number, column_number, source_descriptor, nil )
+         return new( "", start_position, line_number, column_number, source_descriptor, nil )
       end
 
 
@@ -188,15 +262,6 @@ module Artifacts
     #---------------------------------------------------------------------------------------------------------------------
 
 
-      #
-      # tainted?
-      #  - returns true if this Token carries Correction taint
-      
-      def tainted?()
-         return (defined?(@corrections) and @corrections.exists? and !@corrections.empty?)
-      end
-      
-      
       #
       # taint()
       #  - marks this Token as tainted
@@ -215,59 +280,16 @@ module Artifacts
       end
       
       
-      #
-      # corrected?()
-      #  - returns true if there are any Corrections associated with this Token
-      #  - for Tokens (only), tainted? implies corrected? and vice versa
-      
-      def corrected?()
-         return (defined?(@corrections) and @corrections.exists? and !@corrections.empty?)
-      end
-      
-      
-      #
-      # corrections()
-      #  - returns any Correction objects associated with this Token
-      
-      def corrections()
-         return [] if !defined?(@corrections)
-         return @corrections 
-      end
-      
-      
-      #
-      # last_correction()
-      #  - returns the latest Correction object associated with this Token (or nil)
-      
-      def last_correction
-         return nil if !defined?(@corrections) or @corrections.nil? or @corrections.empty?
-         return @corrections[-1]
-      end
-      
-      
-      #
-      # corrections_cost()
-      #  - returns the cost of any Corrections associated with this Token, or 0
-      
-      def corrections_cost()
-         return 0 if !defined?(@corrections) or @corrections.nil?
-         return @corrections.inject(0) { |current, correction| current + correction.cost }
-      end
-      
-      
-      #
-      # recoverable?()
-      #  - returns true if this Token marks a place at which error recovery can be considered complete
-      
-      def recoverable?()
-         return false
-      end
-      
-      
    end # Token
    
 
+end  # module Nodes
 end  # module Artifacts
-end  # module Interpreter
 end  # module Scanner
 end  # module RCC
+
+
+
+
+
+

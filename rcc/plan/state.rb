@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/model/rule.rb"
 require "#{$RCCLIB}/model/form.rb"
 require "#{$RCCLIB}/plan/item.rb"

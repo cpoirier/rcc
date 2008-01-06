@@ -8,12 +8,13 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
 require "#{$RCCLIB}/model/rule.rb"
 require "#{$RCCLIB}/model/precedence_table.rb"
 require "#{$RCCLIB}/plan/lexer_plan.rb"
 require "#{$RCCLIB}/plan/parser_plan.rb"
+require "#{$RCCLIB}/languages/grammar/loader.rb"
 
 
 
@@ -28,20 +29,12 @@ module Model
 
    class Grammar
       
-      
       #
       # ::load_from_file()
       #  - loads the Grammar from a file on disk
       
       def self.load_from_file( descriptor, path )
-         grammar = nil
-         
-         require "#{$RCCLIB}/model/loader.rb"
-         File.open(path) do |file|
-            grammar = Loader.new().load( file.read(), path )
-         end
-         
-         return grammar
+         return RCC::Languages::Grammar::Loader::load_from_file( descriptor, path )
       end
       
       

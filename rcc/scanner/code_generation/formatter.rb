@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
 module Scanner
@@ -38,7 +38,7 @@ module CodeGeneration
       #  - parameter can be an array of strings or an string containing newlines
       
       def <<( parameter )
-         if parameter.is_a?(Array) then
+         if parameter.is_an?(Array) then
             parameter.each do |element|
                self << element
             end
@@ -95,9 +95,9 @@ module CodeGeneration
          #
          # Figure out the output dimensions
          
-         rows   = columns.inject(0) {|rows, column| max(rows, column.is_a?(Array) ? column.length : 1 )}
+         rows   = columns.inject(0) {|rows, column| max(rows, column.is_an?(Array) ? column.length : 1 )}
          widths = columns.collect do |column|
-            if column.is_a?(Array) then
+            if column.is_an?(Array) then
                column.inject(0) {|width, cell| max(width, cell.length)}
             else
                rows 
@@ -114,7 +114,7 @@ module CodeGeneration
                column = columns[column_index]
                width  = widths[column_index]
                
-               if column.is_a?(Array) then
+               if column.is_an?(Array) then
                   elements << column[row].to_s.ljust(width)
                else
                   elements << column.to_s.ljust(width)

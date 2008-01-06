@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/scanner/code_generation/ruby/formatter.rb"
 
 module RCC
@@ -354,7 +354,7 @@ module Ruby
       #  - at present, there can only be one macro expanded per template line
       
       def fill_template( template_name, output_file, parser_plan )
-         File.open( "#{File.dirname(__FILE__)}/templates/#{template_name}" ) do |template_file|
+         File.open( "#{File.dirname(File.expand_path(__FILE__))}/templates/#{template_name}" ) do |template_file|
             while line = template_file.gets()
                line.chomp!
                

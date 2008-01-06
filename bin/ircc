@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-   require "#{File.dirname(__FILE__)}/../rcc/environment.rb"
+   require "#{File.dirname(File.expand_path(__FILE__))}/../rcc/environment.rb"
    require "#{$RCCLIB}/model/grammar.rb"
    require "#{$RCCLIB}/scanner/interpreter/lexer.rb"
    require "#{$RCCLIB}/scanner/interpreter/parser.rb"

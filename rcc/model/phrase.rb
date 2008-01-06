@@ -8,7 +8,7 @@
 #
 #================================================================================================================================
 
-require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/model/form_elements/symbol.rb"
 
 module RCC
@@ -29,7 +29,7 @@ module Model
       attr_writer :minimal
       
       def initialize( symbols = [], minimal = true )
-         @symbols = symbols.is_a?(Array) ? symbols : [ symbols ]
+         @symbols = symbols.is_an?(Array) ? symbols : [ symbols ]
          @minimal = minimal
       end
       
