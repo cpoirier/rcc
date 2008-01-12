@@ -241,18 +241,11 @@ module Grammar
 
             when :cs_reference
                referenced_name = node.name.text
-               unless @character_definitions.member?(referenced_name)
-                  if loop_detection.member?(referenced_name) then
-                     nyi( "error handling for detected reference loop [#{referenced_name}]" )
-                  elsif @character_definition_asts.member?(referenced_name) then
-                     referenced_ast = @character_definition_asts[referenced_name]
-                     @character_definitions[referenced_name] = process_character_data( referenced_ast.character_set, loop_detection + [referenced_name] )
-                  else
-                     nyi( "error handling for missing character_definition referenced [#{referenced_name}]" )
-                  end
+               if resolution = resolve_character_reference(referenced_name, loop_detection) then
+                  result = resolution
+               else
+                  nyi( "error handling for missing character_definition referenced [#{referenced_name}]" )
                end
-            
-               result = @character_definitions[referenced_name]
                
             when :cs_character
                result = process_character_data( node.character, loop_detection )
@@ -314,26 +307,10 @@ module Grammar
                
             when :sp_reference
                referenced_name = node.name.text
-               if @character_definitions.member?(referenced_name) or @character_definition_asts.member?(referenced_name) then
-                  unless @character_definitions.member?(referenced_name)
-                     if loop_detection.member?(referenced_name) then
-                        nyi( "error handling for detected reference loop [#{referenced_name}]" )
-                     elsif @character_definition_asts.member?(referenced_name) then
-                        referenced_ast = @character_definition_asts[referenced_name]
-                        @character_definitions[referenced_name] = process_character_data( referenced_ast.character_set, loop_detection + [referenced_name] )
-                     end
-                  end
-                  result = Util::ExpressionForms::Sequence.new( @character_definitions[referenced_name] )
-               elsif @word_definitions.member?(referenced_name) or @word_definition_asts.member?(referenced_name) then
-                  unless @word_definitions.member?(referenced_name)
-                     if loop_detection.member?(referenced_name) then
-                        nyi( "error handling for detected reference loop [#{referenced_name}]" )
-                     elsif @word_definition_asts.member?(referenced_name) then
-                        referenced_ast = @word_definition_asts[referenced_name]
-                        @word_definitions[referenced_name] = process_word_data( referenced_ast.definition, loop_detection + [referenced_name] )
-                     end
-                  end
-                  result = @word_definitions[referenced_name]
+               if resolution = resolve_character_reference(referenced_name, loop_detection) then
+                  result = Util::ExpressionForms::Sequence.new( resolution )
+               elsif resolution = resolve_word_reference(referenced_name, loop_detection) then
+                  result = resolution
                else
                   nyi( "error handling for missing character/word definition reference [#{referenced_name}]" )
                end
@@ -400,6 +377,61 @@ module Grammar
       
 
 
+    #---------------------------------------------------------------------------------------------------------------------
+    # Reference support
+    #---------------------------------------------------------------------------------------------------------------------
+
+    protected
+
+      #
+      # resolve_character_reference()
+      
+      def resolve_character_reference( referenced_name, loop_detection = [] )
+         resolution = nil
+         
+         if @character_definitions.member?(referenced_name) or @character_definition_asts.member?(referenced_name) then
+            unless @character_definitions.member?(referenced_name)
+               if loop_detection.member?(referenced_name) then
+                  nyi( "error handling for detected reference loop [#{referenced_name}]" )
+               elsif @character_definition_asts.member?(referenced_name) then
+                  referenced_ast = @character_definition_asts[referenced_name]
+                  @character_definitions[referenced_name] = process_character_data( referenced_ast.character_set, loop_detection + [referenced_name] )
+               end
+            end
+
+            resolution = @character_definitions[referenced_name]
+         end
+
+         return resolution
+      end
+
+
+      #
+      # resolve_word_reference()
+      
+      def resolve_word_reference( name, loop_detection = [] )
+         resolution = nil
+         
+         if @word_definitions.member?(referenced_name) or @word_definition_asts.member?(referenced_name) then
+            unless @word_definitions.member?(referenced_name)
+               if loop_detection.member?(referenced_name) then
+                  nyi( "error handling for detected reference loop [#{referenced_name}]" )
+               elsif @word_definition_asts.member?(referenced_name) then
+                  referenced_ast = @word_definition_asts[referenced_name]
+                  @word_definitions[referenced_name] = process_word_data( referenced_ast.definition, loop_detection + [referenced_name] )
+               end
+            end
+            
+            resolution = @word_definitions[referenced_name]
+         end
+         
+         return resolution
+      end
+         
+
+      
+      
+      
     
     #---------------------------------------------------------------------------------------------------------------------
     # Debugging
