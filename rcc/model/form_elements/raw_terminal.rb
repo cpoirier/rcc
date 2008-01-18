@@ -46,7 +46,7 @@ module FormElements
          return "'" + @name.gsub("'", "''") + "'" 
       end
 
-      def display( stream )
+      def display( stream = $stdout )
          stream << "RawTerminal #{@name}\n"
       end
 

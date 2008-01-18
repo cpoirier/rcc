@@ -148,7 +148,7 @@ module Model
          @symbols.join(" ")
       end
 
-      def display( stream )
+      def display( stream = $stdout )
          stream << "Phrase\n"
          stream.indent do |stream|
             @symbols.each do |symbol|

@@ -165,11 +165,11 @@ module Model
          return "Grammar #{@name}"
       end
 
-      def display( stream )
+      def display( stream = $stdout )
          stream << "Grammar #{@name}\n"
-         stream.indent do |s1|
+         stream.indent do
             @rules.each do |rule|
-               rule.display( s1 )
+               rule.display( stream )
             end
          end
       end

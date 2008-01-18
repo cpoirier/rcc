@@ -53,7 +53,7 @@ module FormElements
     # Conversion and formatting
     #---------------------------------------------------------------------------------------------------------------------
 
-      def display( stream )
+      def display( stream = $stdout )
          if @slot_name.nil? then
             stream << "NonTerminal #{@rule_name}\n"
          else

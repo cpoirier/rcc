@@ -62,23 +62,31 @@ module ExpressionForms
       
       def each_element()
       end
+      
+      
+      #
+      # element_count()
+      #  - returns the number of times your block will be called during each_elements
+      
+      def element_count()
+         return 0
+      end
 
 
       #
       # display()
       
       def display( stream )
-         s1 = stream.indent
-
-         stream << self.class.name.split("::")[-1].downcase << ":" << "\n"
-         self.each_element do |element|
-            element.display( s1 )
-            # if element.is_an?(ExpressionForm) then
-            #    element.display( s1 )
-            # else
-            #    s1 << element.to_s << "\n"
-            # end
+         stream << self.class.name.split("::")[-1].downcase << ": "
+         stream << "\n" if element_count() != 1
+         
+         stream.indent do
+            self.each_element do |element|
+               element.display( stream )
+            end
          end
+         
+         stream.end_line()
       end
 
       

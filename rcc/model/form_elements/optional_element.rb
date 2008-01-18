@@ -79,7 +79,9 @@ module FormElements
 
       def display( stream )
          stream << "Optional\n"
-         @element.display( stream.indent )
+         stream.indent do
+            @element.display( stream )
+         end
       end
       
       

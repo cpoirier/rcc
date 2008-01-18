@@ -52,12 +52,11 @@ module Nodes
          return @component_nodes[-1].last_token
       end
       
-      def display( stream )
+      def display( stream = $stdout )
          stream << "#{@type}" << (@sub_type != @type ? ":#{@sub_type}" : "") << " =>" << "\n"
          
-         stream.indent do |s|
+         stream.indent do
             @component_nodes.each do |symbol|
-               # s << symbol.class.name << "\n"
                symbol.display( stream )
             end
          end

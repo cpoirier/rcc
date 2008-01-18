@@ -56,14 +56,16 @@ module Nodes
          return @ast_class.name
       end
       
-      def display( stream ) 
+      def display( stream = $stdout ) 
          stream << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"
-         
-         s1 = stream.indent
-         s2 = s1.indent
-         @slots.each do |slot_name, symbol|
-            s1 << slot_name << ":\n"
-            symbol.display( s2 )
+
+         stream.indent do
+            @slots.each do |slot_name, symbol|
+               stream << slot_name << ":\n"
+               stream.indent do
+                  symbol.display( stream )
+               end
+            end
          end
          
          return inline_candidate

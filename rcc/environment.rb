@@ -141,51 +141,105 @@
    
    
    
-   class IndentStream
+   #
+   # class ContextStream
+   #  - a wrapper for STDOUT/STDERR that provides a bit of context-sensitivity for output processing.
+   
+   class ContextStream
       attr_reader :stream
       attr_reader :indent
       
       def initialize( stream, indent = "" )
-         @stream = stream
-         @indent = indent
+         @stream     = stream
+         @indent     = indent
+         @pending    = true
+         @properties = []
       end
+      
+      
+      #
+      # indent()
+      #  - any output during your block will be indented from the context
       
       def indent( additional = "   " )
-         indented = self.class.new( @stream, @indent + additional ) 
-         if block_given? then
-            yield( indented )
-         else
-            return indented
+         old_indent = @indent
+         begin
+            @indent += additional
+            yield( self )
+         ensure
+            @indent = old_indent
          end
       end
-
-
+      
+      
+      #
+      # with()
+      #  - applies a set of name => value properties for the length of your block
+      #  - properties can be retrieved with property()
+      
+      def with( properties )
+         type_check( properties, Hash )
+         begin
+            @properties.unshift properties
+            yeild( self )
+         ensure
+            @properties.shift
+         end
+      end
+      
+      
+      #
+      # property()
+      #  - returns the named property's current value, or nil
+      
+      def property( name )
+         value = nil
+         @properties.each do |set|
+            if set.member?(name) then
+               value = set[name]
+               break
+            end
+         end
+         
+         return value
+      end
+      
+      
       def <<( text )
-         @stream << @indent << text
+         write( text )
+         self
       end
-      
-      
+
+
       def puts( text )
-         @stream.puts( "#{@indent}#{text}" )
+         write( text )
+         write( "\n" )
       end
       
-      def write( text )
-         puts( text ) # @stream.puts( text )
+      def write( string )
+         string = string.to_s
+         
+         if @pending then
+            @stream.write( @indent )
+            @pending = false
+         end
+         
+         if string[-1..-1] == "\n" then
+            @pending = true
+            @stream.write( string.slice(0..-2).gsub("\n", "\n#{@indent}") )
+            @stream.write( "\n" )
+         else
+            @stream.write( string.gsub("\n", "\n#{@indent}") )
+         end
       end
       
-   end # IndentStream
-
-
-
-   
-   class IO
-      def indent()
-         return indent_stream().indent
+      def end_line()
+         write( "\n" ) unless @pending
       end
       
-      def indent_stream()
-         return IndentStream.new(self)
-      end
-   end
-   
+   end # ContextStream
+
+
+   $stdout = ContextStream.new( $stdout ) unless $stdout.is_a?(ContextStream)
+   $stderr = ContextStream.new( $stderr ) unless $stderr.is_a?(ContextStream)
    

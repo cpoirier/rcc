@@ -82,11 +82,11 @@ module Model
          return "Rule #{@name}"
       end
 
-      def display( stream )
+      def display( stream = $stdout )
          stream << "Rule #{@name}\n"
-         stream.indent do |s|
+         stream.indent do
             @forms.each do |form|
-               form.display( s )
+               form.display( stream )
             end
          end
       end

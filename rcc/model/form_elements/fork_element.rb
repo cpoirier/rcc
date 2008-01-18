@@ -85,11 +85,11 @@ module FormElements
         return "(" + @choices.join("|") + ")"
       end
 
-      def display( stream )
+      def display( stream = $stdout )
          stream << "Fork\n"
-         stream.indent do |s|
+         stream.indent do
             @choices.each do |choice|
-              choice.display( s )
+              choice.display( stream )
             end
          end
       end

@@ -55,7 +55,7 @@ module FormElements
     # Conversion and formatting
     #---------------------------------------------------------------------------------------------------------------------
 
-      def display( stream )
+      def display( stream = $stdout )
          stream << "Terminal #{@type.to_s.downcase} #{@terminal}\n"
       end
 

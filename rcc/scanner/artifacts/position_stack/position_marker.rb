@@ -568,7 +568,9 @@ module PositionStack
             stream.puts "#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
          # end
          stream.puts "#{stack_bar}"
-         @state.display( stream.indent("| ") )
+         stream.indent("| ") do
+            @state.display( stream )
+         end
       end
 
 

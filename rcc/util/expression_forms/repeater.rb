@@ -72,18 +72,21 @@ module ExpressionForms
       
       
       #
+      # element_count()
+      #  - returns the number of times your block will be called during each_elements
+      
+      def element_count()
+         return 1
+      end
+      
+      
+      #
       # display()
       
-      def display( stream )
-         s1 = stream.indent
-
-         stream << "repeated #{@minimum}-#{@maximum.nil? ? "*" : @maximum} times:" << "\n"
-         self.each_element do |element|
-            if element.is_an?(ExpressionForm) then
-               element.display( s1 )
-            else
-               s1 << element.to_s << "\n"
-            end
+      def display( stream = $stdout )
+         stream << "#{@minimum}-#{@maximum.nil? ? "*" : @maximum} times: " 
+         stream.indent do 
+            @element.display(stream)
          end
       end
 

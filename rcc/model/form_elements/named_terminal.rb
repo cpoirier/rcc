@@ -42,7 +42,7 @@ module FormElements
     #---------------------------------------------------------------------------------------------------------------------
 
 
-      def display( stream )
+      def display( stream = $stdout )
          stream << "NamedTerminal #{@name}\n"
       end
 

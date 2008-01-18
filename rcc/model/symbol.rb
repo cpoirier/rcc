@@ -52,7 +52,7 @@ module Model
          if @is_lexical then
             stream.puts( "lexical symbol #{@symbol_name}")
          else
-            stream.puts( "parser  symbol #{@symbol_name}")
+            stream.puts( "parser symbol #{@symbol_name}")
          end
       end
       

@@ -448,7 +448,7 @@ module Plan
          base = rule_name() + " => " + prefix().join(" ") + " . " + rest().join(" ")
       end
       
-      def display( stream )
+      def display( stream = $stdout )
          stream << self.to_s << "     >>>  " << self.followers.join("|") << "\n"
       end
 

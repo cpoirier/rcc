@@ -125,6 +125,17 @@ module ExpressionForms
          end
       end
 
+
+      #
+      # element_count()
+      #  - returns the number of times your block will be called during each_elements
+      
+      def element_count()
+         return @elements.length
+      end
+
+
+
       
       
    end # Sequence

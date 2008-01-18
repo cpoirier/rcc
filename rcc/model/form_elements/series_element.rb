@@ -128,9 +128,9 @@ module FormElements
 
       def display( stream )
          stream << "Series\n"
-         stream.indent do |s|
+         stream.indent do
             @elements.each do |element|
-               element.display( s )
+               element.display( stream )
             end
          end
       end

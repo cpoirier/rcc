@@ -234,7 +234,7 @@ module Nodes
       #
       # display()
       
-      def display( stream )
+      def display( stream = $stdout )
          stream << self.description << "\n"
       end
       

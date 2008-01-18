@@ -631,7 +631,9 @@ module Grammar
          end
          
          def slot_filled?( slot )
-            return (@slots.member?(slot) and !@slots[slot].nil?)
+            return false unless @slots.member?(slot)
+            return !@slots[slot].empty? if @slots[slot].is_an?(Array)
+            return !@slots[slot].nil?
          end
          
          def define_slot( slot, value )
@@ -656,31 +658,34 @@ module Grammar
          end
          
          
-         def display( stream )
+         def display( stream = $stdout )
             if @subtype.nil? or @subtype == @type then
                stream << "#{@type} =>" << "\n"
             else
                stream << "#{@type} (#{@subtype}) =>" << "\n"
             end
 
-            s1 = stream.indent
-            s2 = s1.indent
-            @slots.each do |slot_name, value|
-               s1 << slot_name << ":\n"
-               self.class.display_node( value, s2 )
+            stream.indent do
+               @slots.each do |slot_name, value|
+                  stream << slot_name << ":\n"
+                  stream.indent do
+                     self.class.display_node( value, stream )
+                  end
+               end
             end
          end
          
-         def self.display_node( node, stream )
+         def self.display_node( node, stream = $stdout )
             case node
             when NilClass
                stream << "<nil>\n"
             when Array
                index = 0
-               s1 = stream.indent
                node.each do |child_node|
                   stream << "[#{index}]:\n"
-                  display_node( child_node, s1 )
+                  stream.indent do 
+                     display_node( child_node, stream )
+                  end
                   index += 1
                end
             when ASN

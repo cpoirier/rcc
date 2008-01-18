@@ -815,100 +815,100 @@ module Plan
          return "State"
       end
 
-      def display( stream )  # stream, indent = "", complete = true, show_context = :reduce_determinants )
-         stream << indent << "State #{@number}\n"
-         stream << indent << "   Context states: #{@context_states.keys.sort.join(", ")}\n"
+      def display( stream = $stdout )  # BUG: Pass on ContextStream: complete = true, show_context = :reduce_determinants )
+         stream.puts "State #{@number}"
+         stream.indent do
+            stream.puts "Context states: #{@context_states.keys.sort.join(", ")}"
 
-         #
-         # We'd like our Item descriptors to be output in nice columns, so we will bypass the Item.display() routine.
+            #
+            # We'd like our Item descriptors to be output in nice columns, so we will bypass the Item.display() routine.
          
-         rows = []
-         @items.each do |item|
-            rows << row = [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" ") ]
+            rows = []
+            @items.each do |item|
+               rows << row = [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" ") ]
             
-            case show_context
-               when nil, :reduce_determinants
-                  tail = item.complete? ? item.determinants.join(" | ") : nil
-               when :all_determinants
-                  tail = item.complete? ? item.determinants.join(" | ") : item.sequences_after_mark(3).sequences.collect{|sequence| sequence.join(" ")}.join(" | ")
-               when :follow_contexts
-                  tail = item.follow_contexts.collect{|context| context.to_s}.join(" | ")
-               when :raw_follow_contexts
-                  tail = ""
-                  item.instance_eval do
-                     tail = item.follow_contexts.collect{|context| context.object_id.to_s}.join( " | " ) +
-                            "Sources: " + item.follow_sources.collect{|source| source.object_id.to_s}.join( " | " )
+               case stream.property(:show_context)
+                  when nil, :reduce_determinants
+                     tail = item.complete? ? item.determinants.join(" | ") : nil
+                  when :all_determinants
+                     tail = item.complete? ? item.determinants.join(" | ") : item.sequences_after_mark(3).sequences.collect{|sequence| sequence.join(" ")}.join(" | ")
+                  when :follow_contexts
+                     tail = item.follow_contexts.collect{|context| context.to_s}.join(" | ")
+                  when :raw_follow_contexts
+                     tail = ""
+                     item.instance_eval do
+                        tail = item.follow_contexts.collect{|context| context.object_id.to_s}.join( " | " ) +
+                               "Sources: " + item.follow_sources.collect{|source| source.object_id.to_s}.join( " | " )
+                     end
+                  else
+                     bug( "what were you looking for? [#{show_context.to_s}]" )
+               end
+            
+               row << tail
+            end
+         
+            #
+            # Calculate a width for each column.
+         
+            widths = [0, 0, 0, 0]
+            rows.each do |row|
+               column = 0
+               row.each do |datum|
+                  unless datum.nil?
+                     widths[column] = datum.length if widths[column] < datum.length
                   end
-               else
-                  bug( "what were you looking for? [#{show_context.to_s}]" )
-            end
-            
-            row << tail
-         end
-         
-         #
-         # Calculate a width for each column.
-         
-         widths = [0, 0, 0, 0]
-         rows.each do |row|
-            column = 0
-            row.each do |datum|
-               unless datum.nil?
-                  widths[column] = datum.length if widths[column] < datum.length
+                  column += 1
                end
-               column += 1
             end
-         end
                   
-         #
-         # Display the formatted items.
-         
-         format_string = "   %s %-#{widths[1]}s => %-#{widths[2]}s"
-         rows.each do |row|
-            output = sprintf(format_string, row[0], row[1], row[2]).ljust(60)
-            if row[3].nil? then
-               stream << indent << output << "\n"
-            else
-               stream << indent << output << "   >>> Context >>> " << row[3] << "\n"
-            end
-         end
-         
-         #
-         # Display transitions and reductions, but only if requested.
-         
-         if complete then
-            
             #
-            # Display the transitions.
+            # Display the formatted items.
          
-            unless @transitions.empty?
-               width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
-               @transitions.each do |symbol_name, state|
-                  stream << indent << sprintf("   Transition %-#{width}s to %d", symbol_name, state.number) 
-                  stream << "\n"
+            format_string = "%s %-#{widths[1]}s => %-#{widths[2]}s"
+            rows.each do |row|
+               output = sprintf(format_string, row[0], row[1], row[2]).ljust(60)
+               if row[3].nil? then
+                  stream << output << "\n"
+               else
+                  stream << output << "   >>> Context >>> " << row[3] << "\n"
                end
             end
          
             #
-            # Display the reductions.
+            # Display transitions and reductions, but only if requested.
          
-            unless @reductions.empty?
-               @reductions.each do |item|
-                  stream << indent << "   Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" 
-                  stream << " (*)" if item.object_id == @chosen_reduction.object_id
-                  stream << "\n"
+            if stream.property(:complete) then
+            
+               #
+               # Display the transitions.
+         
+               unless @transitions.empty?
+                  width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
+                  @transitions.each do |symbol_name, state|
+                     stream << sprintf("Transition %-#{width}s to %d", symbol_name, state.number) << "\n"
+                  end
+               end
+         
+               #
+               # Display the reductions.
+         
+               unless @reductions.empty?
+                  @reductions.each do |item|
+                     stream << "Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" 
+                     stream << " (*)" if item.object_id == @chosen_reduction.object_id
+                     stream << "\n"
+                  end
+               end
+            
+               #
+               # Display the recovery options.
+            
+               @recovery_predicates.each do |symbol, predicate|
+                  stream << "Recovery predicate for #{symbol}: #{predicate.class.name}" << "\n"
                end
             end
-            
-            #
-            # Display the recovery options.
-            
-            @recovery_predicates.each do |symbol, predicate|
-               stream << indent << "   Recovery predicate for #{symbol}: #{predicate.class.name}" << "\n"
-            end
          end
-         
-       end
+      end
 
 
 

@@ -290,11 +290,11 @@ module Plan
          return "Grammar #{@name}"
       end
       
-      def display( stream ) # stream, indent = "", complete = true, show_context = :reduce_determinants )
+      def display( stream ) # BUG: pass via ContextStream: complete = true, show_context = :reduce_determinants )
          stream << "States\n"
-         stream.indent do |s|
+         stream.indent do 
             @state_table.each do |state|
-               state.display( s ) # , complete, show_context )
+               state.display( stream )
             end
          end
       end

@@ -57,7 +57,7 @@ module Model
          return "Token [#{@raw_text}]; line #{@line_number} of #{@source_descriptor}"
       end
 
-      def display( stream ) 
+      def display( stream = $stdout ) 
          stream << @raw
       end
    

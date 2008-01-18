@@ -67,7 +67,6 @@ module Grammar
       #  - given a AST of a grammar source file, returns a Model::Grammar or an error report
       
       def build_model( grammar_spec )
-         stream = STDOUT.indent_stream
          assert( grammar_spec.type == :grammar_spec, "Um, perhaps you meant to pass a grammar_spec AST?" )
          
          #
@@ -145,9 +144,11 @@ module Grammar
          
          if false then
             @word_defs.each do |name, definition|
-               stream.puts "word_def #{name}:"
-               definition.display( stream.indent )
-               stream.puts ""
+               $stdout.puts "word_def #{name}:"
+               $stdout.indent do 
+                  definition.display()
+               end
+               $stdout.puts ""
             end
          end
 
@@ -163,9 +164,11 @@ module Grammar
          
          if true then
             @rule_defs.each do |name, definition|
-               stream.puts "rule_def #{name}:"
-               definition.display( stream.indent )
-               stream.puts ""
+               $stdout.puts "rule_def #{name}:"
+               $stdout.indent do
+                  definition.display( $stdout )
+               end
+               $stdout.puts ""
             end
          end
          
@@ -515,18 +518,6 @@ module Grammar
       end
       
       
-      # def expand_macro_body( node, parameter_lookup, transclusion_data )
-      #    case node.type
-      #       when :macro_call
-      #          return BootstrapGrammar.macro_call( )
-      #          expand_macro_body
-      #          die( )
-      #       when nil
-      #       else
-      #    end
-      # end
-      # 
-      
       
 
 
@@ -588,8 +579,11 @@ module Grammar
       #    anonymous name and returns the name
       
       def anonymous_word( word_def )
-         STDERR.puts "skipping anonymous_word"
-         return "_blah"
+         # BUG: need to eliminate duplicates!
+         name = "_anonymous" + @word_defs.length.to_s
+         @word_defs[name] = word_def
+         
+         return name
       end
       
 
@@ -672,9 +666,9 @@ module Grammar
       #  - dumps the top level of any supplied AST and kills the system
                  
       def die( ast = nil, message = nil )
-         STDOUT.puts( "ERROR: #{message}" ) unless message.nil?
-         ast.display( STDOUT.indent_stream ) unless ast.nil?
-         exit
+         $stderr.puts( "ERROR: #{message}" ) unless message.nil?
+         ast.display( $stderr ) unless ast.nil?
+         raise "DIED"
       end
       
       

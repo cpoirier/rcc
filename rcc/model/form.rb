@@ -161,7 +161,7 @@ module Model
         return "#{@rule.name} => #{@root_element}"
       end
 
-      def display( stream )
+      def display( stream = $stdout )
          properties = []
          properties << "label:#{@label}" if @label
          properties << "assoc:#{@properties[:associativity]}" if @properties.member?(:associativity)

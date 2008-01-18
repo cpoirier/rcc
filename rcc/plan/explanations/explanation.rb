@@ -32,7 +32,7 @@ module Explanations
          return self.class.name
       end
       
-      def display( stream )
+      def display( stream = $stdout )
          stream << self.to_s << "\n"
       end
       
