@@ -32,6 +32,7 @@ module ExpressionForms
          @elements = []
          
          elements.flatten.each do |element|
+            assert( element.exists?, "wtf?" )
             self << element
          end
       end

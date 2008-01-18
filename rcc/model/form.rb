@@ -161,12 +161,12 @@ module Model
         return "#{@rule.name} => #{@root_element}"
       end
 
-      def display( stream, indent = "" )
+      def display( stream )
          properties = []
          properties << "label:#{@label}" if @label
          properties << "assoc:#{@properties[:associativity]}" if @properties.member?(:associativity)
          
-         stream << indent << "#{@number} => " << @root_element.to_s.ljust(60) << "   {" << properties.join("; ") << "}\n"
+         stream << "#{@number} => " << @root_element.to_s.ljust(60) << "   {" << properties.join("; ") << "}\n"
       end
       
    end # Form

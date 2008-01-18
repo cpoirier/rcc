@@ -74,19 +74,17 @@ module ExpressionForms
       #
       # display()
       
-      def display( stream = STDOUT, indent = "" )
-         child_indent = indent + "   "
+      def display( stream )
+         s1 = stream.indent
 
-         stream << indent << self.class.name << "[#{@minimum}-#{@maximum.nil? ? "*" : @maximum}](" << "\n"
+         stream << "repeated #{@minimum}-#{@maximum.nil? ? "*" : @maximum} times:" << "\n"
          self.each_element do |element|
             if element.is_an?(ExpressionForm) then
-               element.display( stream, child_indent )
+               element.display( s1 )
             else
-               stream << child_indent << element.to_s << "\n"
+               s1 << element.to_s << "\n"
             end
          end
-
-         stream << indent << ")\n"
       end
 
       

@@ -67,19 +67,18 @@ module ExpressionForms
       #
       # display()
       
-      def display( stream = STDOUT, indent = "" )
-         child_indent = indent + "   "
+      def display( stream )
+         s1 = stream.indent
 
-         stream << indent << self.class.name << "(" << "\n"
+         stream << self.class.name.split("::")[-1].downcase << ":" << "\n"
          self.each_element do |element|
-            if element.is_an?(ExpressionForm) then
-               element.display( stream, child_indent )
-            else
-               stream << child_indent << element.to_s << "\n"
-            end
+            element.display( s1 )
+            # if element.is_an?(ExpressionForm) then
+            #    element.display( s1 )
+            # else
+            #    s1 << element.to_s << "\n"
+            # end
          end
-
-         stream << indent << ")\n"
       end
 
       

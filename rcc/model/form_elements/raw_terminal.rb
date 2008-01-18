@@ -46,8 +46,8 @@ module FormElements
          return "'" + @name.gsub("'", "''") + "'" 
       end
 
-      def display( stream, indent = "" )
-         stream << indent << "RawTerminal #{@name}\n"
+      def display( stream )
+         stream << "RawTerminal #{@name}\n"
       end
 
 

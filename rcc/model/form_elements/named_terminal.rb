@@ -42,8 +42,8 @@ module FormElements
     #---------------------------------------------------------------------------------------------------------------------
 
 
-      def display( stream, indent = "" )
-         stream << indent << "NamedTerminal #{@name}\n"
+      def display( stream )
+         stream << "NamedTerminal #{@name}\n"
       end
 
 

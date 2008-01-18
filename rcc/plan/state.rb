@@ -815,7 +815,7 @@ module Plan
          return "State"
       end
 
-      def display( stream, indent = "", complete = true, show_context = :reduce_determinants )
+      def display( stream )  # stream, indent = "", complete = true, show_context = :reduce_determinants )
          stream << indent << "State #{@number}\n"
          stream << indent << "   Context states: #{@context_states.keys.sort.join(", ")}\n"
 

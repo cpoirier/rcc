@@ -554,21 +554,21 @@ module PositionStack
       #
       # display()
 
-      def display( stream, explain_indent )
+      def display( stream )
          stack_description = description()
          stack_label       = "STACK"
          stack_bar         = "=" * (stack_description.length + stack_label.length + 3)
 
-         stream.puts "#{explain_indent}"
-         stream.puts "#{explain_indent}"
-         stream.puts "#{explain_indent}#{stack_bar}"
+         stream.puts ""
+         stream.puts ""
+         stream.puts stack_bar
          # if corrected? or true then
-         #    stream.puts "#{explain_indent}#{stack_label} #{stack_description} |      CORRECTED LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   quality #{quality()}"
+         #    stream.puts "#{stack_label} #{stack_description} |      CORRECTED LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   quality #{quality()}"
          # else
-            stream.puts "#{explain_indent}#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
+            stream.puts "#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
          # end
-         stream.puts "#{explain_indent}#{stack_bar}"
-         @state.display( stream, "#{explain_indent}| " )
+         stream.puts "#{stack_bar}"
+         @state.display( stream.indent("| ") )
       end
 
 

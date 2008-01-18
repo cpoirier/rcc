@@ -148,10 +148,12 @@ module Model
          @symbols.join(" ")
       end
 
-      def display( stream, indent = "" )
-         stream << indent << "Phrase\n"
-         @symbols.each do |symbol|
-           symbol.display( stream, indent + "   " )
+      def display( stream )
+         stream << "Phrase\n"
+         stream.indent do |stream|
+            @symbols.each do |symbol|
+              symbol.display( stream )
+            end
          end
       end
       

@@ -6,6 +6,9 @@
 # Copyright 2007 Chris Poirier (cpoirier@gmail.com)
 # Licensed under the Academic Free License version 2.1
 #
+#
+# RCC is a LALR(1) parser-generator written in Ruby.  The grammar description language is sufficiently rich that the lexer, parser, AST, and help system will all be generated for you.  In theory, the system can output to any language, as the grammar language is purely declarative.  Parser backtracking is supported for when complex rules conflict.  The error recovery system engages when a parse error is automatic, and, working within a time limit, will attempt to figure out what the user was *trying* to say, so that intelligent error messages can be provided.
+#
 #================================================================================================================================
 
    require "#{File.dirname(File.expand_path(__FILE__))}/../rcc/environment.rb"
@@ -25,7 +28,7 @@
    
    grammar_path = ARGV.shift
    grammar      = RCC::Model::Grammar.load_from_file( File.basename(grammar_path), grammar_path )
-   grammar.display( STDOUT )
+   grammar.display( Util::IndentStream.new(STDOUT) )
 
 
    #

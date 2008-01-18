@@ -138,3 +138,54 @@
       end
       
    end
+   
+   
+   
+   class IndentStream
+      attr_reader :stream
+      attr_reader :indent
+      
+      def initialize( stream, indent = "" )
+         @stream = stream
+         @indent = indent
+      end
+      
+      def indent( additional = "   " )
+         indented = self.class.new( @stream, @indent + additional ) 
+         if block_given? then
+            yield( indented )
+         else
+            return indented
+         end
+      end
+
+
+      def <<( text )
+         @stream << @indent << text
+      end
+      
+      
+      def puts( text )
+         @stream.puts( "#{@indent}#{text}" )
+      end
+      
+      def write( text )
+         puts( text ) # @stream.puts( text )
+      end
+      
+   end # IndentStream
+
+
+
+   
+   class IO
+      def indent()
+         return indent_stream().indent
+      end
+      
+      def indent_stream()
+         return IndentStream.new(self)
+      end
+   end
+   
+   

@@ -126,10 +126,12 @@ module FormElements
         return @elements.join(" ")
       end
 
-      def display( stream, indent = "" )
-         stream << indent << "Series\n"
-         @elements.each do |element|
-            element.display( stream, indent + "   " )
+      def display( stream )
+         stream << "Series\n"
+         stream.indent do |s|
+            @elements.each do |element|
+               element.display( s )
+            end
          end
       end
       

@@ -32,8 +32,8 @@ module Explanations
          return self.class.name
       end
       
-      def display( stream, indent = "" )
-         stream << indent << self.to_s << "\n"
+      def display( stream )
+         stream << self.to_s << "\n"
       end
       
       

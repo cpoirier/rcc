@@ -9,64 +9,56 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/form.rb"
-require "#{$RCCLIB}/model/form_elements/symbol.rb"
-
 
 module RCC
 module Model
-module FormElements
 
  
  #============================================================================================================================
- # class Terminal
- #  - a descriptor of a literal or symbol token to be read
+ # class Symbol
+ #  - represents a symbol in a rule, to be produced by the lexer (terminal) or by the parser (non-terminal)
 
-   class Terminal < Symbol
+   class Symbol
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :terminal
-      
-      def initialize( terminal, symbol = nil )
-         super( symbol.nil? ? terminal.intern : symbol )
-         @terminal = terminal
-      end
-      
-      def text()
-         return @terminal
-      end
-      
-      def terminal?()
-         return true
+      def initialize( symbol_name, is_lexical )
+         @symbol_name = symbol_name
+         @is_lexical  = is_lexical    
+         @is_slot     = false
+         @slot_name   = nil
       end
       
       
-      def ==( rhs )
-         @type == rhs.type && @terminal == rhs.terminal
-      end
-      
-      
-      
-      
-    #---------------------------------------------------------------------------------------------------------------------
-    # Conversion and formatting
-    #---------------------------------------------------------------------------------------------------------------------
+      #
+      # register_slot()
+      #  - if you pass in a slot_name, it will be used; otherwise, one will be assigned later
 
+      def register_slot( slot_name = nil )
+         @is_slot   = true
+         @slot_name = slot_name
+         
+         return self
+      end
+      
+      
+      
+      #
+      # display()
+      
       def display( stream )
-         stream << "Terminal #{@type.to_s.downcase} #{@terminal}\n"
+         if @is_lexical then
+            stream.puts( "lexical symbol #{@symbol_name}")
+         else
+            stream.puts( "parser  symbol #{@symbol_name}")
+         end
       end
-
-
-
-
-
-   end # Terminal
+      
+   end # Symbol
    
 
 
-end  # module FormElements
 end  # module Model
 end  # module RCC

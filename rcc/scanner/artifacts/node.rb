@@ -37,10 +37,6 @@ module Artifacts
          @type = type
       end
       
-      def subtype()
-         return @type
-      end
-      
       def description()
          return "#{@type}"
       end
@@ -65,6 +61,16 @@ module Artifacts
          bug( "you must override token_count()" )
       end
 
+      
+      #
+      # duplicate()
+      #  - does a deep copy of this Node
+      #  - if you supply a block, you will be passed the duplicated copy of this Node and
+      #    what you return will be returned by the function
+      
+      def duplicate()
+         bug( "you must override duplicate()" )
+      end
 
 
 

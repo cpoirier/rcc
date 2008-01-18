@@ -133,6 +133,19 @@ module Nodes
       end
 
 
+      #
+      # duplicate()
+      #  - does a deep copy of this Node
+      
+      def duplicate()
+         copy = self.clone
+         if block_given? then
+            return yield(copy)
+         else
+            return copy
+         end
+      end
+
 
 
 
@@ -221,8 +234,8 @@ module Nodes
       #
       # display()
       
-      def display( stream, indent = "" )
-         stream << indent << self.description << "\n"
+      def display( stream )
+         stream << self.description << "\n"
       end
       
       

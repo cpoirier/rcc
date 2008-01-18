@@ -448,8 +448,8 @@ module Plan
          base = rule_name() + " => " + prefix().join(" ") + " . " + rest().join(" ")
       end
       
-      def display( stream, indent = "" )
-         stream << indent << self.to_s << "     >>>  " << self.followers.join("|") << "\n"
+      def display( stream )
+         stream << self.to_s << "     >>>  " << self.followers.join("|") << "\n"
       end
 
 

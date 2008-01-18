@@ -53,11 +53,11 @@ module FormElements
     # Conversion and formatting
     #---------------------------------------------------------------------------------------------------------------------
 
-      def display( stream, indent = "" )
+      def display( stream )
          if @slot_name.nil? then
-            stream << indent << "NonTerminal #{@rule_name}\n"
+            stream << "NonTerminal #{@rule_name}\n"
          else
-            stream << indent << "NonTerminal #{@rule_name} as #{@slot_name}\n"
+            stream << "NonTerminal #{@rule_name} as #{@slot_name}\n"
          end
       end
       

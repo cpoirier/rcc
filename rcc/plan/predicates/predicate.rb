@@ -42,8 +42,8 @@ module Predicates
          return self.class.name
       end
       
-      def display( stream, explain_indent = "" )
-         stream << explain_indent << self.to_s << "\n" unless explain_indent.nil?
+      def display( stream )
+         stream << self.to_s << "\n"
       end
       
 

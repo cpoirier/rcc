@@ -77,9 +77,9 @@ module FormElements
          return "#{@element}?"
       end
 
-      def display( stream, indent = "" )
-         stream << indent << "Optional\n"
-         @element.display( stream, indent + "   " )
+      def display( stream )
+         stream << "Optional\n"
+         @element.display( stream.indent )
       end
       
       

@@ -56,16 +56,15 @@ module Nodes
          return @ast_class.name
       end
       
-      def display( stream, indent = "", inline_candidate = false )
-         stream << indent << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"
+      def display( stream ) 
+         stream << "#{@ast_class.name} < #{@ast_class.parent_name} =>" << "\n"
          
-         indent1 = indent + "   "
-         indent2 = indent1 + "   "
+         s1 = stream.indent
+         s2 = s1.indent
          @slots.each do |slot_name, symbol|
-            stream << indent1 << slot_name << ":\n"
-            symbol.display( stream, indent2 )
+            s1 << slot_name << ":\n"
+            symbol.display( s2 )
          end
-         
          
          return inline_candidate
       end
