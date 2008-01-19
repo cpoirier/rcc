@@ -24,6 +24,9 @@ module Model
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      attr_reader :symbol_name
+      attr_reader :slot_name
+      
       def initialize( symbol_name, is_lexical )
          @symbol_name = symbol_name
          @is_lexical  = is_lexical    
@@ -33,10 +36,9 @@ module Model
       
       
       #
-      # register_slot()
-      #  - if you pass in a slot_name, it will be used; otherwise, one will be assigned later
+      # slot_name=()
 
-      def register_slot( slot_name = nil )
+      def slot_name=( slot_name )
          @is_slot   = true
          @slot_name = slot_name
          
@@ -50,9 +52,9 @@ module Model
       
       def display( stream )
          if @is_lexical then
-            stream.puts( "lexical symbol #{@symbol_name}")
+            stream.puts( "lex:#{@symbol_name}, #{@is_slot ? "slot:#{@slot_name}" : "no slot"}")
          else
-            stream.puts( "parser symbol #{@symbol_name}")
+            stream.puts( "parse:#{@symbol_name}, #{@is_slot ? "slot:#{@slot_name}" : "no slot"}")
          end
       end
       

@@ -30,6 +30,33 @@
       
       return true
    end
+   
+   
+   
+   class String
+      
+      #
+      # Converts the string to a plural form.  It's simple
+      # stupid concatenation...
+
+      def pluralize( count = 2, plural_form = nil )
+         if count == 1 then
+            return self
+         else
+            if plural_form.nil? then
+               if self[-1..-1] == "y" then
+                  return self[0..-2] + "ies"
+               else
+                  return self + "s"
+               end
+            else
+               return plural_form
+            end
+         end
+      end
+   end
+   
+   
             
 
    class Array

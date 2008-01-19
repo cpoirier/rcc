@@ -132,7 +132,7 @@ module Grammar
          # 
 
             section_spec( 'grammar',
-               rule_spec( 'grammar', 
+               rule_spec( 'grammar_spec', 
                   block_macro_call(
                      expression('grammar', reference_exp('word', 'name')), 
                      repeated_exp('*', reference_exp('option'       )),
@@ -142,16 +142,16 @@ module Grammar
          
          #
          #       category option
-         #          start_rule          => 'start_rule' word:rule_name
-         #          ignore_switch       => 'ignore'     word:name
-         #          backtracking_switch => 'enable_backtracking'
+         #          start_rule          => statement() [ 'start_rule' word:rule_name ]
+         #          ignore_switch       => statement() [ 'ignore'     word:name      ]
+         #          backtracking_switch => statement() [ 'enable_backtracking'       ]
          #       end
          # 
          
                category_spec( 'option',
-                  rule_spec( 'start_rule'   , string_exp('start_rule'), reference_exp('word', 'rule_name') ),
-                  rule_spec( 'ignore_switch', string_exp('ignore'    ), reference_exp('word', 'name'     ) ),
-                  rule_spec( 'backtracking_switch', string_exp('enable_backtracking') )       
+                  rule_spec( 'start_rule'         , statement_macro_call(string_exp('start_rule'), reference_exp('word', 'rule_name')) ),
+                  rule_spec( 'ignore_switch'      , statement_macro_call(string_exp('ignore'    ), reference_exp('word', 'name'     )) ),
+                  rule_spec( 'backtracking_switch', statement_macro_call(string_exp('enable_backtracking')) )       
                ),
 
          #       

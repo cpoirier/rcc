@@ -61,6 +61,9 @@ module Model
          stream << @raw
       end
    
+      def to_s()
+         return description()
+      end
    
    end # Token
    

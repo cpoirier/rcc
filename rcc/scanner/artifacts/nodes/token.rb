@@ -76,6 +76,14 @@ module Nodes
       def faked?()
          return @faked
       end
+      
+      
+      #
+      # to_s()
+      
+      def to_s()
+         return description()
+      end
 
 
 
