@@ -12,6 +12,7 @@ require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/e
 require "#{$RCCLIB}/util/sparse_range.rb"
 require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
 require "#{$RCCLIB}/model/symbol.rb"
+require "#{$RCCLIB}/model/category.rb"
 
 
 module RCC
@@ -52,11 +53,12 @@ module Grammar
          @category_specs   = Util::OrderedHash.new()    # name => :category_spec  ASN
          @rule_specs       = Util::OrderedHash.new()    # name => :rule_spec      ASN
          
+         @category_members = Util::OrderedHash.new()    # name => [member names]
          
-         @character_defs   = Util::OrderedHash.new()   # name => SparseRange result of processing a :character_spc
-         @word_defs        = Util::OrderedHash.new()   # name => ExpressionForm result of processing a :word_spec
-         @category_defs    = Util::OrderedHash.new()   # name => list of rule names in the category
-         @rule_defs        = Util::OrderedHash.new()   # name => 
+         @character_defs   = Util::OrderedHash.new()    # name => SparseRange result of processing a :character_spc
+         @word_defs        = Util::OrderedHash.new()    # name => ExpressionForm result of processing a :word_spec
+         @category_defs    = Util::OrderedHash.new()    # name => list of rule names in the category
+         @rule_defs        = Util::OrderedHash.new()    # name => 
          
       end
 
@@ -98,13 +100,12 @@ module Grammar
                when :rule_spec
                   register_names( [container], @specs, @rule_specs )
                   container.categories.each do |category|
-                     @category_defs[category.text] << container.name.text unless @category_defs[category.text].member?(container.name.text)
+                     @category_members[category.text] << container.name.text unless @category_members[category.text].member?(container.name.text)
                   end
                      
                when :category_spec
                   register_names( [container], @specs, @category_specs )
-                  @category_defs[container.name.text] = [ container.name.text ]
-
+                  @category_members[container.name.text] = []
                   container.specifications.reverse.each do |spec|
                      work_queue.unshift spec
                   end
@@ -114,7 +115,7 @@ module Grammar
                    
                when :spec_reference
                   container.categories.each do |category|
-                     @category_defs[category.text] << container.name.text unless @category_defs[category.text].member?(container.name.text)
+                     @category_members[category.text] << container.name.text unless @category_members[category.text].member?(container.name.text)
                   end
                   
                else
@@ -124,10 +125,12 @@ module Grammar
          
          
          #
-         # Resolve character specs into SparseRanges of character codes.
+         # Resolve character specs into SparseRanges of character codes.  We'll also create a word
+         # definition for each character, which can be used for making rules.
          
          @character_specs.each do |name, spec|
             @character_defs[name] = process_character_data( spec.character_set, [name] ) unless @character_defs.member?(name)
+            @word_defs[name]      = create_sequence( @character_defs[name] )
          end
          
          if false then
@@ -150,12 +153,35 @@ module Grammar
             @word_defs.each do |name, definition|
                $stdout.puts "word_def #{name}:"
                $stdout.indent do 
-                  definition.display()
+                  definition.display($stdout)
                end
                $stdout.puts ""
             end
          end
-
+         
+         
+         #
+         # Resolve category members lists into Category objects.  
+         
+         @category_specs.each do |name, spec|
+            symbols = flatten_category_member_list(name, [name]).uniq.collect do |referenced_name|
+               Model::Symbol.new( referenced_name, @rule_specs.member?(referenced_name) )
+            end
+            
+            @category_defs[name] = Model::Category.new( name, symbols )
+         end
+         
+         
+         if true then
+            @category_defs.each do |name, definition|
+               $stdout.puts "category_def #{name}:"
+               $stdout.indent do
+                  definition.display( $stdout )
+               end
+               $stdout.puts ""
+            end
+         end
+         
 
          #
          # Resolve rule specs into ExpressionForms.  Note that we do them all here -- they are never
@@ -498,24 +524,24 @@ module Grammar
                   symbol = nil
                   
                   #
-                  # If a reference to an existing Word definition, use it.
+                  # If a reference to an existing Word definition, use it.  All character definitions are 
+                  # also registered as word definitions during the build, so we'll catch them here, too.
                
                   if @word_defs.member?(referenced_name) then
                      symbol = Model::Symbol.new( referenced_name, true )
                   
                   #
-                  # If a reference to an existing Character definition, create an anonymous Word def from it
-                  # and use it.
-               
-                  elsif @character_defs.member?(referenced_name) then
-                     word_name = anonymous_word( create_sequence(@character_defs[referenced_name]) )
-                     symbol = Model::Symbol.new( referenced_name, true )
-                  
-                  #
                   # If a reference to another rule, then use it.
                
-                  elsif @rule_defs.member?(referenced_name) || @rule_specs.member?(referenced_name) || @category_specs.member?(referenced_name) then
+                  elsif @rule_defs.member?(referenced_name) || @rule_specs.member?(referenced_name) then
                      symbol = Model::Symbol.new( referenced_name, false )
+                  
+                  #
+                  # If a reference to a category, build a Category for it.  We'll take this opportunity
+                  # to verify each of the category elements.
+                  
+                  elsif @category_defs.member?(referenced_name) then
+                     symbol = @category_defs[referenced_name].dup
                   
                   #
                   # Otherwise, we have a problem.
@@ -628,6 +654,8 @@ module Grammar
       
       
       
+      
+      
 
 
     #---------------------------------------------------------------------------------------------------------------------
@@ -694,6 +722,34 @@ module Grammar
          
          return name
       end
+      
+
+      #
+      # flatten_category_member_list()
+      #  - resolves a category member list into a list of non-category names
+      
+      def flatten_category_member_list( name, loop_detection = [] )
+         names = []
+         
+         @category_members[name].each do |referenced_name|
+            if @rule_specs.member?(referenced_name) || @word_defs.member?(referenced_name) then
+               names << referenced_name
+            elsif @category_members.member?(referenced_name) then
+               if loop_detection.member?(referenced_name) then
+                  # no op -- members for this name are already being handled
+               else
+                  names.concat flatten_category_member_list(referenced_name, loop_detection + [referenced_name])
+               end
+               
+            else
+               nyi( "error reporting for bad reference [#{referenced_name}] in category [#{name}] definition" )
+            end
+         end
+
+         return names
+      end
+      
+      
       
 
 

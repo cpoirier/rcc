@@ -108,15 +108,13 @@ module Grammar
 
          #
          #    macros
-         #       eols              => eol:ignore*
-         #       statement         => %% eols ;
+         #       statement         => %% eol+ ;
          #       block( header )   => statement() [ statement() [$header] %% 'end' ]
          #    end
          # 
          
             macros_spec(
-               simple_macro( 'eols'     , repeated_exp('*', reference_exp('eol', 'ignore'))        ),
-               simple_macro( 'statement', transclusion(), reference_exp('eols'), recovery_commit() ),
+               simple_macro( 'statement', transclusion(), repeated_reference('+', 'eol'), recovery_commit() ),
                parameterized_macro( 'block', ['header'],
                   macro_call('statement', [],
                      macro_call( 'statement', [], variable_exp('header') ),

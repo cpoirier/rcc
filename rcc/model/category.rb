@@ -9,17 +9,21 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/expression_forms/branch_point.rb"
+
 
 module RCC
 module Model
 
  
  #============================================================================================================================
- # class Symbol
- #  - represents a symbol in a rule, to be produced by the lexer (terminal) or by the parser (non-terminal)
-
-   class Symbol
+ # class Category
+ #  - represents a category of symbols in a rule
+ #  - a category is essentially an alias for one or more symbols
+ 
+   class Category < Util::ExpressionForms::BranchPoint
       
+            
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
@@ -27,9 +31,9 @@ module Model
       attr_reader :symbol_name
       attr_reader :slot_name
       
-      def initialize( symbol_name, is_lexical )
+      def initialize( symbol_name, member_symbols )
+         super( *member_symbols )
          @symbol_name = symbol_name
-         @is_lexical  = is_lexical    
          @slot_name   = nil
       end
       
@@ -39,6 +43,11 @@ module Model
 
       def slot_name=( slot_name )
          @slot_name = slot_name
+         
+         each_element do |member_symbol|
+            member_symbol.slot_name = slot_name
+         end
+         
          return self
       end
       
@@ -48,14 +57,34 @@ module Model
       # display()
       
       def display( stream )
-         if @is_lexical then
-            stream.puts( "lex:#{@symbol_name}, #{@slot_name.exists? ? "slot:#{@slot_name}" : "no slot"}")
-         else
-            stream.puts( "parse:#{@symbol_name}, #{@slot_name.exists? ? "slot:#{@slot_name}" : "no slot"}")
+         stream.puts( "parse:#{@symbol_name} (#{@branches.collect{|s| s.symbol_name}.join("|")}), #{@slot_name.exists? ? "slot:#{@slot_name}" : "no slot"}")
+      end
+      
+      
+      #
+      # <<()
+      #  - expects everything added to reduce to a Symbol or Category, and will flatten nested
+      #    Categories into this one
+       
+      def <<( member )
+         case member
+            when Category
+               member.each_element do |symbol|
+                  self << symbol.clone()
+               end
+            when Symbol
+               member.slot_name = @slot_name
+               super( member )
+            else
+               member.each_element do |element|
+                  self << element
+               end
          end
       end
       
-   end # Symbol
+      
+      
+   end # Category
    
 
 
