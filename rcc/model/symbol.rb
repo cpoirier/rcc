@@ -49,9 +49,9 @@ module Model
       
       def display( stream )
          if @is_lexical then
-            stream.puts( "lex:#{@symbol_name}, #{@slot_name.exists? ? "slot:#{@slot_name}" : "no slot"}")
+            stream.puts( "lex(#{@symbol_name})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}")
          else
-            stream.puts( "parse:#{@symbol_name}, #{@slot_name.exists? ? "slot:#{@slot_name}" : "no slot"}")
+            stream.puts( "parse(#{@symbol_name})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}")
          end
       end
       

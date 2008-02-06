@@ -11,6 +11,7 @@
 #
 #================================================================================================================================
 
+begin
    require "#{File.dirname(File.expand_path(__FILE__))}/../rcc/environment.rb"
    require "#{$RCCLIB}/model/grammar.rb"
    require "#{$RCCLIB}/scanner/interpreter/lexer.rb"
@@ -110,3 +111,17 @@
          puts "Unsuppored mode: #{mode}; Supported modes: parse, recovery, lex"
          exit 10
    end
+
+rescue RCC::Bug => e
+   $stderr.puts e.message 
+   $stderr.indent do
+      unless e.data.nil? or e.data.empty?
+         e.data.each do |object|
+            $stderr.puts "Detail:"
+            $stderr.indent { object.display($stderr) }
+         end
+      end
+      $stderr.puts "Backtrace:"
+      $stderr.indent { e.backtrace.each {|entry| $stderr.puts entry} }
+   end
+end

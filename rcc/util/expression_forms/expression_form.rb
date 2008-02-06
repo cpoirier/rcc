@@ -71,8 +71,8 @@ module ExpressionForms
       def element_count()
          return 0
       end
-
-
+      
+      
       #
       # display()
       
@@ -83,6 +83,7 @@ module ExpressionForms
          stream.indent do
             self.each_element do |element|
                element.display( stream )
+               stream.end_line()
             end
          end
          

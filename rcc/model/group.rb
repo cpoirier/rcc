@@ -17,11 +17,11 @@ module Model
 
  
  #============================================================================================================================
- # class Category
- #  - represents a category of symbols in a rule
- #  - a category is essentially an alias for one or more symbols
+ # class Group
+ #  - represents a group of symbols in a rule
+ #  - a group is essentially an alias for one or more symbols
  
-   class Category < Util::ExpressionForms::BranchPoint
+   class Group < Util::ExpressionForms::BranchPoint
       
             
     #---------------------------------------------------------------------------------------------------------------------
@@ -31,7 +31,7 @@ module Model
       attr_reader :symbol_name
       attr_reader :slot_name
       
-      def initialize( symbol_name, member_symbols )
+      def initialize( symbol_name = nil, member_symbols = [] )
          super( *member_symbols )
          @symbol_name = symbol_name
          @slot_name   = nil
@@ -57,7 +57,7 @@ module Model
       # display()
       
       def display( stream )
-         stream.puts( "parse:#{@symbol_name} (#{@branches.collect{|s| s.symbol_name}.join("|")}), #{@slot_name.exists? ? "slot:#{@slot_name}" : "no slot"}")
+         stream.puts( "parse(#{@branches.collect{|s| s.symbol_name}.join("|")})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}")
       end
       
       
@@ -68,7 +68,7 @@ module Model
        
       def <<( member )
          case member
-            when Category
+            when Group
                member.each_element do |symbol|
                   self << symbol.clone()
                end
@@ -81,10 +81,20 @@ module Model
                end
          end
       end
+
+
+      #
+      # instantiate()
+      #  - the Group can be either a template or an element in a rule; this routine returns the latter
       
+      def instantiate( symbol_name )
+         return Group.new( symbol_name, [] + @branches )
+      end
+
+
+
       
-      
-   end # Category
+   end # Group
    
 
 

@@ -33,7 +33,7 @@ module Util
       
       
       def to_s()
-         @ranges.collect{|r| r.to_s}.join(", ")
+         "[" + @ranges.collect{|r| r.to_s}.join(" ") + "]"
       end
       
       

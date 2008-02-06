@@ -130,6 +130,15 @@
          
          return removed
       end
+      
+      
+      #
+      # rest()
+      #  - returns all but the first element
+      
+      def rest()
+         return self[1..-1]
+      end
 
    end
    

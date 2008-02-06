@@ -15,7 +15,15 @@
    
    module RCC
       
-      class Bug              < Exception; end
+      class Bug < Exception
+         attr_reader :data
+         
+         def initialize( message, data = nil )
+            super( message )
+            @data = data
+         end
+      end
+      
       class NYI              < Bug; end
       class AssertionFailure < Bug; end
       class TypeError        < Bug; end
@@ -42,8 +50,8 @@
    # bug()
    #  - raises a Bug exception, indicating that something happened that shouldn't have
    
-   def bug( description )
-      raise RCC::Bug.new( "BUG: " + description )
+   def bug( description, *data )
+      raise RCC::Bug.new( "BUG: " + description, data )
    end
    
    
@@ -51,9 +59,23 @@
    # nyi()
    #  - raises an NYI exception, indicating that something it Not Yet Implemented (but will be, one day)
    
-   def nyi( description )
-      raise RCC::NYI.new( "NYI: " + description )
+   def nyi( description, *data )
+      raise RCC::NYI.new( "NYI: " + description, data )
    end
+   
+   
+   #
+   # warn_nyi()
+   #  - dumps an NYI warning to $stderr, once per message
+   
+   def warn_nyi( description )
+      unless $nyi_warnings_already_given.member?(description)
+         $stderr.puts "NYI: " + description
+         $nyi_warnings_already_given[description] = true
+      end
+   end
+
+   $nyi_warnings_already_given = {}   
 
 
    #
