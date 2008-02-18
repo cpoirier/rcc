@@ -10,10 +10,6 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/languages/grammar/grammar_builder.rb"
-require "#{$RCCLIB}/util/sparse_range.rb"
-require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
-require "#{$RCCLIB}/model/symbol.rb"
-require "#{$RCCLIB}/model/group.rb"
 
 
 module RCC
@@ -66,6 +62,8 @@ module Grammar
                @grammars[grammar_spec.name.text] = GrammarBuilder.build(grammar_spec)
             end
          end
+         
+         nyi( "build_model" )
       end
       
       

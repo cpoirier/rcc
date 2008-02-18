@@ -84,7 +84,12 @@ module ExpressionForms
       # display()
       
       def display( stream = $stdout )
-         stream << "#{@minimum}-#{@maximum.nil? ? "*" : @maximum} times: " 
+         if @minimum == 0 and @maximum == 1 then
+            stream << "optional: "
+         else
+            stream << "#{@minimum}-#{@maximum.nil? ? "*" : @maximum} times: " 
+         end
+         
          stream.indent do 
             @element.display(stream)
          end

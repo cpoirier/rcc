@@ -82,7 +82,7 @@ module Nodes
       # to_s()
       
       def to_s()
-         return description()
+         return @text
       end
 
 

@@ -9,8 +9,8 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/form_elements/element.rb"
 require "#{$RCCLIB}/util/recursion_loop_detector.rb"
+require "#{$RCCLIB}/model/slot.rb"
 
 module RCC
 module Model
@@ -18,60 +18,45 @@ module Model
  
  #============================================================================================================================
  # class Rule
- #  - a rule from the grammar
+ #  - a rule in the grammar
+ #  - when generating output, each Rule will produce one ASN and its slots
 
    class Rule
-      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
     
-      attr_reader :name       # The name of this rule
-      attr_reader :symbol     # The NonTerminal of this rule
-      attr_reader :id_number  # The id number of this rule within the entire grammar
-      attr_reader :forms      # The Forms in this Rule (this is where the real data is)
+      attr_reader :name         # The name of this rule
+      attr_reader :master_form  # An unflattened ExpressionForm capturing the structure of this rule
+      attr_reader :id_number    # The id number of this rule within the entire grammar
+      attr_reader :forms        # The Forms in this Rule (this is where the real data is)
 
-      def initialize( name, number, grammar )
-         @name    = name
-         @symbol  = FormElements::NonTerminal.new( name )
-         @number  = number
-         @grammar = grammar
-         @forms   = []
+      def initialize( name, master_form )
+         @name            = name
+         @master_form     = master_form
+         @slots           = Util::OrderedHash.new()     # name => Slot
+         @forms           = nil
+         @transformations = []
       end
       
       
-      #
-      # create_form()
-      #  - creates one a Form in the rule
-      
-      def create_form( root_element, label = nil, properties = {} )
-         bug( "you cannot create new Forms after calling first_and_follow_sets()!" ) unless @first_and_follow_sets.nil?
-         
-         form = Form.new( root_element, self, @forms.length, label, properties )
-         @forms << form
-         
-         @grammar.add_form( form )
+      def register_direct_slot( name, object )
+         @slots[name] = Slot.new( name, self ) unless @slots.member?(name)
+         @slots[name].add_source( object )
       end
       
       
-      #
-      # assign_slots()
-      #  - assign slot names to the NonTerminals in the Rule
-      
-      def assign_slots()
-         slot_counts = {}
-         slot_tracks = {}
-         
-         @root_element.count_slots( slot_counts )
-         @root_element.assign_slots( slot_counts, slot_tracks )
+      def register_plural_import( name, object, imported_slot_name )
+         type_check( object, PluralizationReference )
+         @slots[name] = Slot.new( name, self ) unless @slots.member?(name)
+         @slots[name].add_pluralization_import( object, imported_slot_name )
       end
 
 
-
-      
-
-
+      def has_slots?()
+         return !@slots.empty?
+      end
 
 
     #---------------------------------------------------------------------------------------------------------------------
@@ -83,12 +68,21 @@ module Model
       end
 
       def display( stream = $stdout )
-         stream << "Rule #{@name}\n"
+         stream.puts "rule #{@name}"
          stream.indent do
-            @forms.each do |form|
-               form.display( stream )
+            @master_form.display( stream )
+            
+            additional_slots = @slots.values.select {|slot| !slot.direct_sources_only?}
+            unless additional_slots.empty?
+               stream.puts "additional slots:"
+               stream.indent do
+                  additional_slots.each do |slot|
+                     slot.display_indirect_sources( stream )
+                  end
+               end
             end
          end
+         
       end
       
    end # Rule

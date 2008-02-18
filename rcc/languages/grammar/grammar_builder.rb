@@ -9,11 +9,10 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/util/namespace.rb"
+require "#{$RCCLIB}/languages/grammar/naming_context.rb"
 require "#{$RCCLIB}/util/sparse_range.rb"
 require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
-require "#{$RCCLIB}/model/symbol.rb"
-require "#{$RCCLIB}/model/group.rb"
+require "#{$RCCLIB}/model/model.rb"
 
 
 module RCC
@@ -36,7 +35,15 @@ module Grammar
          return builder.build_model( ast )
       end
       
-      Node  = RCC::Scanner::Artifacts::Node
+      Node                   = RCC::Scanner::Artifacts::Node
+      Group                  = RCC::Model::Group
+      Rule                   = RCC::Model::Rule
+      Pluralization          = RCC::Model::Pluralization
+      StringReference        = RCC::Model::StringReference
+      RuleReference          = RCC::Model::RuleReference
+      GroupReference         = RCC::Model::GroupReference
+      PluralizationReference = RCC::Model::PluralizationReference
+      
       
       
       
@@ -54,8 +61,9 @@ module Grammar
          @pluralization_specs = Util::OrderedHash.new()
          
          @string_defs         = Util::OrderedHash.new()    # name => ExpressionForm result of processing a :string_spec
-         @group_defs          = Util::OrderedHash.new()    # name => list of rule names in the group
-         @rule_defs           = Util::OrderedHash.new()    # name => 
+         @group_defs          = Util::OrderedHash.new()    # name => Group result of processing a :group_spec
+         @rule_defs           = Util::OrderedHash.new()    # name => Rule result of processing a :rule_spec
+         @naming_contexts     = Util::OrderedHash.new()    # name => naming context data
       end
 
 
@@ -117,85 +125,34 @@ module Grammar
          
          @specifications.each do |name, spec|
             next unless spec.type == :rule_spec
-            naming_context = []
-            @rule_defs[name] = process_rule_expression( spec.expression, naming_context )
-         
-            #
-            # Assign slots pass 1: delete any record with slot name "ignore".  For obvious reasons.
             
-            naming_context.delete_if{|record| record[1].text == "ignore"}
+            @naming_contexts[name] = NamingContext.new( self )
+            @rule_defs[name]       = Rule.new( name, process_rule_expression(spec.expression, @naming_contexts[name]) )
             
             #
-            # Assign slots pass 2: ensure no explicit slot name overlaps *any* other slot name.
-            # That said, the *same* explicit slot name token maybe validly assigned to more than
-            # one symbol.  For instance: (a|b|c):name.  We check the token object_ids to tell the
-            # difference.  
+            # Commit the naming context into the Rule.
             
-            explicit_names = {}
-            implicit_names = {}
-            
-            naming_context.each do |record|
-               symbol, name_token, context_is_plural, name_is_explicit = *record
-         
-               name = name_token.text
-               name = name.pluralize if context_is_plural
-               
-               if name_is_explicit then
-                  if explicit_names.member?(name) and explicit_names[name][0][1].object_id != name_token.object_id then
-                     nyi( "error handling for duplicate explicit slot name [#{name}]" )
-                  elsif implicit_names.member?(name) then
-                     nyi( "error handling for explicit slot name that conflicts with implicit slot name [#{name}]" )
-                  else
-                     explicit_names[name] = [] unless explicit_names.member?(name)
-                     explicit_names[name] << record
-                  end
-               else
-                  if explicit_names.member?(name) then
-                     nyi( "error handling for explicit slot name that conflicts with implicit slot name [#{name}]" )
-                  end
-                  
-                  implicit_names[name] = [] unless implicit_names.member?(name)
-                  implicit_names[name] << record
-               end
-            end
-            
-            #
-            # Assign slots pass 3: assign names.
-            
-            explicit_names.each do |name, records|
-               records.each do |record|
-                  record[0].slot_name = name
-               end
-            end
-            
-            implicit_names.each do |name, records|
-               if records.length == 1 then
-                  records[0][0].slot_name = name
-               else
-                  number = 1
-                  records.each do |record|
-                     record[0].slot_name = "#{name}_#{number}"
-                     number += 1
-                  end
-               end
-            end
-         
+            @naming_contexts[name].commit( @rule_defs[name] )
+
             #
             # Deal with any transformations.
             
-            STDERR.puts "skipping transformation on rule #{name}" if spec.slot_filled?(:transformation_specs)
+            warn_nyi( "skipping transformations on rule" )
          end
          
          if true then
             @rule_defs.each do |name, definition|
-               $stdout.puts "rule_def #{name}:"
-               $stdout.indent do
-                  definition.display( $stdout )
-               end
+               definition.display( $stdout )
+               # $stdout.puts "rule_def #{name}:"
+               # $stdout.indent do
+               #    definition.display( $stdout )
+               # end
                $stdout.puts ""
             end
          end
+
          
+         exit
          
          # #
          # # Now we can start building the Model.
@@ -205,6 +162,28 @@ module Grammar
          # exit
          # 
       end
+      
+      
+      #
+      # pluralize()
+      #  - pluralizes a name, according the grammar's rules
+      
+      def pluralize( name )
+         warn_nyi( "support for pluralization guides in pluralize()" )
+         return name.pluralize
+      end
+      
+      
+      
+
+
+      
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Model Building
+    #---------------------------------------------------------------------------------------------------------------------
+          
+    protected
 
 
       #
@@ -256,19 +235,9 @@ module Grammar
       end
 
 
-
-
       
-      
-
-    #---------------------------------------------------------------------------------------------------------------------
-    # Model Building
-    #---------------------------------------------------------------------------------------------------------------------
-          
-    protected
-
       @@escape_sequences = { '\n' => "\n", '\r' => "\r", '\t' => "\t", "\\\\" => "\\" }
-      
+
       
       #
       # process_string_data()
@@ -319,8 +288,8 @@ module Grammar
 
             when :general_text
                result = create_sequence()
-               node.text.each do |character|
-                  result << Util::SparseRange.new( character[0] )
+               node.text.length.times do |i|
+                  result << Util::SparseRange.new( node.text[i] )
                end
 
             when :escape_sequence
@@ -478,7 +447,7 @@ module Grammar
          
          case node.type
             when :group_spec
-               result = Model::Group.new()
+               result = Group.new()
                node.specifications.each do |spec|
                   if element = process_group_data(spec, loop_detection) then
                      result << element
@@ -488,15 +457,15 @@ module Grammar
                end
                
             when :rule_spec
-               result = Model::Group.new()
-               result << Model::Symbol.new( node.name.text, false )
+               result = Group.new()
+               result << RuleReference.new( node.name.text )
       
             when :spec_reference
                name = node.name.text
                if @specifications.member?(name) then
                   spec = @specifications[name]
                   
-                  result = Model::Group.new()
+                  result = Group.new()
                   case spec.type
                      when :group_spec
                         if @group_defs.member?(name) then
@@ -514,9 +483,9 @@ module Grammar
                         end
                         
                      when :rule_spec
-                        result << Model::Symbol.new( name, false )
+                        result << RuleReference.new( name )
                      when :string_spec
-                        result << Model::Symbol.new( name, true )
+                        result << StringReference.new( name )
                      else
                         nyi( "error handling for group reference to macro or other ineligible name [#{name}]" )
                   end
@@ -537,72 +506,93 @@ module Grammar
       #  - prepares for slot assignment by collecting naming information on every nameable element
       #     - at present, this includes symbolic elements and explicitly labelled constants
       
-      def process_rule_expression( node, naming_context, context_label = nil, is_explicit = false, plural_context = false )
+      def process_rule_expression( node, naming_context )
          result = nil
          
          case node.type
             when :macro_call
-               result = process_rule_expression( process_macro_call(node), naming_context, context_label, is_explicit, plural_context )
+               result = process_rule_expression( process_macro_call(node), naming_context )
       
             when :sequence_exp
                result = create_sequence( 
-                  process_rule_expression( node.tree, naming_context, context_label, is_explicit, plural_context ), 
-                  process_rule_expression( node.leaf, naming_context, context_label, is_explicit, plural_context ) 
+                  process_rule_expression( node.tree, naming_context ), 
+                  process_rule_expression( node.leaf, naming_context ) 
                )
       
             when :repeated_exp
-               minimum = 0
-               maximum = nil
-               
                case node.repeat_count.text
                   when "?"
-                     minimum = 0
-                     maximum = 1
-                  when "*"
-                     minimum = 0
-                     maximum = nil
-                     plural_context = true
-                  when "+"
-                     minimum = 1
-                     maximum = nil
-                     plural_context = true
+                     element = process_rule_expression( node.expression, naming_context )
+                     result  = Util::ExpressionForms::Optional.new( element )
+                     
+                  when "*", "+"
+                     
+                     #
+                     # We cannot process plural terms directly in this rule, as it has to be parsed in 
+                     # a tree shape (that's the way LR parsers work).  So, we prepare to factor out the
+                     # pluralized terms, first by processing them in a separate naming context.
+                     
+                     child_namer = NamingContext.new( self )
+                     child_form  = process_rule_expression( node.expression, child_namer )
+                     
+                     #
+                     # Next, we try to get a nice name for the out-factored rule.  If we can get a single
+                     # term, and its plural form is not taken, we'll use that.  Otherwise, we'll generate
+                     # a name.
+                     
+                     child_name = "_plural_#{@rule_defs.length}"
+                     if child_form.element_count == 1 and [StringReference, RuleReference, GroupReference].member?(child_form[0].class) then
+                        singular_name = child_form[0].symbol_name
+                        plural_name   = pluralize( singular_name )
+                        if @specifications.member?(plural_name) then
+                           child_name = "_plural_of_#{singular_name}"
+                        else
+                           child_name = plural_name
+                        end
+                     end
+                     
+                     #
+                     # If the name is already in the @rule_defs list, then this is a simple pluralization
+                     # that has already been handled.  We won't duplicate the Pluralization.  Otherwise,
+                     # it's new, and we save it.
+                     
+                     unless @rule_defs.member?(child_name)
+                        @rule_defs[child_name]       = Pluralization.new( child_name, child_form )
+                        @naming_contexts[child_name] = child_namer
+                        
+                        child_namer.commit( @rule_defs[child_name] )
+                     end
+                     
+                     result = @rule_defs[child_name].reference( node.repeat_count.text == "*" )
+                     if @rule_defs[child_name].has_slots? then
+                        naming_context.name( result, create_token("_tree_" + child_name) )
+                        naming_context.import_pluralization( result, @naming_contexts[child_name] )
+                     end
+                     
                   else
                      bug( "unsupported repeat_count [#{node.repeat_count}]")
                end
                   
-               result = create_repeater( 
-                  process_rule_expression(node.expression, naming_context, context_label, is_explicit, plural_context), minimum, maximum 
-               )
-               
             when :branch_exp
                result = create_branch_point(
-                  process_rule_expression( node.tree, naming_context, context_label, is_explicit, plural_context ),
-                  process_rule_expression( node.leaf, naming_context, context_label, is_explicit, plural_context )
+                  process_rule_expression( node.tree, naming_context ),
+                  process_rule_expression( node.leaf, naming_context )
                )
                
             when :gateway_exp
-               STDERR.puts "skipping gateway_exp, because I've no clue what to do with it"
+               warn_nyi( "skipping gateway_exp, because I've no clue what to do with it" )
                result = create_sequence()
                
             when :recovery_commit
-               STDERR.puts "skipping recovery_commit, because I've no clue what to do with it"
+               warn_nyi( "skipping recovery_commit, because I've no clue what to do with it" )
                result = create_sequence()
             
             when :string_exp
                word_name = anonymous_string( process_string_data(node.string) )
-               symbol = Model::Symbol.new( word_name, true )
+               symbol = StringReference.new( word_name )
                result = create_sequence( symbol )
                
-               #
-               # Strings become slots only if explicitly labelled.
-               
-               if node.label.exists? and context_label.exists? and is_explicit then
-                  nyi( "error handling for overlapping labels" )
-               elsif node.label.exists? then
-                  naming_context << make_naming_record( symbol, node.label, plural_context, true )
-               elsif context_label.exists? and is_explicit then
-                  naming_context << make_naming_record( symbol, context_label, plural_context, true )
-               end
+               naming_context.name( symbol, node.label, true ) if node.label.exists?
             
             when :reference_exp
                referenced_name = node.name.text
@@ -610,54 +600,39 @@ module Grammar
                   spec = @specifications[referenced_name]
                   
                   if spec.type == :macro_spec then
+
+                     #
+                     # Expand the macro and recurse to process.  We use any explicit node label, or the macro
+                     # name as implicit label.
                      
-                     #
-                     # Set up for slot naming.  We only supply the macro name as a fallback, if necessary.
-               
-                     if node.label.exists? and context_label.exists? and is_explicit then
-                        nyi( "error handling for overlapping labels" )
-                     elsif node.label.exists? then
-                        context_label = node.label
-                        is_explicit = true
-                     elsif context_label.exists? and !is_explicit then
-                        context_label = node.name
+                     naming_context.apply_label(node.label.exists? ? node.label : node.name, node.label.exists?) do
+                        result = process_rule_expression( process_macro_call(node), naming_context )
                      end
-               
-                     #
-                     # Expand the macro and recurse to process.
-               
-                     result = process_rule_expression( process_macro_call(node), naming_context, context_label, is_explicit, plural_context )
                      
                   else
-                     symbol = nil
-                     case spec.type
-                        when :string_spec
-                           symbol = Model::Symbol.new( referenced_name, true )
-                        
-                        when :rule_spec
-                           symbol = Model::Symbol.new( referenced_name, false )
-                           
-                        when :group_spec
-                           symbol = @group_defs[referenced_name].instantiate( referenced_name )
-                           
-                        else  
-                           nyi( "error handling for invalid referenced name [#{referenced_name}]" )
-                     end
-                           
-                     result = create_sequence( symbol )
-                  
+                     
                      #
                      # All references qualify for slots.  If no explicit label is supplied, we go with the source
                      # name (not anything it might have resolved to).
-                  
-                     if node.label.exists? and context_label.exists? and is_explicit then
-                        nyi( "error handling for overlapping labels" )
-                     elsif node.label.exists? then
-                        naming_context << make_naming_record( symbol, node.label, plural_context, true )
-                     elsif context_label.exists? then
-                        naming_context << make_naming_record( symbol, context_label, plural_context, is_explicit )
-                     else
-                        naming_context << make_naming_record( symbol, node.name, plural_context, false )
+                     
+                     naming_context.apply_label(node.label, true) do
+                        symbol = nil
+                        case spec.type
+                           when :string_spec
+                              symbol = StringReference.new( referenced_name )
+                        
+                           when :rule_spec
+                              symbol = RuleReference.new( referenced_name )
+                           
+                           when :group_spec
+                              symbol = GroupReference.new( referenced_name, @group_defs[referenced_name] )
+                           
+                           else  
+                              nyi( "error handling for invalid referenced name", referenced_name )
+                        end
+                           
+                        result = create_sequence( symbol )
+                        naming_context.name( symbol, node.name )
                      end
                   end
                   
@@ -666,14 +641,9 @@ module Grammar
                end
             
             when :group_exp
-               if node.label.exists? and context_label.exists? and is_explicit then
-                  nyi("error handling for overlapping labels at group level") 
-               elsif node.label.exists? then
-                  context_label  = node.label
-                  is_explicit    = true
+               naming_context.apply_label(node.label, true) do
+                  result = process_rule_expression( node.expression, naming_context )
                end
-               
-               result = process_rule_expression( node.expression, naming_context, context_label, is_explicit, plural_context )
                
             when :variable_exp
                nyi( "error handling for variable in regular rule" )
@@ -770,16 +740,40 @@ module Grammar
       #    anonymous name and returns the name
       
       def anonymous_string( string_def )
-         warn_nyi( "anonymous_string() does not presently eliminate duplicates" )
+         representation = ""
+         string_def.each_element do |element|
+            if element.is_an?(Util::SparseRange) and element.length == 1 then
+               code = element.first
+               if (code >= "A"[0] and code <= "Z"[0]) or (code >= "a"[0] and code <= "z"[0]) or code == "_"[0] then
+                  representation << code
+               elsif @@code_representations.member?(code) then
+                  representation << "__#{@@code_representations[code]}_"
+               else
+                  representation << "__#{code}_"
+               end
+            else
+               representation = nil
+               break
+            end
+         end
          
-         name = "_anonymous" + @string_defs.length.to_s
-         @string_defs[name] = string_def
-         
+         name = "_literal_" + @string_defs.length.to_s
+         if representation.exists? and representation.length > 0 and representation.length < 30 then
+            representation = "_literal_#{representation}"
+            if @string_defs.member?(representation) then
+               name = representation if @string_defs[representation] == string_def
+            else
+               name = representation
+            end
+         end
+
+         @string_defs[name] = string_def unless @string_defs.member?(name)
          return name
       end
       
       
-      
+
+
 
 
     #---------------------------------------------------------------------------------------------------------------------
@@ -806,57 +800,58 @@ module Grammar
          return Util::ExpressionForms::BranchPoint.new( *elements )
       end
       
-      
+   
       #
       # create_repeater()
-      #  - returns an ExpressionForms::Repeater
+      #  - returns an ExpressionForms::Repeater of its parameters
       
-      def create_repeater( element, min = 1, max = nil )
-         return Util::ExpressionForms::Repeater.new( element, min, max )
+      def create_repeater( element, minimum, maximum )
+         return Util::ExpressionForms::Repeater.new( element, minimum, maximum )
       end
       
-
+      
       #
-      # make_naming_record()
-      #  - returns a naming record for symbol slot assignment
+      # create_token()
+      #  - returns a Token for internal use
       
-      def make_naming_record( symbol, name_token, context_is_plural, name_is_explicit )
-         return [symbol, name_token, context_is_plural, name_is_explicit]
+      def create_token( text )
+         return Scanner::Artifacts::Nodes::Token.new( text, 0, 0, 0, 0 )
       end
-      
 
-      #
-      # do_slot_registration()
-      #  - given all the necessary information, decides how/if to register a slot or raise an error
-      
-      def do_slot_registration( symbol, inherited_name, specified_name, naming_context, assign_nil = false )
-         name = nil
-         
-         if inherited_name.exists? and specified_name.exists? then
-            nyi( "error handling for overlapping labels ([#{inherited_name.text}] vs [#{specified_name.text}])" ) 
-         elsif inherited_name.exists? then
-            name = inherited_name
-         elsif specified_name.exists? then
-            name = specified_name
-         elsif !assign_nil then
-            set = false
-         end
-         
-         if name then
-            naming_context.each do |symbol|
-               nyi( "error handling for duplicate labels within rule" ) if symbol.slot_name == name.text
-            end
-         end
-         
-         if name or assign_nil then
-            symbol.register_slot( name )
-            naming_context << symbol
-         end
-      end
-         
 
-      
-      
+
+
+      @@code_representations = { 
+         "!"[0]  => "exclamation_mark", 
+         "@"[0]  => "at", 
+         "\#"[0] => "hash", 
+         "$"[0]  => "dollar", 
+         "%"[0]  => "percent", 
+         "^"[0]  => "caret", 
+         "&"[0]  => "ampersand", 
+         "*"[0]  => "star", 
+         "("[0]  => "open_paren", 
+         ")"[0]  => "close_paren", 
+         "-"[0]  => "minus", 
+         "+"[0]  => "plus", 
+         "="[0]  => "equals", 
+         "{"[0]  => "open_brace",
+         "}"[0]  => "close_brace",
+         "["[0]  => "open_bracket",
+         "]"[0]  => "close_bracket",
+         "|"[0]  => "pipe",
+         "\\"[0] => "backslash",
+         ":"[0]  => "colon",
+         ";"[0]  => "semicolon",
+         "\""[0] => "double_quote",
+         "'"[0]  => "single_quote",
+         "<"[0]  => "less_than",
+         ">"[0]  => "greater_than",
+         "?"[0]  => "question_mark",
+         "/"[0]  => "slash",
+         "."[0]  => "period",
+         ","[0]  => "comma"
+      }
       
     
       

@@ -9,55 +9,45 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/form.rb"
-require "#{$RCCLIB}/model/form_elements/terminal.rb"
-
+require "#{$RCCLIB}/model/model.rb"
 
 module RCC
 module Model
-module FormElements
-
+ 
  
  #============================================================================================================================
- # class RawTerminal
- #  - a raw Terminal described directly inline
+ # class RuleReference
+ #  - represents a rule reference in a rule
 
-   class RawTerminal < Terminal
+   class RuleReference
+      include SlotInfo
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( symbol )
-         super( symbol, symbol )
-         @label = "ignore"
+      attr_reader :rule_name
+      alias symbol_name rule_name
+      
+      def initialize( rule_name )
+         @rule_name = rule_name
       end
       
-
-
       
       
+      #
+      # display()
       
-    #---------------------------------------------------------------------------------------------------------------------
-    # Conversion and formatting
-    #---------------------------------------------------------------------------------------------------------------------
-
-      def to_s()
-         return "'" + @name.gsub("'", "''") + "'" 
+      def display( stream )
+         display_slot_info() do 
+            stream.puts "parse(#{@rule_name})"
+         end
       end
-
-      def display( stream = $stdout )
-         stream << "RawTerminal #{@name}\n"
-      end
-
-
-
-
-
-   end # RawTerminal
+      
+      
+   end # RuleReference
    
 
 
-end  # module FormElements
 end  # module Model
 end  # module RCC

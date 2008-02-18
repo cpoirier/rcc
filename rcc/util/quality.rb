@@ -60,6 +60,14 @@
    #  - raises an NYI exception, indicating that something it Not Yet Implemented (but will be, one day)
    
    def nyi( description, *data )
+      if description.nil? then
+         begin
+            raise "tmp"
+         rescue Exception => e
+            description = e.backtrace[1]
+         end
+      end
+      
       raise RCC::NYI.new( "NYI: " + description, data )
    end
    

@@ -74,6 +74,19 @@ module ExpressionForms
       
       
       #
+      # []
+      #  - returns the element at the specified index, or nil
+      
+      def []( index )
+         return nil if index >= element_count()
+         each_element() do |element|
+            return element if index == 0
+            index -= 1
+         end
+      end
+      
+      
+      #
       # display()
       
       def display( stream )

@@ -9,65 +9,44 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/form_elements/symbol.rb"
-require "#{$RCCLIB}/model/form.rb"
+require "#{$RCCLIB}/model/model.rb"
 
 module RCC
 module Model
-module FormElements
-
+ 
  
  #============================================================================================================================
- # class NonTerminal
- #  - a descriptor of a literal or symbol token to be read
+ # class StringReference
+ #  - represents a string reference in a rule
 
-   class NonTerminal < Symbol
+   class StringReference
+      include SlotInfo
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
-    
-      attr_reader :rule_name
 
-      def initialize( rule_name )
-         super( rule_name.intern )
-         @rule_name = rule_name
+      attr_reader :string_name
+      alias symbol_name string_name
+      
+      def initialize( string_name )
+         @string_name = string_name
       end
       
       
-      def non_terminal?()
-         return true
-      end
+      #
+      # display()
       
-      
-      def ==( rhs )
-         return @rule_name == rhs.rule_name
-      end
-      
-      
-
-      
-      
-      
-    #---------------------------------------------------------------------------------------------------------------------
-    # Conversion and formatting
-    #---------------------------------------------------------------------------------------------------------------------
-
-      def display( stream = $stdout )
-         if @slot_name.nil? then
-            stream << "NonTerminal #{@rule_name}\n"
-         else
-            stream << "NonTerminal #{@rule_name} as #{@slot_name}\n"
+      def display( stream )
+         display_slot_info() do 
+            stream.puts "lex(#{@string_name})"
          end
       end
       
-   
       
-      
-   end # NonTerminal
+   end # StringReference
    
 
 
-end  # module FormElements
 end  # module Model
 end  # module RCC

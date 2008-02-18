@@ -32,6 +32,26 @@ module Util
       end
       
       
+      def length()
+         length = 0
+         @ranges.each do |range|
+            length += range.last - range.first + 1
+         end
+         return length
+      end
+      
+      
+      def first()
+         return nil if @ranges.empty?
+         return @ranges[0].first
+      end
+      
+      def last()
+         return nil if @ranges.empty?
+         return @ranges[-1].last
+      end
+      
+      
       def to_s()
          "[" + @ranges.collect{|r| r.to_s}.join(" ") + "]"
       end

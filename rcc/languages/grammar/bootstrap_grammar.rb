@@ -65,18 +65,20 @@ module Grammar
          #       any_character     => [\u0000-\uFFFF]
          #       digit             => [0-9]
          #       hex_digit         => [{digit}a-fA-F]
-         #       word_first_char   => [a-zA-Z_]
-         #       word_char         => [{word_first_char}{digit}]
-         #       general_character => [{any_character}]-['\n\r\\]
          #
          #       unicode_sequence  => '\\' 'u' hex_digit hex_digit hex_digit hex_digit
          #       escape_sequence   => '\\' [a-z\\\-\[\]\']
-         #       word              => word_first_char word_char*
-         #       eol               => '\n'
+         #       general_character => [{any_character}]-['\n\r\\]
          #       general_text      => general_character+
+         #       property_text     => [{general_character}]-[}]+
+         #
+         #       word_first_char   => [a-zA-Z_]
+         #       word_char         => [{word_first_char}{digit}]
+         #       word              => word_first_char word_char*
+         #
+         #       eol               => '\n'
          #       whitespace        => [ \t\r]+
          #       comment           => '#' [{any_character}]-[\n]*
-         #       property_text     => [{general_character}]-[}]+
          #    end
          #
          
@@ -84,34 +86,36 @@ module Grammar
                string_spec( 'any_character'    , cs_characters(cs_range(ust('0000'), ust('FFFF'))) ),
                string_spec( 'digit'            , cs_characters(cs_range('0'        , '9'        )) ),
                string_spec( 'hex_digit'        , cs_characters(cs_reference('digit'), cs_range('a', 'f'), cs_range('A', 'F')) ),
-               string_spec( 'word_first_char'  , cs_characters(cs_range('a', 'z'), cs_range('A', 'Z'), '_')            ),
-               string_spec( 'word_char'        , cs_characters(cs_reference('word_first_char'), cs_reference('digit')) ),
+               
+               string_spec( 'unicode_sequence', est('\\'), 'u', sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit') ),
+               string_spec( 'escape_sequence' , est('\\'), cs_characters(cs_range('a', 'z'), est('\\'), est('-'), est('['), est(']'), est("'")) ),
                string_spec( 'general_character',
                   cs_difference(
                      cs_characters( cs_reference('any_character') ),
                      cs_characters( "'", est('n'), est('r')       )
                   )
                ),
-               
-               string_spec( 'unicode_sequence', est('\\'), 'u', sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit') ),
-               string_spec( 'escape_sequence' , est('\\'), cs_characters(cs_range('a', 'z'), est('\\'), est('-'), est('['), est(']'), est("'")) ),
-               string_spec( 'word'            , sp_reference('word_first_char'), sp_repeated('*', sp_reference('word_char')) ),
-               string_spec( 'eol'             , est('n')                                                 ),
                string_spec( 'general_text'    , sp_repeated('+', sp_reference('general_character'))      ),
+               string_spec( 'property_text'   , sp_repeated('+', cs_difference(cs_characters(cs_reference('general_character')), cs_characters('}')))  ),
+               
+               string_spec( 'word_first_char'  , cs_characters(cs_range('a', 'z'), cs_range('A', 'Z'), '_')            ),
+               string_spec( 'word_char'        , cs_characters(cs_reference('word_first_char'), cs_reference('digit')) ),
+               string_spec( 'word'            , sp_reference('word_first_char'), sp_repeated('*', sp_reference('word_char')) ),
+               
+               string_spec( 'eol'             , est('n')                                                 ),
                string_spec( 'whitespace'      , sp_repeated('+', cs_characters(' ', est('t'), est('r'))) ),
-               string_spec( 'comment'         , '#', sp_repeated('*', cs_difference(cs_characters(cs_reference('any_character')), est('n'))) ),
-               string_spec( 'property_text'   , sp_repeated('+', cs_difference(cs_characters(cs_reference('general_character')), cs_characters('}')))  )
+               string_spec( 'comment'         , '#', sp_repeated('*', cs_difference(cs_characters(cs_reference('any_character')), est('n'))) )
             ),
 
          #
          #    macros
-         #       statement         => %% eol+ ;
+         #       statement         => %% eol:ignore+ ;
          #       block( header )   => statement() [ statement() [$header] %% 'end' ]
          #    end
          # 
          
             macros_spec(
-               simple_macro( 'statement', transclusion(), repeated_reference('+', 'eol'), recovery_commit() ),
+               simple_macro( 'statement', transclusion(), repeated_reference('+', 'eol', 'ignore'), recovery_commit() ),
                parameterized_macro( 'block', ['header'],
                   macro_call('statement', [],
                      macro_call( 'statement', [], variable_exp('header') ),
@@ -220,7 +224,7 @@ module Grammar
          #          sp_branch     => string_pattern '|' string_pattern          @associativity=left
          #          sp_concat     => string_pattern string_pattern              @associativity=left
          #          sp_repeated   => string_pattern ('*'|'+'|'?'):repeat_count
-         #          string        => '\'' (unicode_sequence|escape_sequence|general_text)+ '\''
+         #          string        => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
          #          character_set
          #       end
          # 
@@ -239,7 +243,7 @@ module Grammar
                   
                   rule_spec( 'string', 
                      est("'"), 
-                     repeated_exp( '+', group_exp(branch_exp(reference_exp('unicode_sequence'), reference_exp('escape_sequence'), reference_exp('general_text'))) ), 
+                     repeated_exp( '+', group_exp(branch_exp(reference_exp('unicode_sequence'), reference_exp('escape_sequence'), reference_exp('general_text')), 'element') ), 
                      est("'") 
                   ),
                

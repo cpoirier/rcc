@@ -119,6 +119,7 @@ rescue RCC::Bug => e
          e.data.each do |object|
             $stderr.puts "Detail:"
             $stderr.indent { object.display($stderr) }
+            $stderr.end_line()
          end
       end
       $stderr.puts "Backtrace:"

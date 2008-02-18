@@ -9,37 +9,31 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/model/model.rb"
 
 module RCC
 module Model
-
+ 
  
  #============================================================================================================================
- # class Symbol
- #  - represents a symbol in a rule, to be produced by the lexer (terminal) or by the parser (non-terminal)
+ # class GroupReference
+ #  - represents a group reference in a rule
 
-   class Symbol
+   class GroupReference < Util::ExpressionForms::BranchPoint
+      include SlotInfo
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :symbol_name
-      attr_reader :slot_name
+      attr_reader :group_name
+      attr_reader :group
+      alias symbol_name group_name
       
-      def initialize( symbol_name, is_lexical )
-         @symbol_name = symbol_name
-         @is_lexical  = is_lexical    
-         @slot_name   = nil
-      end
-      
-      
-      #
-      # slot_name=()
-
-      def slot_name=( slot_name )
-         @slot_name = slot_name
-         return self
+      def initialize( group_name, group )
+         super( *group.branches.collect{|element| element.clone} )
+         @group_name = group_name
+         @group      = group
       end
       
       
@@ -48,14 +42,13 @@ module Model
       # display()
       
       def display( stream )
-         if @is_lexical then
-            stream.puts( "lex(#{@symbol_name})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}")
-         else
-            stream.puts( "parse(#{@symbol_name})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}")
+         display_slot_info() do 
+            stream.puts( "parse(#{@branches.collect{|s| s.symbol_name}.join("|")})" )
          end
       end
       
-   end # Symbol
+      
+   end # GroupReference
    
 
 
