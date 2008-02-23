@@ -60,9 +60,9 @@ module Grammar
          @option_specs        = []
          @pluralization_specs = Util::OrderedHash.new()
          
-         @string_defs         = Util::OrderedHash.new()    # name => ExpressionForm result of processing a :string_spec
-         @group_defs          = Util::OrderedHash.new()    # name => Group result of processing a :group_spec
-         @rule_defs           = Util::OrderedHash.new()    # name => Rule result of processing a :rule_spec
+         @string_defs         = Util::OrderedHash.new()    # name => ExpressionForm of SparseRange
+         @group_defs          = Util::OrderedHash.new()    # name => Group
+         @rule_defs           = Util::OrderedHash.new()    # name => Rule
          @naming_contexts     = Util::OrderedHash.new()    # name => naming context data
       end
 
@@ -74,6 +74,12 @@ module Grammar
       
       def build_model( grammar_spec )
          assert( grammar_spec.type == :grammar_spec, "Um, perhaps you meant to pass a grammar_spec AST?" )
+         
+         #
+         # Create a new Grammar Model.
+         
+         @grammar = RCC::Model::Grammar.new( grammar_spec.name.text )
+         
          
          #
          # Start by moving all of the specs into @specifications.
@@ -140,7 +146,7 @@ module Grammar
             warn_nyi( "skipping transformations on rule" )
          end
          
-         if true then
+         if false then
             @rule_defs.each do |name, definition|
                definition.display( $stdout )
                # $stdout.puts "rule_def #{name}:"
@@ -152,15 +158,14 @@ module Grammar
          end
 
          
-         exit
+         #
+         # Finally, build the Grammar Model and return it.
          
-         # #
-         # # Now we can start building the Model.
-         # 
-         # @grammar = Model::Grammar.new( grammar_spec.name )
-         # puts "DONE"
-         # exit
-         # 
+         @string_defs.each {|name, form | @grammar.add_string(name, form)}
+         @group_defs.each  {|name, group| @grammar.add_group(name, group)}
+         @rule_defs.each   {|name, rule | @grammar.add_rule(rule)        }
+         
+         return @grammar
       end
       
       

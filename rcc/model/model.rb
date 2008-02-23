@@ -10,7 +10,8 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
-
+require "#{$RCCLIB}/model/grammar.rb"
+require "#{$RCCLIB}/model/system.rb"
 require "#{$RCCLIB}/model/group.rb"
 require "#{$RCCLIB}/model/rule.rb"
 require "#{$RCCLIB}/model/slot.rb"

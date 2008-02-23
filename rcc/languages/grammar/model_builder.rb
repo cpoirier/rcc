@@ -10,6 +10,7 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/languages/grammar/grammar_builder.rb"
+require "#{$RCCLIB}/model/model.rb"
 
 
 module RCC
@@ -43,7 +44,7 @@ module Grammar
     #---------------------------------------------------------------------------------------------------------------------
 
       def initialize()
-         @grammars = Util::OrderedHash.new()
+         @system = Model::System.new()
       end
 
 
@@ -56,14 +57,14 @@ module Grammar
          assert( system_spec.type == :system_spec, "Um, perhaps you meant to pass a system_spec AST?" )
          
          system_spec.grammar_specs.each do |grammar_spec|
-            if @grammars.member?(grammar_spec.name.text) then
+            if @system.grammars.member?(grammar_spec.name.text) then
                nyi( "error handling for duplicate grammar name" )
             else
-               @grammars[grammar_spec.name.text] = GrammarBuilder.build(grammar_spec)
+               @system.add_grammar( GrammarBuilder.build(grammar_spec) )
             end
          end
-         
-         nyi( "build_model" )
+
+         return @system
       end
       
       

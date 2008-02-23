@@ -41,6 +41,8 @@ module Nodes
          super( type.nil? ? text : type )
          @text = text
          locate( start_position, line_number, column_number, source, type, faked, follow_position )
+         
+         @text.source = self
       end
 
       

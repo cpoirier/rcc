@@ -35,6 +35,9 @@
    
    class String
       
+      attr_accessor :source
+      
+      
       #
       # Converts the string to a plural form.  It's simple
       # stupid concatenation...
@@ -54,6 +57,7 @@
             end
          end
       end
+      
    end
    
    

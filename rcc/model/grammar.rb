@@ -10,11 +10,9 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
+require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
 require "#{$RCCLIB}/model/rule.rb"
 require "#{$RCCLIB}/model/precedence_table.rb"
-require "#{$RCCLIB}/plan/lexer_plan.rb"
-require "#{$RCCLIB}/plan/parser_plan.rb"
-require "#{$RCCLIB}/languages/grammar/loader.rb"
 
 
 
@@ -25,35 +23,25 @@ module Model
  #============================================================================================================================
  # class Grammar
  #  - the master representation of the user's grammar description
- #  - can be manipulated directly from code, or loaded from a text file
 
    class Grammar
-      
-      #
-      # ::load_from_file()
-      #  - loads the Grammar from a file on disk
-      
-      def self.load_from_file( descriptor, path )
-         return RCC::Languages::Grammar::Loader::load_from_file( descriptor, path )
-      end
-      
-      
       
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
     
-      attr_reader :name                 # Something that describes this grammar (might be a file path or anything else you want)
-      attr_reader :definitions          # An OrderedHash of TerminalDefinitions and Strings defined in the Grammar
-      attr_reader :rules                # An OrderedHash of every Rule in the Grammar
-      attr_reader :forms                # An Array of every Form in the Grammar
-      attr_reader :labels               # A Hash of name => (Rule, Form)
-      attr_reader :state_table          # An Array of States for all states in the Grammar
-      attr_reader :precedence_table     # A PrecedenceTable, showing rule precedence for shift/reduce conflicts
+      attr_reader :name                 # The name of the grammar within the set
+      attr_reader :strings              # name => lexical pattern (ExpressionForm of SparseRange)
+      attr_reader :groups               # name => Group
+      attr_reader :rules                # name => Rule
+
       attr_writer :start_rule_name      # The name of the first rule in this Grammar
       attr_reader :ignore_terminals     # The names of any Terminals the lexer should eat
       attr_writer :enable_backtracking  # If true, backtracking will be used, where necessary, to handle conflicts
+
+      attr_reader :state_table          # An Array of States for all states in the Grammar
+      attr_reader :precedence_table     # A PrecedenceTable, showing rule precedence for shift/reduce conflicts
       
 
       def initialize( name )
@@ -62,69 +50,62 @@ module Model
          @ignore_terminals    = []
          @enable_backtracking = false
                             
-         @definitions         = Util::OrderedHash.new()
-         @rules               = Util::OrderedHash.new()
-         @forms               = []
-         @labels              = {}
-         @precedence_table    = PrecedenceTable.new()
-      end
-      
-      def backtracking_enabled?()
-         return @enable_backtracking
-      end
-      
-      
-      
-      #
-      # add_terminal_definition()
-      #  - adds a Terminal to the definitions list
-      #  - it is safe to define identical symbols as long as they are anonymous
-      
-      def add_terminal_definition( descriptor )
-         if descriptor.name then
-            nyi( "error handling for duplicate descriptor name" ) if @definitions.member?(descriptor.name)
-            @definitions[descriptor.name] = descriptor
-         else
-            @definitions[@definitions.length] = descriptor
-         end
+         @strings = Util::OrderedHash.new()
+         @groups  = Util::OrderedHash.new()
+         @rules   = Util::OrderedHash.new()
       end
       
       
       #
-      # create_rule()
-      #  - creates a Rule and returns it
-   
-      def create_rule( name )
-         nyi( "error handling for duplicate rule name" ) if @rules.member?(name)
-         nyi( "error handling for duplicate rule name" ) if @labels.member?(name)
-         nyi( "error handling for naming conflict"     ) if @definitions.member?(name)
+      # name_defined?()
+      
+      def name_defined?( name )
+         return (@strings.member?(name) || @groups.member?(name) || @rules.member?(name))
+      end
+
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Operations
+    #---------------------------------------------------------------------------------------------------------------------
+    
+      
+      #
+      # add_string()
+      #  - adds a string definition (ExpressionForm of SparseRanges) to the Grammar
+      
+      def add_string( name, form )
+         type_check( form, Util::ExpressionForms::ExpressionForm )
+         assert( !name_defined?(name), "name [#{name}] is already in use" )
          
-         @rules[name]  = rule = Model::Rule.new( name, @rules.length, self )
-         @labels[name] = rule
-         
-         return rule
+         @strings[name] = form
       end
       
       
       #
-      # add_form()
-      #  - Forms are created via Rules, and then added here
+      # add_group()
+      #  - adds a Group to the Grammar
       
-      def add_form( form )
-         nyi( "error handling for duplicate form labels" ) if !form.label.nil? and @labels.member?(form.label)
+      def add_group( name, group )
+         type_check( group, Group )
+         assert( !name_defined?(name), "name [#{name}] is already in use" )
          
-         #
-         # Assign the form a unique number and add it to the Grammar.
-         
-         form.id_number = @forms.length
-         @forms << form
-         
-         #
-         # Index the name, if there is one
-         
-         @labels[form.label] = form unless form.label.nil?
+         @groups[name] = group
       end
       
+      
+      #
+      # add_rule()
+      #  - adds a Rule to the Grammar
+      
+      def add_rule( rule )
+         type_check( rule, Rule )
+         assert( !name_defined?(rule.name), "name [#{rule.name}] is already in use" )
+         
+         @rules[rule.name] = rule
+      end
       
       
       #
@@ -135,6 +116,23 @@ module Model
          return Plan::ParserPlan.build( self )
       end
       
+      
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Information
+    #---------------------------------------------------------------------------------------------------------------------
+    
+      
+      #
+      # backtracking_enabled?()
+      #  - returns true if the Grammar should support backtracking
+      
+      def backtracking_enabled?()
+         return @enable_backtracking
+      end
+
       
       #
       # start_rule_name()
@@ -148,10 +146,6 @@ module Model
             return @start_rule_name
          end
       end
-
-
-      
-    
     
     
     
@@ -162,11 +156,11 @@ module Model
     #---------------------------------------------------------------------------------------------------------------------
 
       def to_s()
-         return "Grammar #{@name}"
+         return "grammar #{@name}"
       end
 
       def display( stream = $stdout )
-         stream << "Grammar #{@name}\n"
+         stream << "grammar #{@name}\n"
          stream.indent do
             @rules.each do |rule|
                rule.display( stream )
