@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
 
 module RCC
 module Util
@@ -47,18 +48,35 @@ module ExpressionForms
          assert( @maximum.exists?, "you cannot obtain paths() for an infinite Repeater" )
          assert( @maximum <= 10, "if you really need to obtain paths() for a Repeater with greater than 10 elements, change this assertion" )
          
-         run = Sequence.new() 
+         #
+         # First, compile the element to its paths.  We will end up with a BranchPoint.
+         
+         element_paths = nil
+         if @element.is_an?(ExpressionForm) then
+            element = @element.paths
+         else
+            element = BranchPoint.new( Sequence.new(@element) )
+         end
+         
+         #
+         # Next, produce a BranchPoint with a Sequence for each count we are doing.
+         
+         run = Sequence.new()
          minimum.times do
             run << element
          end
          
          result = BranchPoint.new( run )
          (maximum - minimum).times do
-            run += element
+            run = Sequence.new( run, element )
             result << run
          end
-
-         return result
+         
+         
+         #
+         # Finally, get the paths of the produced Sequence.
+         
+         return result.paths
       end
       
       

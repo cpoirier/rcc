@@ -37,41 +37,29 @@ module Plan
 
       attr_reader   :number
       attr_reader   :rule_name
+      attr_reader   :grammar_name
       attr_reader   :name
       attr_reader   :label                  # The label by which this Production is known for CST/AST purposes
       attr_reader   :label_number           # The number within all Productions that share this label
       attr_reader   :symbols
+      attr_reader   :slots                  # A slot name or nil for each Symbol
       attr_reader   :associativity
       attr_reader   :precedence
       attr_reader   :ignore_conflicts
       attr_reader   :form_id                # Unique within the Grammar
       attr_reader   :form_number            # Unique within the Form
-      attr_reader   :slot_mappings
       attr_accessor :ast_class
 
-      def initialize( number, rule_name, label, label_number, symbols, associativity, form_id, form = nil, minimal_phrasing = true )
+      def initialize( number, grammar_name, rule_name, symbols, slots, associativity, ast_class, minimal_phrasing = true )
          @number           = number
+         @grammar_name     = grammar_name
          @rule_name        = rule_name
          @name             = rule_name.intern
-         @label            = label
-         @label_number     = label_number
          @symbols          = symbols
+         @slots            = slots
          @associativity    = associativity
-         @form_id          = form_id
-         @form_number      = form_number
-         @form             = form
+         @ast_class        = ast_class
          @minimal_phrasing = minimal_phrasing
-         @slot_mappings    = {}
-         @ast_class        = nil
-         
-         #
-         # Map the slots for our Symbols.
-         
-         @symbols.each_index do |index|
-            unless (slot = symbols[index].slot_name).nil?
-               @slot_mappings[index] = slot
-            end
-         end
       end
       
       
@@ -98,13 +86,21 @@ module Plan
       end
       
       
-      #
-      # matched_form?
-      #  - returns true if the form starts and ends with a terminal
-      
-      def matched_form?()
-         
+      def display( stream = $stdout )
+         stream.puts "#{@grammar_name}:#{@rule_name} =>"
+         stream.indent do
+            length().times do |i|
+               if @symbols[i].is_an?(Array) then
+                  stream << @symbols[i].join("|")
+               else
+                  stream << @symbols[i]
+               end
+               
+               stream.puts( @slots[i].nil? ? ", then discard" : ", store in #{@slots[i]}" )  
+            end
+         end
       end
+      
       
    end # Production
    

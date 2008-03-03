@@ -78,6 +78,19 @@ module Util
          return result
       end
       
+      
+      #
+      # each()
+      #  - calls your block once for each number in the range
+      
+      def each()
+         ranges.each do |range|
+            range.each do |number|
+               yield( number )
+            end
+         end
+      end
+      
 
       
 

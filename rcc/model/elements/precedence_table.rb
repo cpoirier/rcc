@@ -1,3 +1,4 @@
+
 #!/usr/bin/env ruby
 #================================================================================================================================
 #
@@ -9,57 +10,50 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/plan/sequence_set.rb"
-require "#{$RCCLIB}/plan/production.rb"
 
 module RCC
-module Plan
+module Model
+module Elements
 
  
  #============================================================================================================================
- # class ProductionSet
- #  - holds a related (in whatever way) set of Productions and provides useful services there-upon
+ # class PrecedenceTable
+ #  - a table showing the precedence relationship between various forms and rules
 
-   class ProductionSet < SequenceSet
-      
-      #
-      # ::start_set
-      
-      def self.start_set( start_rule_name )
-         return new( nil, [Production.start_production(start_rule_name)] )
-      end
-      
+   class PrecedenceTable
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
-
-      attr_reader :name
-      attr_reader :productions
-      
-      def initialize( name, productions = [] )
-         super( productions.collect{|production| production.symbols} )
-         @name            = name
-         @productions     = productions
+    
+      attr_reader :rows
+         
+      def initialize()
+         @rows = []    # [ [Form|Rule] ], one inner array for each precedence level
       end
 
-      def <<( production )
-         super( production.symbols )
-         @productions << production
+
+
+      #
+      # create_row()
+      #  - creates or returns a new empty row that you can add Rules and Forms to
+      #  - use << on the returned row
+      
+      def create_row()
+         if @rows.empty? or !@rows[-1].empty? then
+            @rows << []
+         end
+         
+         return @rows[-1]
       end
       
       
-
-
-
-
-
-
       
       
-   end # ProductionSet
+   end # PrecedenceTable
    
 
 
-end  # module Plan
+end  # module Elements
+end  # module Model
 end  # module RCC

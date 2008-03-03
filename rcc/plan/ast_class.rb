@@ -25,51 +25,26 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :name
-      attr_reader :parent_class
       attr_reader :slots
       
-      def initialize( name, parent_class = nil, is_catch_all = false )
-         @name         = name
-         @parent_class = parent_class
-         @slots        = []
-         @catch_all    = nil
-         @is_catch_all = is_catch_all
+      def initialize( name )
+         @name  = name
+         @slots = []
       end
-      
-      def catch_all?()
-         return @is_catch_all
-      end
-      
-      
-      def parent_name()
-         if @parent_class.nil? then
-            return nil
-         else
-            return @parent_class.name
-         end
-      end
-            
-      
-      def catch_all_class()
-         bug( "get the catchall class from the root class" ) unless @parent_class.nil?
-         return @catch_all unless @catch_all.nil?
-         @catch_all = ASTClass.new( @name + "_", self, true )
-      end
-      
       
       def define_slot( name, bug_if_duplicate = true )
          bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
          @slots << name unless @slots.member?(name)
       end
       
-      
-      def merge_slots( production, bug_if_duplicate = true )
-         production.slot_mappings.values.each do |slot|
-            define_slot( slot, bug_if_duplicate )
+      def display( stream = $stdout )
+         stream.puts "#{@name} slots:"
+         stream.indent do
+            @slots.each do |slot|
+               stream.puts slot
+            end
          end
       end
-      
-      
       
    end # ASTClass
    

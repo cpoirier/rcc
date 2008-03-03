@@ -9,48 +9,57 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/model.rb"
 
 module RCC
 module Model
- 
+module Elements
+
  
  #============================================================================================================================
- # class GroupReference
- #  - represents a group reference in a rule
+ # class StringPattern
+ #  - represents a string that can be produced by the Lexer
 
-   class GroupReference < Util::ExpressionForms::BranchPoint
-      include SlotInfo
+   class StringPattern
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
+    
+      attr_reader :name
+      attr_reader :pattern
 
-      attr_reader :group_name
-      attr_reader :group
-      alias symbol_name group_name
-      
-      def initialize( group_name, group )
-         super( *group.branches.collect{|element| element.clone} )
-         @group_name = group_name
-         @group      = group
+      def initialize( name, pattern, is_explicit = true, contraindications = nil )
+         @name              = name
+         @pattern           = pattern
+         @is_explicit       = is_explicit
+         @contraindications = contraindications
       end
       
+      def explicit?()
+         return @is_explicit
+      end
       
+      def has_contraindications?()
+         return (@contraindications.exists? and !@contraindications.empty?)
+      end
       
-      #
-      # display()
-      
-      def display( stream )
-         display_slot_info() do 
-            stream.puts( "parse(#{@branches.collect{|s| s.symbol_name}.join("|")})" )
+      def contraindications()
+         @contraindications = [] if @contraindications.nil?
+         return @contraindications
+      end
+            
+      def display( stream = $stdout )
+         stream.puts "#{@is_explicit ? "explicit" : "implicit"} string pattern #{@name}:"
+         stream.indent do
+            @pattern.display( stream )
          end
       end
       
       
-   end # GroupReference
+   end # StringPattern
    
 
 
+end  # module Elements
 end  # module Model
 end  # module RCC

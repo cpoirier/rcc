@@ -157,7 +157,19 @@
       end
       
       alias is_an? is_a?
+
+      
+      #
+      # specialize_method_name( name )
+      #  - returns a specialized Symbol version of the supplied name, based on this object's class name
+      #  - example: <object:SomeClass>.specialize("process") => :process_some_class
+      
+      def specialize_method_name( name )
+         return "#{name}#{self.class.name.split("::")[-1].gsub(/[A-Z]/){|s| "_#{s.downcase}"}}".intern
+      end
    end
+   
+   
    
    class NilClass
       def each()
@@ -204,6 +216,7 @@
       def indent( additional = "   " )
          old_indent = @indent
          begin
+            additional = "   " * additional if additional.is_a?(Numeric)
             @indent += additional
             yield( self )
          ensure
@@ -211,7 +224,7 @@
          end
       end
       
-      
+
       #
       # with()
       #  - applies a set of name => value properties for the length of your block
@@ -251,7 +264,7 @@
       end
 
 
-      def puts( text )
+      def puts( text = "" )
          write( text )
          write( "\n" )
       end

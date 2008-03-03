@@ -110,7 +110,7 @@ module ExpressionForms
       #    path through this ExpressionForm
       
       def paths()
-         return BranchPoint.new( @branches.collect{|branch| branch.is_an?(ExpressionForm) ? branch.paths : branch} )
+         return BranchPoint.new( @branches.collect{|branch| branch.is_an?(ExpressionForm) ? branch.paths : Sequence.new(branch)} )
       end
       
       

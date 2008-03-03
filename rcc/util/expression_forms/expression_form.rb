@@ -89,7 +89,7 @@ module ExpressionForms
       #
       # display()
       
-      def display( stream )
+      def display( stream = $stdout )
          stream << self.class.name.split("::")[-1].downcase << ": "
          stream << "\n" if element_count() != 1
          

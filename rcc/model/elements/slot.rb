@@ -12,7 +12,8 @@ require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/e
 
 module RCC
 module Model
-
+module Elements
+   
  
  #============================================================================================================================
  # class Slot
@@ -157,5 +158,6 @@ module Model
 
    
 
+end  # module Elements
 end  # module Model
 end  # module RCC

@@ -10,10 +10,10 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/util/recursion_loop_detector.rb"
-require "#{$RCCLIB}/model/slot.rb"
 
 module RCC
 module Model
+module Elements
 
  
  #============================================================================================================================
@@ -33,6 +33,8 @@ module Model
       attr_reader :forms        # The Forms in this Rule (this is where the real data is)
 
       def initialize( name, master_form )
+         type_check( name, Model::Name, false )
+         
          @name            = name
          @master_form     = master_form
          @slots           = Util::OrderedHash.new()     # name => Slot
@@ -48,7 +50,7 @@ module Model
       
       
       def register_plural_import( name, object, imported_slot_name )
-         type_check( object, PluralizationReference )
+         type_check( object, References::PluralizationReference )
          @slots[name] = Slot.new( name, self ) unless @slots.member?(name)
          @slots[name].add_pluralization_import( object, imported_slot_name )
       end
@@ -89,5 +91,8 @@ module Model
    
 
 
+end  # module Elements
 end  # module Model
 end  # module RCC
+
+require "#{$RCCLIB}/model/model.rb"

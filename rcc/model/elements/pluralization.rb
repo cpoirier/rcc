@@ -9,44 +9,56 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/expression_forms/repeater.rb"
 require "#{$RCCLIB}/model/model.rb"
+
 
 module RCC
 module Model
- 
+module Elements
+
  
  #============================================================================================================================
- # class StringReference
- #  - represents a string reference in a rule
-
-   class StringReference
-      include SlotInfo
+ # class Pluralization
+ #  - represents a subrule that has been factor out for repeating
+ 
+   class Pluralization < Rule
       
+      Optional = Util::ExpressionForms::Optional
+      Sequence = Util::ExpressionForms::Sequence
+            
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :string_name
-      alias symbol_name string_name
+      attr_reader :rule_form
+      attr_reader :singular
       
-      def initialize( string_name )
-         @string_name = string_name
+      def initialize( name, singular_form )
+         @singular_form = singular_form
+         
+         tree_side = References::RuleReference.new( name )
+         rule_form = Sequence.new( Optional.new(tree_side), @singular_form )
+         super( name, rule_form )
+
+         # BUG: this prevents effectively slotless Pluralizations from being discarded internally, and maybe should be fixed
+         tree_side.set_slot_name( self, "_tree" )
       end
       
       
-      #
-      # display()
-      
-      def display( stream )
-         display_slot_info() do 
-            stream.puts "lex(#{@string_name})"
-         end
+      def reference( optional = true )
+         return References::PluralizationReference.new( self, optional )
       end
       
       
-   end # StringReference
+      def has_slots?()
+         return @slots.length > 1
+      end
+      
+      
+   end # Pluralizer
    
 
-
+end  # module Elements
 end  # module Model
 end  # module RCC

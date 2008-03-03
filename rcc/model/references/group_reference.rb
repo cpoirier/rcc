@@ -13,25 +13,31 @@ require "#{$RCCLIB}/model/model.rb"
 
 module RCC
 module Model
+module References   
  
  
  #============================================================================================================================
- # class RuleReference
- #  - represents a rule reference in a rule
+ # class GroupReference
+ #  - represents a group reference in a rule
 
-   class RuleReference
-      include SlotInfo
+   class GroupReference
+      include Model::Elements::SlotInfo
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :rule_name
-      alias symbol_name rule_name
+      attr_reader :group
       
-      def initialize( rule_name )
-         @rule_name = rule_name
+      def group_name() ; return @group.name ; end
+      alias symbol_name group_name
+      
+      def initialize( group )
+         assert( group.name.exists?, "you can't use an anonymous group for a reference" )
+         @group = group
       end
+      
+      
       
       
       
@@ -39,15 +45,16 @@ module Model
       # display()
       
       def display( stream )
-         display_slot_info() do 
-            stream.puts "parse(#{@rule_name})"
+         display_slot_info(stream) do 
+            stream.puts( "parse(#{@group.name})" )
          end
       end
       
       
-   end # RuleReference
+   end # GroupReference
    
 
 
+end  # module References
 end  # module Model
 end  # module RCC

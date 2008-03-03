@@ -14,6 +14,7 @@ require "#{$RCCLIB}/util/expression_forms/repeater.rb"
 
 module RCC
 module Model
+module References
  
  
  #============================================================================================================================
@@ -21,31 +22,48 @@ module Model
  #  - represents a pluralization reference in a rule
 
    class PluralizationReference < Util::ExpressionForms::ExpressionForm
-      include SlotInfo
-      Optional = Util::ExpressionForms::Optional
+      include Model::Elements::SlotInfo
+      
+      ExpressionForm = Util::ExpressionForms::ExpressionForm
+      Optional       = Util::ExpressionForms::Optional
+      BranchPoint    = Util::ExpressionForms::BranchPoint
+      Sequence       = Util::ExpressionForms::Sequence
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :pluralization
-      attr_reader :pluralization_name
+      
+      def pluralization_name() ; return @pluralization.name ; end
       alias symbol_name pluralization_name
       
       def initialize( pluralization, optional = false )
-         @pluralization_name = pluralization.name
-         @pluralization      = pluralization
-         @optional           = optional
-         @expression         = RuleReference.new( @pluralization_name )
-         @expression         = Optional.new( @expression ) if optional
+         @pluralization = pluralization
+         @optional      = optional
+         @expression    = RuleReference.new(@pluralization.name)
+         @expression    = Optional.new( @expression ) if optional
       end      
       
+      
+      #
+      # paths()
+      
+      def paths()
+         if @expression.is_an?(ExpressionForm) then
+            return @expression.paths()
+         else
+            return BranchPoint.new(Sequence.new(@expression))
+         end
+      end
+
+
       
       #
       # display()
       
       def display( stream = $stdout )
-         display_slot_info() do 
+         display_slot_info(stream) do 
             @expression.display( stream )
          end
       end
@@ -67,14 +85,11 @@ module Model
       end
       
       
-      #
-      # 
-      
-      
       
    end # PluralizationReference
    
 
 
+end  # module References
 end  # module Model
 end  # module RCC

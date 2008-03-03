@@ -44,7 +44,7 @@ module Grammar
     #---------------------------------------------------------------------------------------------------------------------
 
       def initialize()
-         @system = Model::System.new()
+         @builders = Util::OrderedHash.new()    # name => GrammarBuilder
       end
 
 
@@ -56,14 +56,26 @@ module Grammar
       def build_model( system_spec )
          assert( system_spec.type == :system_spec, "Um, perhaps you meant to pass a system_spec AST?" )
          
+         #
+         # Pass 1: load up all the GrammarBuilders so that all names can be verified.
+         
          system_spec.grammar_specs.each do |grammar_spec|
-            if @system.grammars.member?(grammar_spec.name.text) then
+            if @builders.member?(grammar_spec.name.text) then
                nyi( "error handling for duplicate grammar name" )
             else
-               @system.add_grammar( GrammarBuilder.build(grammar_spec) )
+               @builders[grammar_spec.name.text] = GrammarBuilder.new( grammar_spec, self )
             end
          end
-
+         
+         
+         #
+         # Pass 2: build the Model and return it.
+         
+         @system = Model::System.new()
+         @builders.each do |builder|
+            @system.add_grammar( builder.build_model() )
+         end
+         
          return @system
       end
       

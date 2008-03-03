@@ -22,129 +22,118 @@ module Plan
    class LexerPlan
 
       
-      #
-      # build( grammar_model )
-      #  - builds a master LexerPlan that anchor a plan for lexing the supplied Model::Grammar
-      
-      def self.build( grammar_model )
-
-         #
-         # First, separate literal strings from regex and special types.
-         
-         literals = {}
-         patterns = Util::OrderedHash.new()
-         
-         grammar_model.definitions.each do |name, definition|
-            case definition
-            when Model::TerminalDefinitions::Simple
-               literals[definition.definition] = name.intern
-            when Model::TerminalDefinitions::Pattern
-               patterns[definition.regexp    ] = name.intern
-            else
-               bug "there are no other types!"
-            end
-         end
-         
-         grammar_model.forms.each do |form|
-            form.phrases.each do |phrase|
-               phrase.symbols.each do |symbol|
-                  if symbol.is_a?(Model::FormElements::RawTerminal) then
-                     literals[symbol.name] = symbol.name unless literals.member?(symbol.name)
-                  end
-               end
-            end
-         end
-
-         return new( literals, patterns, grammar_model.ignore_terminals.collect{|name| name.intern} )
-      end
-      
-      
-      
-      
-      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :literal_processor
-      attr_reader :patterns
+      attr_reader :complex_patterns
+      attr_reader :simple_patterns
       attr_reader :fallback_plan
-      attr_reader :ignore_list
       
       
-      def initialize( literals, patterns = nil, ignore_list = nil, fallback_plan = nil, context = "" )
-         @context       = context            # The String that would have already been lexed before getting here
-         @literals      = literals           # literal => symbol_name, for literal symbols
-         @patterns      = patterns           # OrderedHash of Regexp => symbol_name, for pattern-defined symbols (tried after literals)
-         @ignore_list   = ignore_list        # A list of produced tokens to discard as irrelevant (causing a return to lexing)
-         @fallback_plan = fallback_plan      # Another LexerPlan to be tried if this one generates no token
-
-         @literal_processor = LexerState.new( literals )
+      def initialize( fallback_plan = nil, complex_patterns = [], simple_patterns = [] )
+         @complex_patterns = complex_patterns
+         @simple_patterns  = simple_patterns
+         @fallback_plan    = fallback_plan      # Another LexerPlan to be tried if this one generates no token
+         @lexer_state      = nil
       end
       
       
       #
+      # add_pattern()
+      
+      def add_pattern( grammar_name, symbol_name, expression, is_complex = true )
+         assert( @lexer_state.nil?, "you cannot add_pattern()s to this LexerPlan after close()ing it" )
+         
+         if is_complex then
+            @complex_patterns << [grammar_name, symbol_name, expression]
+         else
+            @simple_patterns  << [grammar_name, symbol_name, expression]
+         end
+      end
+      
+      
+      #
+      # lexer_state()
+      
+      def lexer_state()
+         
+         if @lexer_state.nil? then
+            
+            #
+            # Organize the @simple_patterns into something that can be represented by a LexerState.
+            # Simple patterns have no branching or anything else, so we can just convert them to arrays
+            # of SparseRanges.
+         
+            vectors = []
+            @simple_patterns.each do |descriptor|
+               grammar_name, symbol_name, sequence = *descriptor
+            
+               vectors << (sequence.elements + [grammar_name, symbol_name])
+            end
+
+            @lexer_state = LexerState.new( vectors )
+         end
+         
+         return @lexer_state
+      end
+
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Context-sensitizing
+    #---------------------------------------------------------------------------------------------------------------------
+    
+      #
       # prioritize()
       #  - returns a copy of this LexerPlan in which the named symbols will be identified first
+      #  - symbol_names must be an array of [grammar_name, symbol_name], or a single grammar name (for the whole grammar)
       
-      def prioritize( symbol_names, maintain_ordering = true )
+      
+      def prioritize( names )
          
          #
-         # Index our symbol names, if not already done.
+         # Collect the expressions we are prioritizing, maintain declaration order within the set.
          
-         if @literal_lookup.nil? then
-            @literal_lookup = {}
-            @literals.each do |literal, symbol_name|
-               @literal_lookup[symbol_name] = literal
+         complex_patterns = []
+         simple_patterns  = []
+         if names.is_a?(String) then
+            grammar_name = names
+            [[@complex_patterns, complex_patterns], [@simple_patterns, simple_patterns]].each do |pair|
+               from, to = *pair
+               to = from.select{|descriptor| descriptor[0] == grammar_name}
             end
-            
-            @pattern_lookup = {}
-            @patterns.each do |pattern, symbol_name|
-               @pattern_lookup[symbol_name] = pattern
-            end
-         end
-         
-         
-         #
-         # Pick those symbols we'll need to prioritize.  We don't really care about literals order, but unless asked not
-         # to, we keep the pattern subset in the declaration order.
-         
-         literals = {}
-         patterns = Util::OrderedHash.new()
-         
-         symbol_names.each do |symbol_name|
-            if symbol_name.nil? then
-               # no op -- this is the end of input marker
-            elsif @literal_lookup.member?(symbol_name) then
-               literals[@literal_lookup[symbol_name]] = symbol_name
-            elsif @pattern_lookup.member?(symbol_name) then
-               patterns[@pattern_lookup[symbol_name]] = symbol_name
-            else
-               bug "can't prioritize unknown symbol_name [#{symbol_name}]"
-            end
-         end
-
-
-         #
-         # If there are no patterns in the selected set, we don't actually need to change anything, as prioritize()
-         # is really about increasing the precedence of pattern processing.  The DFA that handles literals will 
-         # produce the same results, regardless of ordering.  We can also use the current LexerPlan if any patterns
-         # requested would be the first patterns processed anyway.
-         #
-         # Otherwise, we produce a new LexerPlan, backed by us.
-         
-         if patterns.empty? then
-            return self
          else
-            patterns.reorder( @patterns.order ) if maintain_ordering
+
+            #
+            # When processing a list of [grammar_name, symbol_name], we want to prioritize the named expressions
+            # while maintaining the declaration order of the prioritized expressions. 
             
-            if patterns.order == @patterns.order.slice(0..patterns.length) then
-               return self
-            else
-               return self.class.new( literals, patterns, @ignore_list, self, @context )
+            index = {}
+            names.each do |name_pair|
+               grammar_name, symbol_name = *name_pair
+               index[grammar_name] = {} unless index.member?(grammar_name)
+               index[grammar_name][symbol_name] = true
+            end
+            
+            [[@complex_patterns, complex_patterns], [@simple_patterns, simple_patterns]].each do |pair|
+               from, to = *pair
+               to = from.select{|descriptor| index.member?(descriptor[0]) and index[descriptor[0]].member?(descriptor[1]) }
             end
          end
+         
+         
+         #
+         # If there is no effective change in order between the produced set and this LexerPlan,
+         # just return self.  Otherwise, construct a new LexerPlan.
+
+         return self if (complex_patterns.empty? and simple_patterns.empty?)
+         return self if complex_patterns == @complex_patterns.order.slice(0..complex_patterns.length) and simple_patterns == @simple_patterns.order.slice(0..simple_patterns.length)
+         return self.class.new( self, complex_patterns, simple_patterns )
       end
 
 

@@ -26,26 +26,15 @@ module Grammar
 
    class GrammarBuilder
       
-      #
-      # ::build()
-      #  - given an AST of a grammar, builds a Model::Grammar or an error report
-      
-      def self.build( ast )
-         builder = new()
-         return builder.build_model( ast )
-      end
-      
       Node                   = RCC::Scanner::Artifacts::Node
-      Group                  = RCC::Model::Group
-      Rule                   = RCC::Model::Rule
-      Pluralization          = RCC::Model::Pluralization
-      StringReference        = RCC::Model::StringReference
-      RuleReference          = RCC::Model::RuleReference
-      GroupReference         = RCC::Model::GroupReference
-      PluralizationReference = RCC::Model::PluralizationReference
-      
-      
-      
+      Group                  = RCC::Model::Elements::Group
+      Rule                   = RCC::Model::Elements::Rule
+      Pluralization          = RCC::Model::Elements::Pluralization
+      StringPattern          = RCC::Model::Elements::StringPattern
+      StringReference        = RCC::Model::References::StringReference
+      RuleReference          = RCC::Model::References::RuleReference
+      GroupReference         = RCC::Model::References::GroupReference
+      PluralizationReference = RCC::Model::References::PluralizationReference
       
       
       
@@ -53,8 +42,12 @@ module Grammar
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
-         @grammar = nil
+      def initialize( grammar_spec, model_builder )
+         assert( grammar_spec.type == :grammar_spec, "Um, perhaps you meant to pass a grammar_spec AST?" )
+         
+         @name                = grammar_spec.name.text
+         @grammar_spec        = grammar_spec
+         @model_builder       = model_builder
          
          @specifications      = Util::OrderedHash.new()   # name => spec, in declaration order
          @option_specs        = []
@@ -62,97 +55,86 @@ module Grammar
          
          @string_defs         = Util::OrderedHash.new()    # name => ExpressionForm of SparseRange
          @group_defs          = Util::OrderedHash.new()    # name => Group
-         @rule_defs           = Util::OrderedHash.new()    # name => Rule
+         @element_defs        = Util::OrderedHash.new()    # name => Rule or Group
          @naming_contexts     = Util::OrderedHash.new()    # name => naming context data
+         
+         register_specs( [grammar_spec] )
       end
 
 
 
       #
       # build_model()
-      #  - given a AST of a grammar, returns a Model::Grammar or an error report
+      #  - builds the Model::Grammar from specs
       
-      def build_model( grammar_spec )
-         assert( grammar_spec.type == :grammar_spec, "Um, perhaps you meant to pass a grammar_spec AST?" )
+      def build_model()
          
-         #
-         # Create a new Grammar Model.
-         
-         @grammar = RCC::Model::Grammar.new( grammar_spec.name.text )
-         
-         
-         #
-         # Start by moving all of the specs into @specifications.
-         
-         register_specs( [grammar_spec] )
-         
-
          #
          # Resolve string specs into ExpressionForms of SparseRanges of character codes.  
 
          @specifications.each do |name, spec|
             next unless spec.type == :string_spec
-            @string_defs[name] = process_string_data( spec.definition, [name] ) unless @string_defs.member?(name)
+            @string_defs[name] = StringPattern.new( create_name(name), process_string_data(spec.definition, [name]) ) unless @string_defs.member?(name)
+            
+            warn_nyi( "skipping contraindications on string -- these are only done here, so must be done for every string" )
          end
          
          if false then
-            @string_defs.each do |name, definition|
-               $stdout.puts "string_def #{name}:"
-               $stdout.indent do 
-                  definition.display($stdout)
-               end
+            @string_defs.each do |name, string_pattern|
+               string_pattern.display( $stdout )
+               $stdout.end_line
                $stdout.puts ""
             end
          end
          
          
          #
-         # Resolve group specs into Group objects.  
+         # Resolve group specs into Group objects.
          
          @specifications.each do |name, spec|
             next unless spec.type == :group_spec
             @group_defs[name] = process_group_data( spec, [name] ) unless @group_defs.member?(name)
+            @group_defs[name].name = create_name(name)
          end
+            
          
-         if false then
-            @group_defs.each do |name, definition|
-               $stdout.puts "group_def #{name}:"
-               $stdout.indent do
-                  definition.display( $stdout )
-               end
-               $stdout.puts ""
+         #
+         # Resolve rule specs into Rules.  Because order matters (earlier definitions have precedence),
+         # we'll also import Groups into the @elements list at this time.
+
+         @specifications.each do |name, spec|
+            case spec.type
+               when :rule_spec
+                  @naming_contexts[name] = NamingContext.new( self )
+                  @element_defs[name]    = Rule.new( create_name(name), process_rule_expression(spec.expression, @naming_contexts[name]) )
+            
+                  #
+                  # Commit the naming context into the Rule.
+            
+                  @naming_contexts[name].commit( @element_defs[name] )
+
+                  #
+                  # Deal with any transformations.
+            
+                  warn_nyi( "skipping transformations on rule" )
+                  
+               when :group_spec
+                  @element_defs[name] = @group_defs[name]
             end
          end
          
-
-         #
-         # Resolve rule specs into ExpressionForms.  Note that we do them all here -- they are never
-         # built via reference.
-         
-         @specifications.each do |name, spec|
-            next unless spec.type == :rule_spec
-            
-            @naming_contexts[name] = NamingContext.new( self )
-            @rule_defs[name]       = Rule.new( name, process_rule_expression(spec.expression, @naming_contexts[name]) )
-            
-            #
-            # Commit the naming context into the Rule.
-            
-            @naming_contexts[name].commit( @rule_defs[name] )
-
-            #
-            # Deal with any transformations.
-            
-            warn_nyi( "skipping transformations on rule" )
-         end
-         
          if false then
-            @rule_defs.each do |name, definition|
+            @element_defs.each do |name, definition|
                definition.display( $stdout )
-               # $stdout.puts "rule_def #{name}:"
-               # $stdout.indent do
-               #    definition.display( $stdout )
-               # end
+               $stdout.end_line
+               $stdout.puts
+            end
+         end
+            
+         if true then
+            @string_defs.each do |name, string_pattern|
+               string_pattern.display( $stdout )
+               $stdout.end_line
                $stdout.puts ""
             end
          end
@@ -160,12 +142,12 @@ module Grammar
          
          #
          # Finally, build the Grammar Model and return it.
-         
-         @string_defs.each {|name, form | @grammar.add_string(name, form)}
-         @group_defs.each  {|name, group| @grammar.add_group(name, group)}
-         @rule_defs.each   {|name, rule | @grammar.add_rule(rule)        }
-         
-         return @grammar
+
+         grammar = RCC::Model::Grammar.new( @grammar_spec.name.text )
+         @string_defs.each {|name, definition| grammar.add_string(name, definition)}
+         @element_defs.each{|name, definition| grammar.add_element(definition)}
+
+         return grammar
       end
       
       
@@ -332,12 +314,12 @@ module Grammar
                         nyi( "error handling for detected reference loop [#{name}]" )
                      else
                         if resolution = process_string_data(spec.definition, loop_detection + [name]) then
-                           @string_defs[name] = resolution
+                           @string_defs[name] = StringPattern.new( create_name(name), resolution ) 
                         end
                      end
                   end
             
-                  resolution = @string_defs[name]
+                  resolution = @string_defs[name].pattern
                   
                else
                   nyi( "error handling for string reference that resolves to non-string" )
@@ -414,7 +396,7 @@ module Grammar
                         nyi( "error handling for detected reference loop [#{name}]" )
                      else
                         if string_def = process_string_data(spec.definition, loop_detection + [name]) then
-                           @string_defs[name] = string_def
+                           @string_defs[name] = StringPattern.new( create_name(name), string_def )
                         end
                      end
                   end
@@ -424,7 +406,7 @@ module Grammar
                   # that SparseRange, ensuring we never have to choose from multiple SparseRanges on the 
                   # way.
                   
-                  form = @string_defs[name]
+                  form = @string_defs[name].pattern
                   until resolution.exists? or form.nil?
                      if form.element_count == 1 then
                         form.each_element {|child| form = child }
@@ -463,7 +445,7 @@ module Grammar
                
             when :rule_spec
                result = Group.new()
-               result << RuleReference.new( node.name.text )
+               result << RuleReference.new( create_name(node.name.text) )
       
             when :spec_reference
                name = node.name.text
@@ -488,9 +470,9 @@ module Grammar
                         end
                         
                      when :rule_spec
-                        result << RuleReference.new( name )
+                        result << RuleReference.new( create_name(name) )
                      when :string_spec
-                        result << StringReference.new( name )
+                        result << StringReference.new( create_name(name) )
                      else
                         nyi( "error handling for group reference to macro or other ineligible name [#{name}]" )
                   end
@@ -545,7 +527,7 @@ module Grammar
                      # term, and its plural form is not taken, we'll use that.  Otherwise, we'll generate
                      # a name.
                      
-                     child_name = "_plural_#{@rule_defs.length}"
+                     child_name = "_plural_#{@element_defs.length}"
                      if child_form.element_count == 1 and [StringReference, RuleReference, GroupReference].member?(child_form[0].class) then
                         singular_name = child_form[0].symbol_name
                         plural_name   = pluralize( singular_name )
@@ -557,19 +539,19 @@ module Grammar
                      end
                      
                      #
-                     # If the name is already in the @rule_defs list, then this is a simple pluralization
+                     # If the name is already in the @element_defs list, then this is a simple pluralization
                      # that has already been handled.  We won't duplicate the Pluralization.  Otherwise,
                      # it's new, and we save it.
                      
-                     unless @rule_defs.member?(child_name)
-                        @rule_defs[child_name]       = Pluralization.new( child_name, child_form )
+                     unless @element_defs.member?(child_name)
+                        @element_defs[child_name]    = Pluralization.new( create_name(child_name), child_form )
                         @naming_contexts[child_name] = child_namer
                         
-                        child_namer.commit( @rule_defs[child_name] )
+                        child_namer.commit( @element_defs[child_name] )
                      end
                      
-                     result = @rule_defs[child_name].reference( node.repeat_count.text == "*" )
-                     if @rule_defs[child_name].has_slots? then
+                     result = @element_defs[child_name].reference( node.repeat_count.text == "*" )
+                     if @element_defs[child_name].has_slots? then
                         naming_context.name( result, create_token("_tree_" + child_name) )
                         naming_context.import_pluralization( result, @naming_contexts[child_name] )
                      end
@@ -594,7 +576,7 @@ module Grammar
             
             when :string_exp
                word_name = anonymous_string( process_string_data(node.string) )
-               symbol = StringReference.new( word_name )
+               symbol = StringReference.new( create_name(word_name) )
                result = create_sequence( symbol )
                
                naming_context.name( symbol, node.label, true ) if node.label.exists?
@@ -624,13 +606,13 @@ module Grammar
                         symbol = nil
                         case spec.type
                            when :string_spec
-                              symbol = StringReference.new( referenced_name )
+                              symbol = StringReference.new( create_name(referenced_name) )
                         
                            when :rule_spec
-                              symbol = RuleReference.new( referenced_name )
+                              symbol = RuleReference.new( create_name(referenced_name) )
                            
                            when :group_spec
-                              symbol = GroupReference.new( referenced_name, @group_defs[referenced_name] )
+                              symbol = GroupReference.new( @group_defs[referenced_name] )
                            
                            else  
                               nyi( "error handling for invalid referenced name", referenced_name )
@@ -766,13 +748,13 @@ module Grammar
          if representation.exists? and representation.length > 0 and representation.length < 30 then
             representation = "_literal_#{representation}"
             if @string_defs.member?(representation) then
-               name = representation if @string_defs[representation] == string_def
+               name = representation if @string_defs[representation].pattern == string_def
             else
                name = representation
             end
          end
 
-         @string_defs[name] = string_def unless @string_defs.member?(name)
+         @string_defs[name] = StringPattern.new( create_name(name), string_def, false ) unless @string_defs.member?(name)
          return name
       end
       
@@ -824,6 +806,13 @@ module Grammar
       end
 
 
+      #
+      # create_name()
+      #  - returns a Model::Name
+      
+      def create_name( name )
+         return Model::Name.create(name, @name)
+      end
 
 
       @@code_representations = { 

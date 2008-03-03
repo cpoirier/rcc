@@ -11,8 +11,6 @@
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
 require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
-require "#{$RCCLIB}/model/rule.rb"
-require "#{$RCCLIB}/model/precedence_table.rb"
 
 
 
@@ -36,13 +34,13 @@ module Model
       attr_reader :groups               # name => Group
       attr_reader :rules                # name => Rule
 
-      attr_writer :start_rule_name      # The name of the first rule in this Grammar
       attr_reader :ignore_terminals     # The names of any Terminals the lexer should eat
       attr_writer :enable_backtracking  # If true, backtracking will be used, where necessary, to handle conflicts
 
       attr_reader :state_table          # An Array of States for all states in the Grammar
       attr_reader :precedence_table     # A PrecedenceTable, showing rule precedence for shift/reduce conflicts
       
+      attr_accessor :system
 
       def initialize( name )
          @name                = name
@@ -51,8 +49,16 @@ module Model
          @enable_backtracking = false
                             
          @strings = Util::OrderedHash.new()
-         @groups  = Util::OrderedHash.new()
          @rules   = Util::OrderedHash.new()
+      end
+      
+      def start_rule_name=( name )
+         assert( name_defined?(name), "start_rule [#{name}] not defined!" )
+         @start_rule_name = name
+      end
+      
+      def start_rule_name()
+         return @start_rule_name.nil? ? @rules.order[0] : @start_rule_name
       end
       
       
@@ -60,9 +66,10 @@ module Model
       # name_defined?()
       
       def name_defined?( name )
-         return (@strings.member?(name) || @groups.member?(name) || @rules.member?(name))
+         return (@strings.member?(name) || @rules.member?(name))
       end
-
+      
+      
 
 
 
@@ -76,11 +83,11 @@ module Model
       # add_string()
       #  - adds a string definition (ExpressionForm of SparseRanges) to the Grammar
       
-      def add_string( name, form )
-         type_check( form, Util::ExpressionForms::ExpressionForm )
+      def add_string( name, string_pattern )
+         type_check( string_pattern, Elements::StringPattern )
          assert( !name_defined?(name), "name [#{name}] is already in use" )
          
-         @strings[name] = form
+         @strings[name] = string_pattern
       end
       
       
@@ -88,11 +95,11 @@ module Model
       # add_group()
       #  - adds a Group to the Grammar
       
-      def add_group( name, group )
-         type_check( group, Group )
+      def add_group( group )
+         type_check( group, Elements::Group )
          assert( !name_defined?(name), "name [#{name}] is already in use" )
          
-         @groups[name] = group
+         @rules[group.name] = group
       end
       
       
@@ -101,10 +108,25 @@ module Model
       #  - adds a Rule to the Grammar
       
       def add_rule( rule )
-         type_check( rule, Rule )
+         type_check( rule, Elements::Rule )
          assert( !name_defined?(rule.name), "name [#{rule.name}] is already in use" )
          
          @rules[rule.name] = rule
+      end
+      
+      
+      #
+      # add_element()
+      
+      def add_element( element )
+         case element
+            when Elements::Rule
+               return add_rule( element )
+            when Elements::Group
+               return add_group( element )
+            else
+               nyi( nil, element.class.name )
+         end
       end
       
       
@@ -135,16 +157,11 @@ module Model
 
       
       #
-      # start_rule_name()
-      #  - returns the name of the start rule for the Grammar
+      # start_rule()
+      #  - returns a RuleReference to the start rule for the Grammar
       
-      def start_rule_name()
-         if @start_rule_name.nil? then
-            return nil if @rules.empty?
-            return @rules[0].name
-         else
-            return @start_rule_name
-         end
+      def start_rule()
+         return References::RuleReference.new( Model::Name.create(start_rule_name(), @name) )
       end
     
     
@@ -176,3 +193,6 @@ module Model
 
 end  # module Model
 end  # module RCC
+
+
+require "#{$RCCLIB}/model/model.rb"

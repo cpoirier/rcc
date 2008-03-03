@@ -33,21 +33,21 @@ module Plan
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :slot_name
+      attr_reader :grammar_name
+      attr_reader :symbol_name
       
-      def initialize( name, terminal_indicator, slot_name = nil )
-         @name      = name
-         @terminal  = terminal_indicator
-         @slot_name = slot_name
+      def initialize( grammar_name, symbol_name, names_token )
+         @grammar_name = grammar_name
+         @symbol_name  = symbol_name
+         @names_token  = names_token
       end
       
-      def terminal?()
-         @terminal
+      def names_token?()
+         @names_token
       end
       
-      def non_terminal?()
-         !@terminal
+      def names_production?()
+         !@names_token
       end
       
       def hash()
@@ -59,19 +59,14 @@ module Plan
          return @name == rhs.name
       end
       
-      def to_s( include_slot_names = false )
-         if @slot_name.nil? or !include_slot_names then
-            return Symbol.describe(@name) 
-         else
-            return Symbol.describe(@name) + ":" + @slot_name
-         end
+      def to_s()
+         return (@names_token ? "lex" : "parse") + " " + (@symbol_name.nil? ? "$" : (@grammar_name + ":" + @symbol_name))
       end
       
-      def self.describe( name )
-         return "$"       if name.nil?
-         return "#{name}" if name.is_a?(::Symbol)
-         return "'#{name.gsub("\\", "\\\\").gsub("\n", "\\n").gsub("'", "''")}'"
-      end
+      # def self.describe( name )
+      #    return "$" if name.nil?
+      #    return name.to_s
+      # end
       
       
    end # Symbol

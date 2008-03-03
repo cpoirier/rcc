@@ -9,12 +9,12 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/util/expression_forms/branch_point.rb"
 require "#{$RCCLIB}/model/model.rb"
 
 
 module RCC
 module Model
+module Elements
 
  
  #============================================================================================================================
@@ -22,19 +22,29 @@ module Model
  #  - represents a group of symbols in a rule
  #  - a group is essentially an alias for one or more symbols
  
-   class Group < Util::ExpressionForms::BranchPoint
+   class Group
       
             
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :symbol_name
+      attr_reader :name
+      attr_reader :member_references
       
-      def initialize( symbol_name = nil, member_symbols = [] )
-         super( *member_symbols )
-         @symbol_name = symbol_name
+      def initialize( name = nil, member_references = [] )
+         type_check( name, Model::Name, true )
+         
+         @name = name
+         @member_references = member_references
       end
+      
+      
+      def name=( name )
+         type_check( name, Model::Name, true )
+         @name = name
+      end
+
       
       
       #
@@ -42,7 +52,7 @@ module Model
       
       def display( stream )
          nyi( nil )
-         stream.puts( "parse(#{@branches.collect{|s| s.symbol_name}.join("|")})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}")
+         stream.puts( "parse(#{@branches.collect{|s| s.symbol_name}.join("|")})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}" )
       end
       
       
@@ -54,17 +64,13 @@ module Model
       def <<( member )
          case member
             when Group
-               member.each_element do |symbol|
-                  self << symbol.clone()
+               member.member_references.each do |reference|
+                  self << reference
                end
-            when RuleReference
-               super( member )
-            when StringReference
-               super( member )
+            when References::RuleReference, References::StringReference
+               @member_references << member.clone()
             else
-               member.each_element do |element|
-                  self << element
-               end
+               nyi( nil, member )
          end
       end
 
@@ -73,5 +79,6 @@ module Model
    
 
 
+end  # module Elements
 end  # module Model
 end  # module RCC

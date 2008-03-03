@@ -8,9 +8,11 @@
 #
 #================================================================================================================================
 
+
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
 
+   
 module RCC
 module Util
 module ExpressionForms
@@ -47,6 +49,12 @@ module ExpressionForms
          case element
             when Sequence
                @elements.concat( element.elements )
+            # when BranchPoint
+            #    if element.element_count == 1 then
+            #       self << element[0]
+            #    else
+            #       @elements << element
+            #    end
             else
                @elements << element
          end
@@ -68,7 +76,7 @@ module ExpressionForms
       
       def paths()
          
-         return BranchPoint.new() if @elements.empty?
+         return BranchPoint.new(Sequence.new()) if @elements.empty?
          
          #
          # First, compile each element to its paths.  We will end up with an array of BranchPoints,
@@ -89,7 +97,7 @@ module ExpressionForms
             if element.is_an?(ExpressionForm) then
                verticals << element.paths()
             else
-               verticals << BranchPoint.new(element)
+               verticals << BranchPoint.new(Sequence.new(element))
             end
          end
          
@@ -149,6 +157,9 @@ end  # module RCC
 
 
 if $0 == __FILE__ then
+   require "#{$RCCLIB}/util/expression_forms/branch_point.rb"
+   require "#{$RCCLIB}/util/expression_forms/repeater.rb"
+   
    def E(*e) ; RCC::Util::ExpressionForms::Element.new(*e) ; end
    def S(*e) ; RCC::Util::ExpressionForms::Sequence.new(*e) ; end
    def B(*e) ; RCC::Util::ExpressionForms::BranchPoint.new(*e) ; end
@@ -193,4 +204,42 @@ if $0 == __FILE__ then
       puts "FAIL"
    end
    
+   
+   
+   puts "-----------"
+   
+   sequence = S(
+      "a",
+      R(S("b", O("c")), 1, 2),
+      O("d")
+   )
+   
+   expected = B(
+      S("a", "b"),
+      S("a", "b", "d"),
+      S("a", "b", "c"),
+      S("a", "b", "c", "d"),
+      S("a", "b", "b"),
+      S("a", "b", "b", "d"),
+      S("a", "b", "b", "c"),
+      S("a", "b", "b", "c", "d"),
+      S("a", "b", "c", "b"),
+      S("a", "b", "c", "b", "d"),
+      S("a", "b", "c", "b", "c"),
+      S("a", "b", "c", "b", "c", "d")
+   )
+   
+   result = sequence.paths
+   result.branches.each do |sequence|
+      puts sequence.elements.join(", ")
+   end
+
+   if result == expected then
+      puts "PASS"
+   else
+      puts "FAIL"
+   end
+   
+   exit
 end
+
