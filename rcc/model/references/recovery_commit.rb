@@ -1,4 +1,3 @@
-
 #!/usr/bin/env ruby
 #================================================================================================================================
 #
@@ -13,47 +12,29 @@ require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/e
 
 module RCC
 module Model
-module Elements
+module References
 
  
  #============================================================================================================================
- # class PrecedenceTable
- #  - a table showing the precedence relationship between various groups or rules
+ # class RecoveryCommit
+ #  - a marker showing a recovery commit in a Rule
 
-   class PrecedenceTable
+   class RecoveryCommit
+      include Model::Elements::SlotInfo
+      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
-    
-      attr_reader :rows
-         
+
       def initialize()
-         @rows = []    # [ RuleReference ], one inner array for each precedence level
-      end
-
-
-
-      #
-      # create_row()
-      #  - creates or returns a new empty row that you can add references to 
-      #  - use << on the returned row
-      
-      def create_row()
-         if @rows.empty? or !@rows[-1].empty? then
-            @rows << []
-         end
          
-         return @rows[-1]
       end
       
-      
-      
-      
-   end # PrecedenceTable
+   end # RecoveryCommit
    
 
 
-end  # module Elements
+end  # module References
 end  # module Model
 end  # module RCC

@@ -31,10 +31,12 @@ module Grammar
       Rule                   = RCC::Model::Elements::Rule
       Pluralization          = RCC::Model::Elements::Pluralization
       StringPattern          = RCC::Model::Elements::StringPattern
+      PrecedenceTable        = RCC::Model::Elements::PrecedenceTable
       StringReference        = RCC::Model::References::StringReference
       RuleReference          = RCC::Model::References::RuleReference
       GroupReference         = RCC::Model::References::GroupReference
       PluralizationReference = RCC::Model::References::PluralizationReference
+      RecoveryCommit         = RCC::Model::References::RecoveryCommit
       
       
       
@@ -52,6 +54,7 @@ module Grammar
          @specifications      = Util::OrderedHash.new()   # name => spec, in declaration order
          @option_specs        = []
          @pluralization_specs = Util::OrderedHash.new()
+         @precedence_specs    = []
          
          @string_defs         = Util::OrderedHash.new()    # name => ExpressionForm of SparseRange
          @group_defs          = Util::OrderedHash.new()    # name => Group
@@ -105,9 +108,34 @@ module Grammar
          @specifications.each do |name, spec|
             case spec.type
                when :rule_spec
+                  
+                  #
+                  # Create the rule.
+                  
                   @naming_contexts[name] = NamingContext.new( self )
                   @element_defs[name]    = Rule.new( create_name(name), process_rule_expression(spec.expression, @naming_contexts[name]) )
             
+                  #
+                  # Process any directives.
+                  
+                  spec.directives.each do |directive|
+                     case directive.type
+                        when :associativity_directive
+                           case directive.direction.text
+                              when "left"
+                                 @element_defs[name].associativity = :left
+                              when "right"
+                                 @element_defs[name].associativity = :right
+                              when "none"
+                                 @element_defs[name].associativity = :none
+                              else
+                                 nyi( "unsupported associativity [#{directive.direction.text}]", directive.direction )
+                           end
+                        else
+                           nyi( "unsupported directive [#{directive.type}]", directive )
+                     end
+                  end
+                  
                   #
                   # Commit the naming context into the Rule.
             
@@ -131,13 +159,38 @@ module Grammar
             end
          end
             
-         if true then
+         if false then
             @string_defs.each do |name, string_pattern|
                string_pattern.display( $stdout )
                $stdout.end_line
                $stdout.puts ""
             end
          end
+         
+         
+         #
+         # Build any PrecedenceTables.
+         
+         precedence_tables = []
+         @precedence_specs.each do |spec|
+            precedence_table = PrecedenceTable.new()
+            precedence_tables << precedence_table
+            
+            spec.precedence_levels.each do |level|
+               row = precedence_table.create_row()
+               level.references.each do |reference_spec|
+                  name = reference_spec.text
+                  if @element_defs.member?(name) then
+                     @element_defs[name].each do |reference|
+                        row << reference if reference.is_a?(RuleReference) 
+                     end
+                  else
+                     nyi( "error reporting for invalid name [#{name}] in precedence table" )
+                  end
+               end
+            end
+         end
+         
 
          
          #
@@ -146,6 +199,7 @@ module Grammar
          grammar = RCC::Model::Grammar.new( @grammar_spec.name.text )
          @string_defs.each {|name, definition| grammar.add_string(name, definition)}
          @element_defs.each{|name, definition| grammar.add_element(definition)}
+         grammar.precedence_tables.concat( precedence_tables )
 
          return grammar
       end
@@ -213,7 +267,7 @@ module Grammar
                   # no op -- this is just a side-effect of :group_spec processing
                   
                when :precedence_spec
-                  warn_nyi( "ModelBuilder: support to precendence markers" )
+                  @precedence_specs << node
                   
                else
                   nyi( "support for node type [#{node.type}]", node )
@@ -571,8 +625,7 @@ module Grammar
                result = create_sequence()
                
             when :recovery_commit
-               warn_nyi( "skipping recovery_commit, because I've no clue what to do with it" )
-               result = create_sequence()
+               result = create_sequence( RecoveryCommit.new() )
             
             when :string_exp
                word_name = anonymous_string( process_string_data(node.string) )

@@ -51,8 +51,6 @@ module Plan
             #
             # Move the lexer data into the master LexerPlan.
             
-            nyi( "proper planning for StringPattern" )
-            
             grammar_model.strings.each do |symbol_name, string_pattern|
                master_lexer_plan.add_pattern( grammar_model.name, symbol_name, string_pattern.pattern, string_pattern.explicit? )
             end
@@ -125,15 +123,17 @@ module Plan
                               end
                               
                               symbols << options
+                           when Model::References::RecoveryCommit
+                              symbols[-1].recoverable = true unless symbols.empty?
                            else
                               nyi( "support for [#{element.class.name}]", element )
                         end
                      end
                      
-                     warn_nyi( "support for associativity" )
-                     warn_nyi( "minimal phrasing marker"   )
+                     warn_nyi( "minimal phrasing marker" )
                      
-                     production = Production.new( productions.length, grammar_model.name, rule.name, symbols, slots, false, ast_class, false )
+                     production = Production.new( productions.length, grammar_model.name, rule.name, symbols, slots, rule.associativity, ast_class, false )
+                     
                      productions << production
                      
                      if debug_production_build then
@@ -161,6 +161,7 @@ module Plan
             end
          end
          
+         warn_nyi( "precedence table support" )
          return MasterPlan.new( productions, ast_plans, master_lexer_plan )
       end
       
@@ -184,6 +185,7 @@ module Plan
       
       
       def generate_plan( grammar_name, start_rule )
+         
       end
       
       

@@ -35,11 +35,13 @@ module Plan
 
       attr_reader :grammar_name
       attr_reader :symbol_name
+      attr_writer :recoverable
       
       def initialize( grammar_name, symbol_name, names_token )
          @grammar_name = grammar_name
          @symbol_name  = symbol_name
          @names_token  = names_token
+         @recoverable  = false
       end
       
       def names_token?()
@@ -48,6 +50,10 @@ module Plan
       
       def names_production?()
          !@names_token
+      end
+      
+      def recoverable?()
+         @recoverable
       end
       
       def hash()

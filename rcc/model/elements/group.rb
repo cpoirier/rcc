@@ -45,6 +45,12 @@ module Elements
          @name = name
       end
 
+
+      def each()
+         @member_references.each do |ref|
+            yield( ref )
+         end
+      end
       
       
       #

@@ -43,7 +43,7 @@ module Plan
       attr_reader   :label_number           # The number within all Productions that share this label
       attr_reader   :symbols
       attr_reader   :slots                  # A slot name or nil for each Symbol
-      attr_reader   :associativity
+      attr_reader   :associativity          # nil, :left, :right, or :none
       attr_reader   :precedence
       attr_reader   :ignore_conflicts
       attr_reader   :form_id                # Unique within the Grammar
