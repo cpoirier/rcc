@@ -11,6 +11,7 @@
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/languages/grammar/naming_context.rb"
 require "#{$RCCLIB}/util/sparse_range.rb"
+require "#{$RCCLIB}/util/directed_acyclic_graph.rb"
 require "#{$RCCLIB}/util/expression_forms/expression_form.rb"
 require "#{$RCCLIB}/model/model.rb"
 
@@ -31,7 +32,6 @@ module Grammar
       Rule                   = RCC::Model::Elements::Rule
       Pluralization          = RCC::Model::Elements::Pluralization
       StringPattern          = RCC::Model::Elements::StringPattern
-      PrecedenceTable        = RCC::Model::Elements::PrecedenceTable
       StringReference        = RCC::Model::References::StringReference
       RuleReference          = RCC::Model::References::RuleReference
       GroupReference         = RCC::Model::References::GroupReference
@@ -169,29 +169,10 @@ module Grammar
          
          
          #
-         # Build any PrecedenceTables.
+         # Assign rule priorities.
          
-         precedence_tables = []
-         @precedence_specs.each do |spec|
-            precedence_table = PrecedenceTable.new()
-            precedence_tables << precedence_table
-            
-            spec.precedence_levels.each do |level|
-               row = precedence_table.create_row()
-               level.references.each do |reference_spec|
-                  name = reference_spec.text
-                  if @element_defs.member?(name) then
-                     @element_defs[name].each do |reference|
-                        row << reference if reference.is_a?(RuleReference) 
-                     end
-                  else
-                     nyi( "error reporting for invalid name [#{name}] in precedence table" )
-                  end
-               end
-            end
-         end
+         prioritize_rules()
          
-
          
          #
          # Finally, build the Grammar Model and return it.
@@ -199,7 +180,6 @@ module Grammar
          grammar = RCC::Model::Grammar.new( @grammar_spec.name.text )
          @string_defs.each {|name, definition| grammar.add_string(name, definition)}
          @element_defs.each{|name, definition| grammar.add_element(definition)}
-         grammar.precedence_tables.concat( precedence_tables )
 
          return grammar
       end
@@ -216,8 +196,6 @@ module Grammar
       
       
       
-
-
       
 
     #---------------------------------------------------------------------------------------------------------------------
@@ -271,6 +249,218 @@ module Grammar
                   
                else
                   nyi( "support for node type [#{node.type}]", node )
+            end
+         end
+      end
+
+      
+      #
+      # prioritize_rules()
+      #  - assigns a priority to each rule in this grammar, based on rule order and :precedence_specs
+      #  - earlier rules have higher priority than later rules, unless adjusted by a :precedence_spec
+      #  - note that :precedence_specs can only reference rules in this grammar!
+      
+      def prioritize_rules()
+         
+         #
+         # Process all :precedence_specs.  The top row of each table form roots of the DAG.
+         # We test for cycles as we go -- there can't be any.  
+         
+         root_sets = []
+         hierarchy = Util::DirectedAcyclicGraph.new( false )
+         @precedence_specs.each do |spec|
+            previous_level = []
+            spec.precedence_levels.each do |level|
+               
+               #
+               # Collect rule reference TO RULES IN THIS GRAMMAR ONLY.  Rule priority is about
+               # rule production.  A grammar can use rules from other grammars, but can't PRODUCE
+               # rules from other grammars, so local rules only need apply.  This is only an issue
+               # for groups, where we'll just skip anything that isn't a local Rule.
+               
+               current_level = []
+               level.references.each do |name_token|
+                  name = name_token.text
+                  case element = @element_defs[name]
+                     when Rule
+                        current_level << name
+                     when Group
+                        element.each do |reference|
+                           name = reference.rule_name
+                           current_level << name.to_s unless (name.has_namespace? and name.namespace != @name)
+                        end
+                     else
+                        # no op
+                  end
+               end
+               
+               #
+               # Everything in the current_level is linked to everything in the previous_level.  If 
+               # there is no previous_level, then we'll register the names as points.
+               
+               if previous_level.empty? then
+                  root_sets << current_level
+                  current_level.each do |name|
+                     hierarchy.register_point( name )
+                  end
+               else
+                  previous_level.each do |parent_name|
+                     current_level.each do |child_name|
+                        if hierarchy.would_cycle?(parent_name, child_name) then
+                           nyi( "error handling for precedence cycle [#{parent_name}] to [#{child_name}]" )
+                        else
+                           hierarchy.register( parent_name, child_name )
+                        end
+                     end
+                  end
+               end
+               
+               previous_level = current_level
+            end
+         end
+         
+         
+         #
+         # Now, we want to integrate the prioritized rules back into the overall hierarchy, and we
+         # want to preserve as much of the original ordering as possible.  We do this by looking
+         # within the prioritized rules at each layer and picking the highest priority for each
+         # subtree, then inserting that layer at that index, shifting all the unprioritized rules 
+         # down.
+         #
+         # I think some examples might help explain what I mean.
+         #
+         # Rules: a, b, c, d, e, f, g, h        | Rules: a, b, c, d, e, f
+         # Order: 1, 2, 3, 4, 5, 6, 7, 8        | Order: 1, 2, 3, 4, 5, 6
+         #                                      |
+         # Prec table 1:                        | Prec table 1:
+         #   d                                  |   b c
+         #   e g                                |   e f
+         # Prec table 2:                        | 
+         #   h                                  | 
+         #   d                                  | 
+         #   g                                  | 
+         #                                      |
+         # DAG layers and original order:       | DAG layers and original order:
+         #   h         8                        |  b c       2 3
+         #   d         4                        |  e f       5 6
+         #  e g       5 7                       |
+         #
+         # So, with these two examples, we want to reinsert the DAG elements back into the order
+         # so that the DAG's hierarchy is respected, while -- as much as possible -- not disturbing 
+         # the original order.  At each layer of the DAG, we look down the tree and find the highest
+         # priority original position, and that is where we insert that layer.  So
+         #
+         # insertion_points:                    | insertion_points:
+         #  4, 4, 5                             |  2, 5
+         #
+         # Now, obviously we can't insert two layers at the same point, so for the left example,
+         # we'll need to adjust the second layer down a level, which will then cascade to the third
+         # layer.  And as there is no room between those insertion points, any rules originally at
+         # levels 4, 5, or 6 must be shifted down as well.
+         #
+         # For the right example, notice that rule 4 doesn't need to be disturbed by the
+         # the prioritization of either layer, as there is space between insertion points 2 and 5.
+         # So we leave it in that position.
+         #
+         # insertion_points:                    | insertion_points:
+         #  4, 5, 6                             |  2, 5
+         #
+         # Finally, after integrating the default and prioritized rules, we get:
+         #  1: a                                |  1: a
+         #  2: b                                |  2: b c
+         #  3: c                                |  3: d
+         #  4: h                                |  4: e f
+         #  5: d                                |
+         #  6: e g                              |
+         #  7: f                                |
+         
+         all_rules     = []
+         default_rules = []
+         
+         @element_defs.each do |name, element|
+            name = name.to_s
+            
+            if element.is_a?(Rule) then
+               all_rules     << name
+               default_rules << name unless hierarchy.node?(name)
+            end
+         end
+
+
+         #
+         # Next we collect the raw insertion point data for the precedence data.  But there's another 
+         # wrinkle.  Up top, we merged all the precedence tables into one DAG, so we could find loops
+         # and inter-relationships between the precedence tables.  However, if some elements don't link
+         # up, we don't want to prioritize all the independent trees to the same level -- we want to
+         # preserve as much of the original ordering as possible.  So we have to process each tree separately,
+         # then interleave the data back together.
+         
+         insertion_point_sets = []
+         insertion_layer_sets = []
+         
+         hierarchy.independent_trees(root_sets).each do |tree|
+            insertion_points = []
+            insertion_layers = []
+            
+            tree.each_layer_reverse do |layer|
+               insertion_point = all_rules.length
+               layer.each do |name|
+                  insertion_point = min( insertion_point, all_rules.index(name) )
+               end
+               
+               insertion_points.unshift min(insertion_point, insertion_points.empty? ? insertion_point : insertion_points[0])
+               insertion_layers.unshift layer
+            end
+            
+            insertion_point_sets << insertion_points
+            insertion_layer_sets << insertion_layers
+         end
+         
+         
+         #
+         # We interleave the data sets back together.  We want to do the interleaving by insertion_point.
+         
+         insertion_points = []
+         insertion_layers = []
+
+         until insertion_point_sets.empty? 
+            tops  = insertion_point_sets.collect{|set| set[0]}
+            min   = tops.inject(all_rules.length){|current, aggregate| min(current, aggregate)}
+            index = tops.index( min )
+            
+            insertion_points << insertion_point_sets[index].shift
+            insertion_layers << insertion_layer_sets[index].shift
+            
+            if insertion_point_sets[index].empty? then
+               insertion_point_sets.delete_at(index)
+               insertion_layer_sets.delete_at(index)
+            end
+         end
+         
+         
+         #
+         # Next, we need to adjust the insertion points so that every one is unique.
+         
+         last_insertion_point = -1
+         insertion_points.each_index do |index|
+            insertion_points[index] = last_insertion_point + 1 if insertion_points[index] <= last_insertion_point
+            last_insertion_point = insertion_points[index]
+         end
+            
+         
+         #
+         # Finally, we have to integrate the two systems by setting the priority on each Rule.  
+         # We proceed one priority level at a time: if it is in the insertion_points list, we set 
+         # the priority for all rules on that level to that number; otherwise, we shift a name off
+         # the default_rules list and set its priority instead.
+         
+         (default_rules.length + insertion_layers.length).times do |i|
+            if insertion_points.member?(i) then
+               insertion_layers[insertion_points.index(i)].each do |name|
+                  @element_defs[name].priority = i
+               end
+            else
+               @element_defs[default_rules.shift].priority = i
             end
          end
       end

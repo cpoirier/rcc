@@ -32,6 +32,7 @@ module Elements
       attr_reader   :id_number    # The id number of this rule within the entire grammar
       attr_reader   :forms        # The Forms in this Rule (this is where the real data is)
       attr_accessor :associativity 
+      attr_accessor :priority   
 
       def initialize( name, master_form )
          type_check( name, Model::Name, false )
@@ -42,6 +43,7 @@ module Elements
          @forms           = nil
          @transformations = []
          @associativity   = nil
+         @priority        = 0
       end
       
       

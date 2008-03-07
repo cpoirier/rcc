@@ -38,7 +38,6 @@ module Model
       attr_writer :enable_backtracking  # If true, backtracking will be used, where necessary, to handle conflicts
 
       attr_reader :state_table          # An Array of States for all states in the Grammar
-      attr_reader :precedence_tables    # A set of PrecedenceTables, showing rule precedence for shift/reduce conflicts
       
       attr_accessor :system
 
@@ -47,7 +46,6 @@ module Model
          @start_rule_name     = nil
          @ignore_terminals    = []
          @enable_backtracking = false
-         @precedence_tables   = []
                             
          @strings = Util::OrderedHash.new()
          @rules   = Util::OrderedHash.new()

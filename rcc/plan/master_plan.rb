@@ -132,7 +132,7 @@ module Plan
                      
                      warn_nyi( "minimal phrasing marker" )
                      
-                     production = Production.new( productions.length, grammar_model.name, rule.name, symbols, slots, rule.associativity, ast_class, false )
+                     production = Production.new( productions.length, grammar_model.name, rule.name, symbols, slots, rule.associativity, rule.priority, ast_class, false )
                      
                      productions << production
                      

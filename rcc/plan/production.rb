@@ -44,13 +44,13 @@ module Plan
       attr_reader   :symbols
       attr_reader   :slots                  # A slot name or nil for each Symbol
       attr_reader   :associativity          # nil, :left, :right, or :none
-      attr_reader   :precedence
+      attr_reader   :priority
       attr_reader   :ignore_conflicts
       attr_reader   :form_id                # Unique within the Grammar
       attr_reader   :form_number            # Unique within the Form
       attr_accessor :ast_class
 
-      def initialize( number, grammar_name, rule_name, symbols, slots, associativity, ast_class, minimal_phrasing = true )
+      def initialize( number, grammar_name, rule_name, symbols, slots, associativity, priority, ast_class, minimal_phrasing = true )
          @number           = number
          @grammar_name     = grammar_name
          @rule_name        = rule_name
@@ -58,8 +58,9 @@ module Plan
          @symbols          = symbols
          @slots            = slots
          @associativity    = associativity
+         @priority         = priority
          @ast_class        = ast_class
-         @minimal_phrasing = minimal_phrasing
+         @minimal_phrasing = minimal_phrasing         
       end
       
       
