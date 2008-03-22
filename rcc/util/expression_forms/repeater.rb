@@ -69,6 +69,7 @@ module ExpressionForms
          result = BranchPoint.new( run )
          (maximum - minimum).times do
             run = Sequence.new( run, element )
+            run.minimal = false
             result << run
          end
          

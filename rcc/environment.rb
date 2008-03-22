@@ -242,10 +242,10 @@
       
       
       #
-      # property()
+      # []
       #  - returns the named property's current value, or nil
       
-      def property( name )
+      def []( name )
          value = nil
          @properties.each do |set|
             if set.member?(name) then

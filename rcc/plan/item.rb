@@ -34,6 +34,7 @@ module Plan
       
                                   
       def initialize( production, at = 0, follow_contexts = [], production_sets = nil, shifted_from_item = nil )
+         @master_plan      = production.master_plan
          @production       = production
          @at               = at
          @follow_contexts  = []               # Items that provide follow symbols to us
@@ -97,34 +98,6 @@ module Plan
       end
       
       
-      # #
-      # # recovery_dead_end?()
-      # #  - returns true if error recovery should not voluntarily enter this production
-      # 
-      # def recovery_dead_end?()
-      #    
-      #    #
-      #    # It's a dead end if it's a prefix expression.  ie. expression => - expression
-      #    
-      #    if symbols.length > 1 then
-      #       potential_dead_end = true
-      #       
-      #       symbols[0..-2].each do |symbol|
-      #          if !symbol.terminal? then
-      #             potential_dead_end = false
-      #             break
-      #          end
-      #       end
-      #       
-      #       if potential_dead_end then
-      #          return true if !symbols[-1].terminal? and symbols[-1].name == @name
-      #       end
-      #    end
-      #    
-      #    return false
-      # end
-      
-      
 
 
 
@@ -143,7 +116,7 @@ module Plan
          if complete? then
             return nil
          else
-            return Item.new( @production, @at + 1, [] + @follow_contexts, @production_sets, self )
+            return Item.new( @production, @at + 1, [] + @follow_contexts, self )
          end
       end
       
@@ -209,13 +182,9 @@ module Plan
       #       for the list of terminals that can follow their leader (we are the leader)
       #     - for an incomplete item, returns the next token
       
-      def determinants( k = 1, production_sets = nil )
+      def determinants( k = 1 )
          assert( k == 1, "only k = 1 supported, presently" )
-         
-         production_sets = @production_sets if production_sets.nil?
-         assert( !production_sets.nil?, "you must supply a hash of ProductionSets to determinant() when it is calculated" )
-         
-         return sequences_after_mark(k, production_sets).start_terminals(production_sets)
+         return sequences_after_mark(k).start_terminals( @master_plan )
       end
       
       
@@ -270,14 +239,11 @@ module Plan
       #    from the mark and flowing into the lookahead, as necessary
       #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
       
-      def sequences_after_mark( length = 1, production_sets = nil, loop_detector = nil, skip_contexts = [] )
+      def sequences_after_mark( length = 1, loop_detector = nil, skip_contexts = [] )
          return @sequences_after_mark unless @sequences_after_mark.nil? or @sequences_after_mark.length < length
          
-         production_sets = @production_sets if production_sets.nil?
-         assert( !production_sets.nil?, "you must supply a hash of ProductionSets to sequences_after_mark() when it is calculated" )
-
          loop_detector = Util::RecursionLoopDetector.new() if loop_detector.nil?
-         completable = true
+         completable   = true
 
          #
          # Tools in hand, build the set.
@@ -335,7 +301,7 @@ module Plan
                   if context.nil? then
                      SequenceSet.end_of_input_set
                   else
-                     set = context.sequences_after_leader( length - local_symbols.length, production_sets, loop_detector, skip_contexts )
+                     set = context.sequences_after_leader( length - local_symbols.length, loop_detector, skip_contexts )
                      completable = false unless context.sequences_after_mark_complete?
                      set
                   end
@@ -368,8 +334,8 @@ module Plan
       #  - similar to sequences_after_mark, but skips the leader 
       #  - may return more symbols than you requested, but won't return fewer unless there really are none to be had
       
-      def sequences_after_leader( length = 1, production_sets = nil, loop_detector = nil, skip_contexts = [] )
-         sequences = sequences_after_mark( length + 1, production_sets, loop_detector, skip_contexts )
+      def sequences_after_leader( length = 1, loop_detector = nil, skip_contexts = [] )
+         sequences = sequences_after_mark( length + 1, loop_detector, skip_contexts )
          return sequences.slice( 1..-1 )
       end
       
@@ -387,7 +353,7 @@ module Plan
       
       #
       # rest()
-      #  - returns a Phrase of those Symbols from this Item that follows the mark
+      #  - returns those Symbols from this Item that follow the mark
       
       def rest( offset = 0 )
          slice = @production.symbols.slice( (@at + offset)..-1 )

@@ -37,12 +37,20 @@ module Util
          @layers    = nil  # { steps to root => [ node ] } - results of layerize(), the graph organized into layers
       end
 
-      def roots()
-         return (@roots.values() + @points.values())
+      def roots( include_points = true )
+         if include_points then
+            return (@roots.values() + @points.values())
+         else
+            return @roots.values()
+         end
       end
 
-      def leaves()
-         return (@leaves.values() + @points.values())
+      def leaves( include_points = false )
+         if include_points then
+            return (@leaves.values() + @points.values())
+         else
+            return @leaves.values()
+         end
       end
 
       def layers()

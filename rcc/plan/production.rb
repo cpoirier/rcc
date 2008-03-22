@@ -36,8 +36,8 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader   :number
-      attr_reader   :rule_name
       attr_reader   :grammar_name
+      attr_reader   :rule_name
       attr_reader   :name
       attr_reader   :label                  # The label by which this Production is known for CST/AST purposes
       attr_reader   :label_number           # The number within all Productions that share this label
@@ -49,6 +49,7 @@ module Plan
       attr_reader   :form_id                # Unique within the Grammar
       attr_reader   :form_number            # Unique within the Form
       attr_accessor :ast_class
+      attr_accessor :master_plan
 
       def initialize( number, grammar_name, rule_name, symbols, slots, associativity, priority, ast_class, minimal_phrasing = true )
          @number           = number
@@ -62,6 +63,12 @@ module Plan
          @ast_class        = ast_class
          @minimal_phrasing = minimal_phrasing         
       end
+      
+      
+      def signature()
+         return "#{@grammar_name}.#{@rule_name}"
+      end
+         
       
       
       def length()

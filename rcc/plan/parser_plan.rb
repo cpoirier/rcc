@@ -9,12 +9,6 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/util/ordered_hash.rb"
-require "#{$RCCLIB}/model/rule.rb"
-require "#{$RCCLIB}/plan/production.rb"
-require "#{$RCCLIB}/plan/production_set.rb"
-require "#{$RCCLIB}/plan/ast_class.rb"
-require "#{$RCCLIB}/plan/state.rb"
 
 module RCC
 module Plan
@@ -28,206 +22,22 @@ module Plan
    class ParserPlan
       
       
-      #
-      # build()
-      #  - builds a ParserPlan from a Model::Grammar 
-      
-      def self.build( grammar, start_rule_name = nil, base_lexer_plan = nil )
-         
-         base_lexer_plan = LexerPlan.build( grammar ) if base_lexer_plan.nil?
-         
-         #
-         # Build our Productions from the Forms in the Grammar model.  We'll also build a hash of ProductionSets, one
-         # for each rule name.  Finally, we'll construct an ASTClass hierarchy.
-         
-         productions       = []
-         production_sets   = {}
-         production_labels = {}    # label => [Production]
-         form_lookup       = {}    # form id_number => Production
-         ast_classes       = Util::OrderedHash.new()
-         
-         grammar.forms.each do |form|
-            form_lookup[form.id_number] = []
-            
-            #
-            # Prep an AST plan for our Productions for this Form.
-
-            ast_classes[form.rule.name] = ASTClass.new( form.rule.name ) unless ast_classes.member?(form.rule.name)
-            base_class = ast_classes[form.rule.name]
-            form_class = nil
-            
-            specific_class_name = form.label.nil? ? form.rule.name + "__form_#{form.number}" : form.label
-
-            bug( "duplicate name in AST [#{specific_class_name}]" ) if ast_classes.member?(specific_class_name)
-            form_class = ASTClass.new( specific_class_name, base_class )
-            ast_classes[form_class.name] = form_class
-            
-            
-            #
-            # Build our Productions.
-            # 
-            # BUG: Presently, we allow only the first phrasing of any Form to be recoverable.  This eliminates error
-            # recoveries where optional tokens are inserted.  Unfortunately, we've allowed somewhat too much flexibility
-            # in the grammar language, in that you can produce phrasing with optional clauses.  If you are in the middle
-            # of one of these clauses, you should be allowed to error correct it.  With the current scheme, though, that
-            # won't happen.  This should be fixed, at some point.
-
-            form.phrases.each do |phrase|
-               label        = form.label.nil? ? form.rule.name : form.label
-               label_number = production_labels.member?(label) ? production_labels[label].length + 1 : 1
-               
-               symbols    = phrase.symbols.collect {|model| Plan::Symbol.new(model.name, model.terminal?, model.slot) }
-               production = Production.new( productions.length + 1, form.rule.name, label, label_number, symbols, form.associativity, form.id_number, form, phrase.minimal? )
-
-               productions << production
-               form_lookup[form.id_number] << production
-               
-               if production_labels.member?(label) then
-                  production_labels[label] << production
-               else
-                  production_labels[label] = [ production ]
-               end
-               
-               production_sets[production.name] = ProductionSet.new(production.name) unless production_sets.member?(production.name)
-               production_sets[production.name] << production
-               
-               #
-               # Register our slots with the AST plan.
-               
-               form_class.merge_slots( production, false )
-               production.ast_class = form_class
-            end
-         end
-         
-                  
-         #
-         # Build a precedence table from the Grammar model.  Production number => tier number.  The Model table can
-         # contain both Rules and Forms.  For Rules, we apply the precedence to all Forms, unless a higher precedence
-         # has already been set for a particular Form. 
-         
-         precedence_table = {}
-         grammar.precedence_table.rows.each_index do |index|
-            row = grammar.precedence_table.rows[index]
-            row.each do |form_or_rule|
-               if form_or_rule.is_a?(Model::Rule) then
-                  form_or_rule.forms.each do |form|
-                     form_lookup[form.id_number].each do |production|
-                        precedence_table[production.number] = index unless precedence_table.member?(production.number)
-                     end
-                  end
-               else 
-                  form_lookup[form_or_rule.id_number].each do |production|
-                     precedence_table[production.number] = index
-                  end
-               end
-            end
-         end         
-         
-         
-         #
-         # Construct a list of exemplars for non-string Terminals.
-         
-         exemplars = {}
-         grammar.definitions.each do |index, definition|
-            exemplars[index.intern] = definition.exemplar unless index.is_a?(Numeric)
-         end
-         
-                  
-         #
-         # Next, get the Grammar's start rule and build it a State.  This will become the base of the complete state table.
-         
-         start_rule_name = grammar.start_rule_name if start_rule_name.nil?
-         nyi "error handling for unknown start rule #{start_rule_name}" if start_rule_name.nil? or !grammar.rules.member?(start_rule_name)
-
-         start_state = State.start_state( start_rule_name, production_sets )
-         start_state.close( production_sets )
-
-         
-         #
-         # From the start state, build new states, one for each follow symbol.  Repeat for each new state until all are complete.  
-         # We take some pains, here, to avoid creating new states that have the same signature as old states.  We are trying to
-         # be LALR(k), after all.
-
-         state_table = [ start_state ]
-         state_index = { start_state.signature => start_state }
-         
-         duration = Time.measure do
-            work_queue = [start_state]
-            until work_queue.empty?
-               current_state = work_queue.shift
-            
-               current_state.enumerate_transitions do |symbol_name, shifted_items|
-               
-                  #
-                  # If a matching state is already is in the index, all we need to do is merge in the lookahead from 
-                  # the new contexts.  
-               
-                  if transition_state = state_index[State.signature(shifted_items)] then
-                     transition_state.add_contexts( shifted_items, current_state )    
-                  
-                  #
-                  # Otherwise, we need to create a new State from the shifted_items.
-               
-                  else
-                     transition_state = State.new( state_table.length, shifted_items, current_state )
-                     transition_state.close( production_sets )
-                  
-                     state_table << transition_state
-                     state_index[transition_state.signature] = transition_state
-                  
-                     work_queue << transition_state
-                  end
-               
-                  current_state.add_transition( symbol_name, transition_state )
-               end
-
-               # current_state.display( STDOUT, "" )
-            end
-         end
-         
-         STDERR.puts "State generation duration: #{duration}s" if $show_statistics
-         
-         
-         #
-         # Close the State Items.
-
-         duration = Time.measure do
-            state_table.each do |state|
-               state.close_items()
-            end
-         end
-         
-         STDERR.puts "Follow context propagation duration: #{duration}s" if $show_statistics
-         
-         
-         #
-         # Return the new ParserPlan.
-         
-         return new( grammar.name, state_table, productions, production_sets, precedence_table, base_lexer_plan, exemplars, ast_classes, grammar.backtracking_enabled? )
-      end
-      
-      
-      
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
     
+      attr_reader :master_plan       # The MasterPlan
       attr_reader :name              # The name of the Grammar from which this Plan was built
       attr_reader :lexer_plan        # A LexerState that describes how to lex the Grammar; note that each State can produce a customization on this one
       attr_reader :state_table       # Our States, in convenient table form
-      attr_reader :productions       # Our Productions, in declaration order
       attr_reader :ast_classes       # Our ASTClasses, in declaration order
-      attr_reader :exemplars         
 
-      def initialize( name, state_table, productions = nil, production_sets = nil, precedence_table = nil, lexer_plan = nil, exemplars = nil, ast_classes = nil, enable_backtracking = false )         
+      def initialize( master_plan, name, state_table, enable_backtracking = false )         
+         @master_plan         = master_plan
          @name                = name
          @state_table         = state_table
-         @lexer_plan          = lexer_plan
-         @productions         = productions
-         @production_sets     = production_sets    
-         @precedence_table    = precedence_table    # Production number => tier (tier 0 is highest precedence)
-         @ast_classes         = ast_classes
-         @exemplars           = exemplars
+         @lexer_plan          = master_plan.get_lexer_plan( name )
+         @ast_classes         = master_plan.get_ast_plan( name )
          @enable_backtracking = enable_backtracking
       end
       
@@ -259,7 +69,7 @@ module Plan
          duration = Time.measure do 
             @state_table.each do |state|
                duration = Time.measure do
-                  state.compile_actions( @production_sets, @precedence_table, k_limit, @enable_backtracking, explain )
+                  state.compile_actions( k_limit, @enable_backtracking, explain )
                   state.compile_customized_lexer_plan( @lexer_plan )
                end
                

@@ -44,6 +44,10 @@ module Model
       end
 
 
+      def start_rule()
+         return @grammars[0].start_rule()
+      end
+
 
 
     #---------------------------------------------------------------------------------------------------------------------
@@ -52,17 +56,11 @@ module Model
     
 
       #
-      # compile_plan()
-      #  - returns a Plan::MasterPlan built to produce parsers for each of the specified start_rules
-      #  - if you pass no start_rules, then the start rule of the first grammar will be use
-      #  - start_rules must be RuleReference objects
+      # compile_master_plan()
+      #  - returns a Plan::MasterPlan for this System of Grammars
       
-      def compile_plan( start_rules = [] )
-         if start_rules.empty? then
-            start_rules << @grammars[0].start_rule
-         end
-         
-         return Plan::MasterPlan.build( self, start_rules )
+      def compile_master_plan()
+         return Plan::MasterPlan.build( self )
       end
 
 

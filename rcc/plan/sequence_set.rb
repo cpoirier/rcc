@@ -101,7 +101,7 @@ module Plan
          if @signatures.nil? then
             @sequences << sequence
          else
-            signature = sequence.collect{|symbol| symbol.to_s}.join( " " )
+            signature = sequence.collect{|symbol| symbol.signature}.join( " " )
             unless @signatures.member?(signature)
                @sequences << sequence
                @signatures[signature] = sequence
@@ -158,34 +158,35 @@ module Plan
       #  - returns a set of all terminal Symbols that can start any of the sequences in this set
       #  - you must pass in a hash of ProductionSets that covers the Symbol namespace
       
-      def start_terminals( production_sets, loop_detection=[] )
+      def start_terminals( master_plan, loop_detection=[] )
          return @start_terminals unless @start_terminals.nil? 
          return [] if loop_detection.member?(self.object_id)
          
          start_terminals = {}
-         @sequences.collect{|sequence| sequence[0]}.each do |start_symbol|
-            if start_symbol.terminal? then
-               start_terminals[start_symbol] = true
-            else
-               set = production_sets[start_symbol.name]
-               if set then
-                  set.start_terminals(production_sets, loop_detection + [self.object_id]).each do |terminal|
-                     start_terminals[terminal] = true
-                  end
+         @sequences.collect{|sequence| sequence[0]}.each do |symbol|
+            symbol.each_symbol do |start_symbol|
+               if start_symbol.refers_to_token? then
+                  start_terminals[start_symbol] = true
                else
-                  # BUG: Should we do anything if the symbol isn't define?  Shouldn't this have been caught by now?
+                  if set = master_plan.get_production_set(start_symbol) then
+                     set.start_terminals(master_plan, loop_detection + [self.object_id]).each do |terminal|
+                        start_terminals[terminal.signature] = terminal
+                     end
+                  else
+                     # BUG: Should we do anything if the symbol isn't define?  Shouldn't this have been caught by now?
+                  end
                end
             end
          end
          
-         @start_terminals = start_terminals.keys
+         @start_terminals = start_terminals.values
          return @start_terminals
       end
       
     
 
        
-   end # LookaheadSet
+   end # SequenceSet
    
 
 

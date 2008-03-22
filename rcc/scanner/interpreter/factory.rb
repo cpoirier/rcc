@@ -30,19 +30,11 @@ module Interpreter
     #---------------------------------------------------------------------------------------------------------------------
     
       attr_accessor :recovery_limit
-      attr_accessor :explain_indent
       attr_reader   :parser_plan
       
-      def initialize( grammar_or_parser_plan, recovery_limit = 3, explain_indent = nil )
-         if grammar_or_parser_plan.is_an?(RCC::Model::Grammar) then
-            grammar = grammar_or_parser_plan
-            @parser_plan = grammar.compile_plan().compile_actions(true)
-         else
-            @parser_plan = grammar_or_parser_plan
-         end
-         
+      def initialize( parser_plan, recovery_limit = 3 )
+         @parser_plan    = parser_plan
          @recovery_limit = 3
-         @explain_indent = explain_indent
       end
       
       
@@ -50,7 +42,7 @@ module Interpreter
       # parse()
       #  - parses a file using machinery produced by this Factory
       
-      def parse( descriptor, file = nil )
+      def parse( descriptor, explain = false, file = nil )
          source = nil
          
          #
@@ -70,7 +62,7 @@ module Interpreter
          
          lexer    = RCC::Scanner::Interpreter::Lexer.new( source )
          parser   = RCC::Scanner::Interpreter::Parser.new( @parser_plan, lexer )
-         solution = parser.parse( @recovery_limit, @explain_indent )
+         solution = parser.parse( @recovery_limit, explain )
             
          return solution
       end

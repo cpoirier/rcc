@@ -15,79 +15,54 @@ module Plan
 
  
  #============================================================================================================================
- # class Symbol
- #  - the Plan's idea of a Symbol; it's analogous to the Model Symbol, but simpler
+ # class SymbolGroup
+ #  - manages a series of Symbols in a Group 
 
-   class Symbol
-      
-      @@end_of_input_symbol = nil
-      
-      def self.end_of_input()
-         @@end_of_input_symbol = new( nil, true ) if @@end_of_input_symbol.nil?
-         return @@end_of_input_symbol
-      end
-      
+   class SymbolGroup
       
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :grammar_name
-      attr_reader :symbol_name
-      attr_writer :recoverable
+      attr_reader :symbols
       
-      def initialize( grammar_name, symbol_name, refers_to_token )
-         @grammar_name    = grammar_name
-         @symbol_name     = symbol_name
-         @refers_to_token = refers_to_token
-         @recoverable     = false
+      def initialize( symbols = [] )
+         @symbols   = symbols
+         @signature = nil
       end
+      
       
       def each_symbol()
-         return self
+         @symbols.each do |symbol|
+            yield( symbol )
+         end
       end
       
-      def refers_to_token?()
-         @refers_to_token
+      
+      def <<( symbol )
+         @symbols << symbol
       end
       
-      def refers_to_production?()
-         !@refers_to_token
-      end
-      
-      def name()
-         return [@grammar_name, @symbol_name]
-      end
-      
-      def recoverable?()
-         @recoverable
-      end
       
       def signature()
-         return "#{@grammar_name}.#{@symbol_name}"
+         @signature = @symbols.collect{|symbol| symbol.signature}.join("|") if @signature.nil?
+         return @signature
       end      
+      
       
       def hash()
          return signature().hash
       end
+      
       
       def eql?( rhs )
          return false unless rhs.is_a?(Plan::Symbol)
          return signature() == rhs.signature
       end
       
-      def to_s()
-         return (@refers_to_token ? "lex" : "parse") + " " + (@symbol_name.nil? ? "$" : (@grammar_name + ":" + @symbol_name))
-      end
       
-      # def self.describe( name )
-      #    return "$" if name.nil?
-      #    return name.to_s
-      # end
-      
-      
-   end # Symbol
+   end # SymbolGroup
    
 
 

@@ -30,10 +30,13 @@ module Interpreter
 
    class Parser
       
-      Solution = Artifacts::Solution
-      Token    = Artifacts::Nodes::Token
-      CSN      = Artifacts::Nodes::CSN
-      ASN      = Artifacts::Nodes::ASN
+      Solution        = Artifacts::Solution
+      Token           = Artifacts::Nodes::Token
+      CSN             = Artifacts::Nodes::CSN
+      ASN             = Artifacts::Nodes::ASN
+      PositionMarker  = Artifacts::PositionStack::PositionMarker
+      StartPosition   = Artifacts::PositionStack::StartPosition
+      AttemptPosition = Artifacts::PositionStack::AttemptPosition
    
       
       
@@ -90,7 +93,7 @@ module Interpreter
          recovery_time_limit = 3
          allow_shortcutting  = true
          
-         start_position         = PositionMarkers::StartPosition.new(@parser_plan.state_table[0], @lexer)
+         start_position         = StartPosition.new(@parser_plan.state_table[0], @lexer)
          hard_correction_limit  = 1000000000
          soft_correction_limit  = 1000000000
          error_queue            = [] 
@@ -305,7 +308,7 @@ module Interpreter
             # for details.  Note that we shoud never get a FlowControl exception from our launch action, as the
             # thing that created the AttemptPosition already verified the lookahead.
             
-            if position.is_a?(PositionMarkers::AttemptPosition) then
+            if position.is_a?(AttemptPosition) then
                attempt_depth = position.attempt_depth
                next_position = perform_action( position, position.launch_action, position.next_token, explain_indent )
                
@@ -386,7 +389,7 @@ module Interpreter
       #  - raises FlowControl on branch points
       #  - returns any solution Position found
       
-      def parse_until_branch_point( position, explain_indent = nil )
+      def parse_until_branch_point( position, explain = false )
          solution = nil
          
          #
@@ -398,15 +401,15 @@ module Interpreter
             # Get the lookahead.
             
             state      = position.state
-            next_token = position.next_token( explain_indent )
+            next_token = position.next_token( explain )
             
-            position.display( STDOUT, explain_indent ) unless explain_indent.nil?
+            position.display( STDOUT, explain ) if explain
             
             #
             # Select the next action.
             
             action = state.actions[next_token.type]
-            unless explain_indent.nil? then
+            if explain then
                STDOUT.puts "#{explain_indent}| #{state.lookahead_explanations}"
                STDOUT.puts "#{explain_indent}| Action analysis for lookahead #{next_token.description}"
 

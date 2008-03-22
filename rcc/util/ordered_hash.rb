@@ -26,9 +26,16 @@ module Util
       # ::new(), initialize()
       #  - initializes the OrderedHash to the empty state
       
-      def initialize()
+      def initialize( auto_fill = nil )
          @hash  = Hash.new()   # { name => Object } - our data, keyed on name
          @order = []           # [ name ]           - the insertion order for our names
+         
+         #
+         # If supplied, this will be used to fill any missing referenced element.
+         # It can be a class with a zero-argument constructor, or a Proc to call.
+         
+         type_check( auto_fill, [Proc, Class], true )
+         @auto_fill = auto_fill
       end
 
 
@@ -70,6 +77,15 @@ module Util
          if key.is_a?(Numeric) then
             return @hash[@order[key]]
          else
+            if !@hash.member?(key) and @auto_fill.exists? then
+               case @auto_fill
+                  when Class
+                     self[key] = @auto_fill.new()
+                  when Proc
+                     self[key] = @auto_fill.call()
+               end
+            end
+            
             return @hash[key]
          end
       end
@@ -90,8 +106,8 @@ module Util
          
          return value
       end
-
-
+      
+      
       #
       # rename()
       #  - changes the key for an existing element, without alter key order

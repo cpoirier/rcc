@@ -29,9 +29,11 @@ module ExpressionForms
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :elements
+      attr_writer :minimal
       
       def initialize( *elements )
          @elements = []
+         @minimal  = true   # Indicates if this Sequence contains no expanded optional elements (default is true, to simplify .paths())
          
          elements.flatten.each do |element|
             assert( element.exists?, "wtf?" )
@@ -48,13 +50,10 @@ module ExpressionForms
       def <<( element )
          case element
             when Sequence
-               @elements.concat( element.elements )
-            # when BranchPoint
-            #    if element.element_count == 1 then
-            #       self << element[0]
-            #    else
-            #       @elements << element
-            #    end
+               @minimal = false unless element.minimal?
+               element.elements.each do |child_element|
+                  self << child_element
+               end
             else
                @elements << element
          end
@@ -143,6 +142,15 @@ module ExpressionForms
       end
 
 
+      #
+      # minimal?()
+      #  - indicates if this is a path contains no optional elements
+      
+      def minimal?()
+         return @minimal
+      end
+      
+      
 
       
       
