@@ -75,18 +75,18 @@ module Interpreter
       #  - runs the lexer against the input until one token is produced or the input is exhausted
       #  - returns a Token::end_of_file token on the end of input
       
-      def next_token( position, lexer_plan, explain_indent = nil )
-         token = lex( position, lexer_plan, explain_indent )
+      def next_token( position, lexer_plan, estream = nil )
+         token = lex( position, lexer_plan, estream )
          
-         unless explain_indent.nil?
+         if explain then
             if token.nil? then
                if input_remaining?() then
-                  puts "#{explain_indent}===> ERROR LEXING: #{prep(@pending_lines[0])}; will PRODUCE one-character token of unknown type"
+                  estream.puts "===> ERROR LEXING: #{prep(@pending_lines[0])}; will PRODUCE one-character token of unknown type"
                else
-                  puts "#{explain_indent}===> DONE"
+                  estream.puts "===> DONE"
                end
             else
-               puts "#{explain_indent}===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
+               estream.puts "===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
             end
          end
          

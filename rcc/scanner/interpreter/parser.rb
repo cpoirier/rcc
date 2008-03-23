@@ -50,12 +50,12 @@ module Interpreter
       #  - repair_search_tolerance is used to limit recursion in discover_repair_options()
       
       def initialize( parser_plan, lexer, build_ast = true )
-         @parser_plan         = parser_plan
-         @lexer               = lexer
-         @build_ast           = build_ast
-         @work_queue          = []
-         @in_recovery         = false
-         @recovery_queue      = Util::TieredQueue.new()
+         @parser_plan    = parser_plan
+         @lexer          = lexer
+         @build_ast      = build_ast
+         @work_queue     = []
+         @in_recovery    = false
+         @recovery_queue = Util::TieredQueue.new()
       end
       
       
@@ -89,18 +89,18 @@ module Interpreter
       #  - parse() drives the parser through attempts and error corrections as far as it can go
       #  - error corrections will not be run indefinitely
       
-      def parse( recovery_time_limit = 3, explain_indent = nil )
+      def parse( recovery_time_limit = 3, estream = nil )
          recovery_time_limit = 3
          allow_shortcutting  = true
          
-         start_position         = StartPosition.new(@parser_plan.state_table[0], @lexer)
-         hard_correction_limit  = 1000000000
-         soft_correction_limit  = 1000000000
-         error_queue            = [] 
-         complete_solutions     = []
-         position               = nil
+         start_position        = StartPosition.new(@parser_plan.state_table[0], @lexer)
+         hard_correction_limit = 1000000000
+         soft_correction_limit = 1000000000
+         error_queue           = [] 
+         complete_solutions    = []
+         position              = nil
          
-         @in_recovery = false
+         @in_recovery        = false
          error_positions     = {}
          recovery_start_time = nil
          start_time          = Time.now
@@ -114,30 +114,14 @@ module Interpreter
                # complete solutions we've already found, and lower than any of the other errors in the queue.
 
                if @recovery_queue.empty? then
-                  unless explain_indent.nil?
-                     STDOUT.puts "#{explain_indent}"
-                     STDOUT.puts "#{explain_indent}"
-                     STDOUT.puts "#{explain_indent}"
-                     STDOUT.puts "#{explain_indent}"
-                     STDOUT.puts "#{explain_indent}"
-                     STDOUT.puts "#{explain_indent}================================================================================"
-                     STDOUT.puts "#{explain_indent}RESETTING FOR NEXT ERROR"
+                  if estream then
+                     estream.blank_lines(5)
+                     estream.puts "================================================================================"
+                     estream.puts "RESETTING FOR NEXT ERROR"
                   end
+                  
                   soft_correction_limit = hard_correction_limit
-                  
-                  discard_threshold = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.corrections_cost) }
-                  
-                  # error_queue.each do |error_position|
-                  #    if error_position.corrections_cost <= discard_threshold then
-                  #       signature = error_position.signature()
-                  #       if error_positions.member?(signature) then
-                  #          error_positions[signature].join_position( error_position )
-                  #       else
-                  #          error_positions[signature] = error_position
-                  #          generate_recovery_positions( error_position, soft_correction_limit )
-                  #       end
-                  #    end
-                  # end
+                  discard_threshold     = error_queue.inject(hard_correction_limit) {|current, position| min(current, position.corrections_cost) }
                   
                   error_queue.each do |error_position|
                      if error_position.corrections_cost <= discard_threshold then
@@ -155,15 +139,11 @@ module Interpreter
                position = @recovery_queue.shift
                next if position.nil? or (allow_shortcutting and position.corrections_cost > soft_correction_limit)
 
-               unless explain_indent.nil?
-                  STDOUT.puts "#{explain_indent}"
-                  STDOUT.puts "#{explain_indent}"
-                  STDOUT.puts "#{explain_indent}"
-                  STDOUT.puts "#{explain_indent}"
-                  STDOUT.puts "#{explain_indent}"
-                  STDOUT.puts "#{explain_indent}================================================================================"
-                  STDOUT.puts "#{explain_indent}TRYING RECOVERY with cost = #{position.corrections_cost}"
-                  STDOUT.puts "#{explain_indent}"
+               if estream then
+                  estream.blank_lines( 5 )
+                  estream.puts "================================================================================"
+                  estream.puts "TRYING RECOVERY with cost = #{position.corrections_cost}"
+                  estream.puts 
                end
 
             else
@@ -176,7 +156,7 @@ module Interpreter
 
             pass_start_time = Time.now()
             begin
-               solution = position = parse_until_error( position, explain_indent )
+               solution = position = parse_until_error( position, explain )
                complete_solutions << solution
                hard_correction_limit = min( hard_correction_limit, solution.corrections_cost )
                soft_correction_limit = min( hard_correction_limit, soft_correction_limit     )
@@ -186,7 +166,7 @@ module Interpreter
                if position.next_token.tainted? then
                   # we're done -- it's already been corrected and the correction failed
                elsif position.recovered? then
-                  STDOUT.puts "#{explain_indent}POSITION IS RECOVERED; QUEUEING NEW ERROR PROCESSING: #{position.description(true)};" unless explain_indent.nil?
+                  estream.puts "POSITION IS RECOVERED; QUEUEING NEW ERROR PROCESSING: #{position.description(true)};" if estream
                   soft_correction_limit = min( soft_correction_limit, position.corrections_cost )
                   
                   signature = position.signature()
@@ -198,25 +178,27 @@ module Interpreter
                   end
                elsif position.corrections_cost < soft_correction_limit then
                   if position.tainted? then
-                     generate_recovery_positions( position, soft_correction_limit, explain_indent )
+                     generate_recovery_positions( position, soft_correction_limit, estream )
                   else
                      error_queue << position
                      soft_correction_limit = min( soft_correction_limit, position.corrections_cost ) if @in_recovery
-                     unless explain_indent.nil?
-                        STDOUT.puts "#{explain_indent}QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
-                        STDOUT.puts "#{explain_indent}   CORRECTION LIMIT FOR THIS ERROR IS NOW #{soft_correction_limit}"
+                     if estream then
+                        estream.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
+                        estream.indent do 
+                           estream.puts "CORRECTION LIMIT FOR THIS ERROR IS NOW #{soft_correction_limit}"
+                        end
                      end
                   end
                else
-                  STDOUT.puts "#{explain_indent}TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" unless explain_indent.nil?
+                  estream.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" if estream
                end
                
             rescue PositionSeen => e
                position = e.position
-               STDOUT.puts "#{explain_indent}DISCARDING LOOPED RECOVERY: #{position.description(true)}" unless explain_indent.nil?
+               estream.puts "DISCARDING LOOPED RECOVERY: #{position.description(true)}" if estream
             end
             
-            STDOUT.puts "#{explain_indent}PASS TOOK: #{Time.now-pass_start_time}s" unless explain_indent.nil?
+            estream.puts "PASS TOOK: #{Time.now-pass_start_time}s" if estream
 
 
             #
@@ -245,10 +227,12 @@ module Interpreter
          #
          # Report errors and corrections.
          
-         STDERR.puts "PARSING/ERROR RECOVERY COMPLETED in #{Time.now - start_time}s"
-         STDERR.puts "   complete solutions: #{complete_solutions.length}"
-         STDERR.puts "   partial solutions:  #{partial_solutions.length}"
-         STDERR.puts "   outputting solutions with #{hard_correction_limit} correction cost or better"
+         $stderr.puts "PARSING/ERROR RECOVERY COMPLETED in #{Time.now - start_time}s"
+         $stderr.indent do 
+            $stderr.puts "complete solutions: #{complete_solutions.length}"
+            $stderr.puts "partial solutions:  #{partial_solutions.length}"
+            $stderr.puts "outputting solutions with #{hard_correction_limit} correction cost or better"
+         end
          
          return Solution.new( complete_solutions, partial_solutions, @parser_plan.exemplars )
       end
@@ -269,7 +253,7 @@ module Interpreter
       #  - raises FlowControl for errors
       #  - returns any solution Position found
       
-      def parse_until_error( position, explain_indent = nil )
+      def parse_until_error( position, estream )
          solution   = nil
          work_queue = [position]
          
@@ -310,7 +294,7 @@ module Interpreter
             
             if position.is_a?(AttemptPosition) then
                attempt_depth = position.attempt_depth
-               next_position = perform_action( position, position.launch_action, position.next_token, explain_indent )
+               next_position = perform_action( position, position.launch_action, position.next_token, estream )
                
                #
                # Shift actions will make a new position with the old position as context.  Reduce actions will
@@ -329,7 +313,7 @@ module Interpreter
             # So, we're all set and ready to go.  Parse until some FlowControl indicates we have work to do.
             
             begin
-               solution = parse_until_branch_point( position, explain_indent )
+               solution = parse_until_branch_point( position, estream )
                
                
             #
@@ -389,7 +373,7 @@ module Interpreter
       #  - raises FlowControl on branch points
       #  - returns any solution Position found
       
-      def parse_until_branch_point( position, explain = false )
+      def parse_until_branch_point( position, estream )
          solution = nil
          
          #
@@ -401,24 +385,24 @@ module Interpreter
             # Get the lookahead.
             
             state      = position.state
-            next_token = position.next_token( explain )
+            next_token = position.next_token( estream )
             
-            position.display( STDOUT, explain ) if explain
+            position.display( estream ) if estream
             
             #
             # Select the next action.
             
             action = state.actions[next_token.type]
-            if explain then
-               STDOUT.puts "#{explain_indent}| #{state.lookahead_explanations}"
-               STDOUT.puts "#{explain_indent}| Action analysis for lookahead #{next_token.description}"
+            if estream then
+               estream.puts "| #{state.lookahead_explanations}"
+               estream.puts "| Action analysis for lookahead #{next_token.description}"
 
                if state.explanations.nil? then
                   bug( "no explanations found" )
                else
                   state.explanations[next_token.type].each do |explanation|
                      explanation.to_s.split("\n").each do |line|
-                        STDOUT << "#{explain_indent}|    " << line.to_s << "\n"
+                        estream << "|    " << line.to_s << "\n"
                      end
                   end
                end
@@ -433,12 +417,12 @@ module Interpreter
                if action.is_a?(Plan::Actions::Accept) then
                   solution = position
                else
-                  position = perform_action( position, action, next_token, explain_indent )
+                  position = perform_action( position, action, next_token, estream )
                end
             else
-               unless explain_indent.nil? then
-                  STDOUT.puts "#{explain_indent}===> ERROR DETECTED: cannot use #{next_token.description}"
-                  explain_indent += "   "
+               if estream then
+                  estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
+                  # BUG: how do we handle this with the ContextStream: explain_indent += "   "
                end
 
                raise ParseError.new( position )
@@ -457,17 +441,17 @@ module Interpreter
       #  - raises AttemptsPendings if the parse hit a branch point
       #  - raises PositionSeen if the action has a recovery context and would duplicate a position already seen
       
-      def perform_action( position, action, next_token, explain_indent )
+      def perform_action( position, action, next_token, estream )
          next_position = nil
          
          case action
             when Plan::Actions::Shift
-               STDOUT.puts "#{explain_indent}===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" unless explain_indent.nil?
+               estream.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if estream
                next_position = position.push( next_token, action.to_state )
                
             when Plan::Actions::Reduce
                production = action.by_production
-               STDOUT.puts "#{explain_indent}===> REDUCE #{production.to_s}" unless explain_indent.nil?
+               estream.puts "===> REDUCE #{production.to_s}" if estream
                
                #
                # Pop the right number of nodes.  Position.pop() may through an exception if it detects an error.  
@@ -487,25 +471,26 @@ module Interpreter
                
                if node.tainted? then
                   if next_token.rewind_position > node.original_error_position then
-                     STDOUT.puts "#{explain_indent}UNTAINTING" unless explain_indent.nil?
+                     estream.puts "UNTAINTING" if estream
                      node.untaint()
                   end
                end
                
                #
                # Create/transfer recoverability marks, if appropriate.
-               
-               if production.name == "statement".intern then
-                  node.recoverable = true
-               elsif nodes[-1].recoverable? then
-                  node.recoverable = true
-               end
+
+               warn_nyi( "error recovery commit" )
+               # if production.name == "statement".intern then
+               #    node.recoverable = true
+               # elsif nodes[-1].recoverable? then
+               #    node.recoverable = true
+               # end
                                  
                #
                # Get the goto state from the now-top-of-stack State: it will be the next state.
                
                goto_state = position.state.transitions[production.name]
-               STDOUT.puts "#{explain_indent}===> PUSH AND GOTO #{goto_state.number}" unless explain_indent.nil?
+               estream.puts "===> PUSH AND GOTO #{goto_state.number}" if estream
 
                next_position = position.push( node, goto_state, top_position )
 
@@ -562,7 +547,7 @@ module Interpreter
          end
          
          #
-         # Process referals until we find a predicate that isn't one.
+         # Process referrals until we find a predicate that isn't one.
          
          action = states[-1].actions[leader_type]
          while action.is_a?(Plan::Actions::Reduce)
@@ -600,11 +585,11 @@ module Interpreter
     # Error Recovery
     #---------------------------------------------------------------------------------------------------------------------
     #
-    # Error recovery in rcc involves trying to alter then token stream in order to produce a valid parse.  This is 
+    # Error recovery in rcc involves trying to alter the token stream in order to produce a valid parse.  This is 
     # predicated on the idea that the user isn't trying to produce bad code -- that the errors are, in fact, accidents.
     # 
     # We can alter the token stream in three ways: by inserting a token; by replacing a token; or by deleting a token.
-    # Generally speaking, we trust deletion the least, as users are lazy: they don't do generally do work the didn't think 
+    # Generally speaking, we trust deletion the least, as users are lazy: they don't generally do work they didn't think 
     # they needed.  As a result, we try deletions last.  Replacing a token is something we trust a little more, but only 
     # if the replacement token can be considered lexically similar to the one that was already there.  For instance, we 
     # might replace "++" with "+" to produce a valid parse, or the identifer "fi" with the keyword "if"; but we should not 
@@ -698,9 +683,9 @@ module Interpreter
       # generate_recovery_positions()
       #  - given an error position, generates a list of potential recovery positions
       
-      def generate_recovery_positions( position, correction_limit, explain_indent = nil )
+      def generate_recovery_positions( position, correction_limit, estream )
          recovery_positions = []
-         STDOUT.puts "#{explain_indent}CALCULATING RECOVERIES for: #{position.description(true)}" unless explain_indent.nil?
+         estream.puts "CALCULATING RECOVERIES for: #{position.description(true)}" if estream
 
          #
          # First, generate insertions and deletions at each stack point still available for error correction
@@ -710,108 +695,122 @@ module Interpreter
          # With this version, we are now switching it back to the recovery context.  If things break, that may be
          # why.
          
-         error_type = position.next_token.type
-         registry   = position.allocate_recovery_registry
-         position.each_recovery_position do |recovery_position|
-            next if recovery_position.start_position? 
-            recovery_context = recovery_position.tainted? ? recovery_position.recovery_context : position
+         ContextStream.indent_with(estream) do
             
-            STDOUT.puts "#{explain_indent}   TRYING REPAIR at: #{recovery_position.description(true)}" unless explain_indent.nil?
-            lookahead_type = recovery_position.next_token.type
+            error_type = position.next_token.type
+            registry   = position.allocate_recovery_registry
+            position.each_recovery_position do |recovery_position|
+               next if recovery_position.start_position? 
+               recovery_context = recovery_position.tainted? ? recovery_position.recovery_context : position
+            
+               estream.puts "TRYING REPAIR at: #{recovery_position.description(true)}" if estream
+               lookahead_type = recovery_position.next_token.type
 
-            #
-            # Apply the recovery Predicates from the State, and create corrected positions for any that
-            # pass.
+               ContextStream.indent_with(estream) do
+                  
+                  #
+                  # Apply the recovery Predicates from the State, and create corrected positions for any that
+                  # pass.
 
-            recovery_position.state.recovery_predicates.each do |leader_type, predicate|
-               STDOUT.puts "#{explain_indent}      APPLYING PREDICATE FOR CORRECTION #{Parser.describe_type(leader_type)}" unless explain_indent.nil?
-               next if leader_type.nil? or leader_type == lookahead_type
+                  recovery_position.state.recovery_predicates.each do |leader_type, predicate|
+                     estream.puts "APPLYING PREDICATE FOR CORRECTION #{Parser.describe_type(leader_type)}" if estream
+                     next if leader_type.nil? or leader_type == lookahead_type
 
-               #
-               # Process the predicate and set flags for our recovery options.
+                     #
+                     # Process the predicate and set flags for our recovery options.
 
-               predicate = resolve_reference_predicate( position, leader_type ) if predicate.is_a?(Plan::Predicates::CheckContext)
-               next if predicate.nil?
+                     predicate = resolve_reference_predicate( position, leader_type ) if predicate.is_a?(Plan::Predicates::CheckContext)
+                     next if predicate.nil?
 
-               replace = predicate.replace?
-               insert  = predicate.insert?
+                     replace = predicate.replace?
+                     insert  = predicate.insert?
 
-               case predicate
-                  when Plan::Predicates::CheckErrorType
-                     unless error_type == predicate.error_type 
-                        replace = false
-                        insert  = false
+                     case predicate
+                        when Plan::Predicates::CheckErrorType
+                           unless error_type == predicate.error_type 
+                              replace = false
+                              insert  = false
+                           end
                      end
-               end
 
-               #
-               # Token replacement is one option.  But we never attempt to replace the EOS marker.
+                     ContextStream.indent_with(estream) do
 
-               if replace and !lookahead_type.nil? then
-                  if recovery_position.next_token.similar_to?(leader_type) then
-                     STDOUT.puts "#{explain_indent}         [#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE" unless explain_indent.nil?
-                     begin
-                        recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, recovery_context ) 
-                     rescue PositionSeen => e
-                        STDOUT.puts "#{explain_indent}            ===> dead end" unless explain_indent.nil?
-                     end
-                  else
-                     STDOUT.puts "#{explain_indent}         [#{leader_type}] NOT SIMILAR to [#{lookahead_type}]; WON'T TRY REPLACE" unless explain_indent.nil?
+                        #
+                        # Token replacement is one option.  But we never attempt to replace the EOS marker.
+
+                        if replace and !lookahead_type.nil? then
+                           if recovery_position.next_token.similar_to?(leader_type) then
+                              estream.puts "[#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE" if estream
+                              begin
+                                 recovery_positions.unshift recovery_position.correct_by_replacement( leader_type, recovery_context ) 
+                              rescue PositionSeen => e
+                                 estream.indent { puts "===> dead end" } if estream
+                              end
+                           else
+                              estream.puts "[#{leader_type}] NOT SIMILAR to [#{lookahead_type}]; WON'T TRY REPLACE" if estream
+                           end
+                        end
+
+                        #
+                        # Token insertion is another option.
+
+                        if insert then
+                           estream.puts "WILL TRY INSERTING [#{leader_type}]" if estream
+                           begin
+                              recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, recovery_context )
+                           rescue PositionSeen => e
+                              estream.indent { estream.puts "===> dead end" } if estream
+                           end
+                        end
+                        
+                     end  # ContextStream.indent_with() 3
                   end
-               end
 
-               #
-               # Token insertion is another option.
 
-               if insert then
-                  STDOUT.puts "#{explain_indent}         WILL TRY INSERTING [#{leader_type}]" unless explain_indent.nil?
+                  #
+                  # We can also try deleting tokens until we find something we can use.  
+                  # BUG: THIS IS BORKED BY PositionSeen
+
+                  deleted_tokens = []
+
                   begin
-                     recovery_positions.unshift recovery_position.correct_by_insertion( leader_type, recovery_context )
+                     recovered_position = recovery_position.correct_by_deletion( recovery_context )
+                     until recovered_position.nil?
+                        deleted_tokens << recovered_position.next_token().last_correction.deleted_token
+                        break if recovered_position.next_token.type.nil? or recovered_position.state.actions.member?(recovered_position.next_token.type)
+
+                        recovered_position = recovered_position.correct_by_deletion( recovery_context )
+                     end
                   rescue PositionSeen => e
-                     STDOUT.puts "#{explain_indent}            ===> dead end" unless explain_indent.nil?
+                     deleted_tokens
                   end
-               end
+
+                  estream.puts "WILL TRY DELETING [#{deleted_tokens.collect{|t| t.description}.join(", ")}]" if estream
+
+                  recovery_positions.unshift recovered_position unless recovered_position.nil?
+               
+               end   # ContextStream.indent_with() 2
             end
-
-
+            
+            
             #
-            # We can also try deleting tokens until we find something we can use.  
-            # BUG: THIS IS BORKED BY PositionSeen
+            # Move the corrected positions on @recovery_queue.  We try to ensure that the corrections closts to the
+            # original error get attempted first, but this will not override lower-cost solutions further away.
 
-            deleted_tokens = []
-
-            begin
-               recovered_position = recovery_position.correct_by_deletion( recovery_context )
-               until recovered_position.nil?
-                  deleted_tokens << recovered_position.next_token().last_correction.deleted_token
-                  break if recovered_position.next_token.type.nil? or recovered_position.state.actions.member?(recovered_position.next_token.type)
-
-                  recovered_position = recovered_position.correct_by_deletion( recovery_context )
-               end
-            rescue PositionSeen => e
-               deleted_tokens
+            estream.puts "QUEUING GENERATED RECOVERIES" if estream
+            ContextStream.indent_with(estream) do
+               recovery_positions.each do |recovery_position|
+                  corrections_cost = recovery_position.corrections_cost
+                  if corrections_cost <= correction_limit then
+                     estream.puts "QUEUING POSITION #{recovery_position.description(true)} @ #{recovery_position.corrections_cost}" if estream
+                     @recovery_queue.insert recovery_position, corrections_cost
+                  else
+                     estream.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" if estream
+                  end
+               end  
             end
-
-            STDOUT.puts "#{explain_indent}      WILL TRY DELETING [#{deleted_tokens.collect{|t| t.description}.join(", ")}]" unless explain_indent.nil?
-
-            recovery_positions.unshift recovered_position unless recovered_position.nil?
-         end
-
-
-         #
-         # Move the corrected positions on @recovery_queue.  We try to ensure that the corrections closts to the
-         # original error get attempted first, but this will not override lower-cost solutions further away.
-
-         STDOUT.puts "#{explain_indent}   QUEUING GENERATED RECOVERIES" unless explain_indent.nil?
-         recovery_positions.each do |recovery_position|
-            corrections_cost = recovery_position.corrections_cost
-            if corrections_cost <= correction_limit then
-               STDOUT.puts "#{explain_indent}      QUEUING POSITION #{recovery_position.description(true)} @ #{recovery_position.corrections_cost}" unless explain_indent.nil?
-               @recovery_queue.insert recovery_position, corrections_cost
-            else
-               STDOUT.puts "#{explain_indent}      TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" unless explain_indent.nil?
-            end
-         end  
+            
+         end  # ContextStream.indent_with() 1
       end
 
 
@@ -908,9 +907,6 @@ module Interpreter
             @position = position
          end
       end
-      
-      
-      
     
       
    end # Parser

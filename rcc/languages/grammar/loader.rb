@@ -51,8 +51,6 @@ module Grammar
     # Bootstrapping
     #---------------------------------------------------------------------------------------------------------------------
 
-    protected
-    
       #
       # initialize_bootstrap_parser()
       #  - loads and initializes the bootstrap parser that will be used to load Grammars

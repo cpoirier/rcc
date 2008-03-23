@@ -36,37 +36,44 @@ module Interpreter
          @parser_plan    = parser_plan
          @recovery_limit = 3
       end
-      
+
       
       #
       # parse()
       #  - parses a file using machinery produced by this Factory
       
-      def parse( descriptor, explain = false, file = nil )
-         source = nil
-         
-         #
-         # Product a Source to wrap the file.
-         
-         if file.nil? then
-            File.open(descriptor) do |file|
-               source = Scanner::Artifacts::Source.new( file.read, descriptor )
-            end
-         else
-            source = Scanner::Artifacts::Source.new( file.read, descriptor )
-         end
-         
-         
-         #
-         # Create a Lexer, a Parser, and go.
-         
-         lexer    = RCC::Scanner::Interpreter::Lexer.new( source )
-         parser   = RCC::Scanner::Interpreter::Parser.new( @parser_plan, lexer )
-         solution = parser.parse( @recovery_limit, explain )
-            
-         return solution
+      def parse( descriptor, estream = nil, file = nil )
+         return build_parser( descriptor, file ).parse( @recovery_limit, estream )
       end
-
+      
+      
+      #
+      # open_source()
+      #  - returns a Source around your input
+      
+      def open_source( descriptor, file = nil )
+         return descriptor if descriptor.is_a?(RCC::Scanner::Artifacts::Source)
+         return RCC::Scanner::Artifacts::Source.open( descriptor, file )
+      end
+      
+      
+      #
+      # build_lexer()
+      #  - returns a Lexer around your input
+      
+      def build_lexer( descriptor, file = nil )
+         return RCC::Scanner::Interpreter::Lexer.new( open_source(descriptor, file) )
+      end
+      
+      
+      #
+      # build_parser()
+      #  - returns a new Parser on your Lexer
+      
+      def build_parser( descriptor, file = nil )
+         return RCC::Scanner::Interpreter::Parser.new( @parser_plan, build_lexer(descriptor, file) )
+      end
+      
       
    end # Factory
    

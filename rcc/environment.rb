@@ -32,6 +32,28 @@
    end
    
    
+   def collect_from( container, method = :each, *parameters )
+      collection = []
+      container.send( method, *parameters ) do |element|
+         if block_given? then
+            collection << yield(element)
+         else 
+            collection << element
+         end
+      end
+      
+      return collection
+   end
+   
+   def select_from( container, method = :each, *parameters )
+      collection = []
+      container.send( method, *parameters ) do |element|
+         collection << element if yield(element)
+      end
+      
+      return collection
+   end
+   
    
    class String
       
@@ -57,7 +79,15 @@
             end
          end
       end
-      
+   
+   
+      def each_index_of( search, pos = 0 )
+         while next_pos = ruby_index( search, pos )
+            yield( next_pos )
+            pos = next_index + 1
+         end
+      end
+
    end
    
    
@@ -174,6 +204,7 @@
    class NilClass
       def each()
       end
+      
    end
    
    
@@ -206,6 +237,18 @@
          @indent     = indent
          @pending    = true
          @properties = []
+      end
+      
+      
+      #
+      # ::indent_with( stream )
+      
+      def indent_with( stream )
+         if stream then
+            stream.indent { yield(stream) }
+         else
+            yield(stream)
+         end
       end
       
       
@@ -288,6 +331,11 @@
       
       def end_line()
          write( "\n" ) unless @pending
+      end
+      
+      def blank_lines( count = 2 )
+         end_line()
+         count.times { puts }
       end
       
    end # ContextStream
