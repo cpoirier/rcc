@@ -50,15 +50,25 @@ module Artifacts
          @pending       = ""
          @codes         = []
          @eol_positions = []         
-         @eols          = 0
          
          @last_position  = -1
          @last_located   = -1
          @last_eol_index = 0
          
-         @commit_position     = -1
-         @commit_eol_baseline = 0
+         @commit_position                  = -1    # The position number last discarded
+         @commit_eol_positions_discarded   = 0     # The number of @eol_positions already discarded
+         @commit_first_line_start_position = 0     # The position corresponding to the first character of the first line in @eol_positions
       end
+      
+      
+      def read_so_far()
+         return @codes.length + @commit_position + 1
+      end
+      
+      def committed_through()
+         return @commit_position
+      end
+      
       
       
       #
@@ -68,7 +78,7 @@ module Artifacts
       def []( position )
          read_through( position ) or return nil
          @last_position = position
-         return @codes[position]
+         return @codes[position - (@commit_position + 1)]
       end
 
       
@@ -79,16 +89,71 @@ module Artifacts
       #     - code
       #     - line_number
       #     - column_number
+      #  - this routine should be a bit faster than doing the work yourself
       
-      def each_character()
-         position = 0
-         while @stream || position < @codes.length 
-            while position < @codes.length
-               yield( position, @codes[position], line_number(position), column_number(position) )
+      def each_character( position = 0 )
+         line_number   = line_number(position)
+         column_number = column_number(position)
+         
+         while true
+            while @codes.length > position - (@commit_position + 1)
+               code = @codes[position - (@commit_position + 1)]     
+               yield( position, code, line_number, column_number )  
+
+               if code == 10 then
+                  line_number  += 1
+                  column_number = 1
+               else
+                  column_number += 1
+               end
+               
                position += 1
             end
             
+            break if @stream.nil?
             read_through( position )
+         end
+      end
+      
+      #
+      # each_character_slow()
+      #  - primarily for testing purposes, does the same as each_character(), but using all
+      #    the Source interface for the work
+      
+      def each_character_slow( position = 0 )   
+         while (@stream || position < read_so_far())
+            while position < read_so_far()
+               yield( position, self[position], line_number(position), column_number(position) )
+               @last_position = position
+               position += 1
+            end
+         
+            read_through( position )
+         end
+      end
+      
+      
+      #
+      # line_number()
+      #  - returns the line number of the specified position, or of the last one read
+      
+      def line_number( position = nil )
+         return eol_index(position) + @commit_eol_positions_discarded + 1
+      end
+      
+      
+      #
+      # column_number()
+      #  - returns the column number of the specified position, or of the last one read
+      
+      def column_number( position = nil )
+         position  = @last_position if position.nil?
+         eol_index = eol_index(position)
+         
+         if eol_index == 0 then
+            return position - @commit_first_line_start_position + 1
+         else
+            return position - @eol_positions[eol_index - 1] 
          end
       end
       
@@ -98,49 +163,59 @@ module Artifacts
       #  - discards storage (only) for codes on or before the specified position
       #  - useful for streaming operations, to keep old data from filling up memory
       
-      def commit( position )
-         return true if position <= @commit_position
-         assert( read_through(position), "can't commit a position that can't be read!" )
-         
-         eol_index = line_index(position) - @commit_eol_baseline
-         @commit_eol_position = @eol_positions[position]
-      end
-
-
-
-
-
-    #---------------------------------------------------------------------------------------------------------------------
-    # Position determination
-    #---------------------------------------------------------------------------------------------------------------------
-
-      #
-      # line_number()
-      #  - returns the line number of the specified position, or of the last one read
-      
-      def line_number( position = nil )
-         return line_index(position) + 1
-      end
-      
-      
-      #
-      # column_number()
-      #  - returns the column number of the specified position, or of the last one read
-      
-      def column_number( position = nil )
-         return column_index(position) + 1
-      end
-                  
-      
-      #
-      # line_index()
-      #  - returns the line index of the specified position, or of the last one read
-      
-      def line_index( position = nil )
+      def commit( position = nil )
          position = @last_position if position.nil?
+         return if position <= @commit_position
+         assert( read_through(position), "can't commit a position that can't be read!" )
+                  
+         #
+         # First up, collect location information on the position we are about to commit.  This
+         # will be used to patch up future location calculations, to account for the commmitted
+         # data.
+         
+         eol_index                 = eol_index(position)
+         on_eol                    = (eol_index < @eol_positions.length and @eol_positions[eol_index] == position)
+         eol_discard_count         = eol_index + (on_eol ? 1 : 0)
+         first_line_start_position = on_eol ? @eol_positions[eol_index] + 1 : (eol_index > 0 ? @eol_positions[eol_index - 1] + 1 : @commit_first_line_start_position)
+         
+         #
+         # Discard @codes and @eol_positions and patch up the offsets.
+         
+         @codes.slice!( 0..(position - @commit_position - 1) )
+         @eol_positions.slice!( 0..(eol_discard_count - 1) )
+         
+         @commit_position                   = position
+         @commit_eol_positions_discarded   += eol_discard_count
+         @commit_first_line_start_position  = first_line_start_position
+         
+         @last_position  = -1
+         @last_located   = -1
+         @last_eol_index = 0
+      end
+
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Location determination
+    #---------------------------------------------------------------------------------------------------------------------
+
+    protected
+    
+      
+      #
+      # eol_index()
+      #  - returns the eol index of the specified position, or of the last one read
+      #  - you can't access eol_index for committed positions!
+      
+      def eol_index( position = nil )
+         position = @last_position if position.nil?
+         return nil if position.nil?
          return @last_eol_index if position == @last_located
          
-         assert( read_through(position), "you have requested a line index for a position that does not exist!" )
+         assert( position > @commit_position, "you can't get location information for a committed position!" )
+         assert( read_through(position)     , "you can't get location information for a position that does not exist!" )
          
          eol_index = nil
          
@@ -148,65 +223,54 @@ module Artifacts
          # First check if we are on the same line as last time -- or a following line.  We'll also check
          # if we are on the last line, as it is easy to check.
 
-         if @eols == 0 || (@eols > 0 && position > @eol_positions[-1]) then
-            eol_index = @eols
-         elsif position > @last_located then
-            if @last_eol_index < @eols && position <= @eol_positions[@last_eol_index] then
+         if @eol_positions.length == 0 || position > @eol_positions[-1] then
+            eol_index = @eol_positions.length
+         elsif position <= @eol_positions[-1] && (@eol_positions.length == 1 || position > @eol_positions[-2]) then
+            eol_index = @eol_positions.length - 1
+         elsif position <= @eol_positions[0] then
+            eol_index = 0
+         elsif @last_located && position > @last_located then
+            if @last_eol_index < @eol_positions.length && position <= @eol_positions[@last_eol_index] then
                eol_index = @last_eol_index
-            elsif @last_eol_index + 1 < @eols && position <= @eol_positions[@last_eol_index + 1] then
+            elsif @last_eol_index + 1 < @eol_positions.length && position <= @eol_positions[@last_eol_index + 1] then
                eol_index = @last_eol_index + 1
             end
          end
-         
          
          #
          # If no answer, binary search for the eol_index.
 
          if eol_index.nil? then
-            first = 0
-            last  = @eols - 1
+            first  = 0
+            last   = @eol_positions.length - 1
 
-            while last > first
+            while eol_index.nil? and first < last
                middle = ((last + first) / 2).ceil
-
-               if position > @eol_positions[middle] then
+               
+               if position == @eol_positions[middle] then
+                  eol_index = middle
+               elsif position < @eol_positions[middle] then
+                  if middle == 0 or position > @eol_positions[middle-1] then
+                     eol_index = middle
+                  else
+                     last = (last == middle ? last - 1 : middle)
+                  end
+               else
                   first = (first == middle ? first + 1 : middle)
-               elsif position <= @eol_positions[middle]
-                  last  = (last == middle  ? last - 1 : middle)
                end
             end
-
-            eol_index = first
          end
-         
          
          #
          # Finish up and return.
 
          if eol_index.nil? then
-            bug( "what does this mean?" )
+            bug( "what does this mean at #{position}?" )
          else
             @last_located   = position
             @last_eol_index = eol_index
          
             return @last_eol_index
-         end
-      end
-      
-      
-      #
-      # column_index()
-      #  - returns column index for the specified position
-      #  - you can pass in the line index, if you already know it, to save time
-      
-      def column_index( position )
-         position  = @last_position if position.nil?
-         eol_index = line_index(position)
-
-         if eol_index == 0 then
-            return position 
-         else
-            return position - @eol_positions[eol_index - 1] - 1
          end
       end
       
@@ -225,6 +289,7 @@ module Artifacts
       #  - reads Unicode characters through the specified position
       
       def read_through( position )
+         return true if position < read_so_far()
          old_length = @codes.length
          
          #
@@ -235,7 +300,7 @@ module Artifacts
          
          if @stream then
             begin
-               while @codes.length <= position
+               until position < read_so_far() 
                   if utf8 = @stream.readpartial(128) then
                      utf8 = @pending + utf8
                      @pending = ""
@@ -262,14 +327,12 @@ module Artifacts
 
             if @codes.length > old_length then
                old_length.upto(@codes.length - 1) do |i|
-                  @eol_positions << i if @codes[i] == 10
+                  @eol_positions << @commit_position + 1 + i if @codes[i] == 10
                end
-
-               @eols = @eol_positions.length
             end
          end
          
-         return @codes.length > position
+         return position < read_so_far()
       end
     
       
