@@ -37,14 +37,14 @@ module Nodes
       # initialize()
       #  - fill a new Token with data
 
-      def initialize( text, start_position, line_number, column_number, source, type = nil, faked = false, follow_position = nil )
-         super( type.nil? ? text : type )
+      def initialize( text, type, start_position, line_number, column_number, source, faked = false, follow_position = nil )
+         super( type.nil? ? Name.new(text) : type )
          @text = text
          locate( start_position, line_number, column_number, source, type, faked, follow_position )
          
          @text.source = self
       end
-
+      
       
       #
       # locate()
@@ -86,6 +86,20 @@ module Nodes
       def to_s()
          return @text
       end
+
+
+      #
+      # characters()
+      #  - returns a list of Unicode character codes in our text
+      
+      def characters()
+         if @characters.nil? then
+            @characters = @text.unpack("U*")
+         end
+         
+         return @characters
+      end
+
 
 
 
@@ -164,14 +178,14 @@ module Nodes
     #---------------------------------------------------------------------------------------------------------------------
 
     
-      #
-      # matches_terminal?()
-      #  - returns true if this Token matches the specified Terminal
-      
-      def matches_terminal?( terminal )
-         return (@type == terminal.type and @text == terminal.text)
-      end
-      
+      # #
+      # # matches_terminal?()
+      # #  - returns true if this Token matches the specified Terminal
+      # 
+      # def matches_terminal?( terminal )
+      #    return (@type == terminal.type and @text == terminal.text)
+      # end
+      # 
       
       #
       # similar_to?()
@@ -181,16 +195,18 @@ module Nodes
       #  - only really useful if the specified type is a String constant
       
       def similar_to?( type )
-         return @type == type unless type.is_a?(String)
-         return false unless (@text.length - type.length).abs < 3
-         return false if @text =~ /^\w+$/ and type !~ /^\w+$/
-         return false if type =~ /^\w+$/ and self !~ /^\w+$/
+         return @type == type unless type.literal?
+
+         examplar = type.name
+         return false unless (@text.length - examplar.length).abs < 3
+         return false if @text =~ /^\w+$/ and examplar !~ /^\w+$/
+         return false if exemplar =~ /^\w+$/ and self !~ /^\w+$/
          
          #
-         # We've establish that both operands are Strings of similar length.  Next we'll get their unique characters
-         # and compare them.
+         # We've establish that both operands are of similar length.  Next we'll get 
+         # their unique characters and compare them.
          
-         symbol_chars = type.split("").sort.uniq
+         symbol_chars = exemplar.split("").sort.uniq
          token_chars  = @text.split("").sort.uniq
          intersection = symbol_chars & token_chars
          
@@ -206,6 +222,8 @@ module Nodes
       #  - returns a sample of the source data from around this Token
       
       def sample()
+         nyi()
+         
          return nil unless @source.is_a?(Source)
          return @source.line(@start_position)
       end
@@ -217,12 +235,12 @@ module Nodes
       def description( include_location = false )
          nyi "include_location" if include_location
          
-         if @type.nil? then
+         if @type.eof? then
             return "$"
          elsif @faked then
-            return "FAKE[" + (@type.is_a?(Symbol) ? ":#{@type}" : "#{@type.gsub("\n", "\\n")}") + "]"
+            return "FAKE[" + @type.signature + "]"
          else
-            return "[#{@text.gsub("\n", "\\n")}]" + (@type.is_a?(Symbol) ? ":#{@type}" : "")
+            return "[#{@text.escape}]" + (@type.literal? ? "" : @type.signature)
          end
       end
       
@@ -236,6 +254,7 @@ module Nodes
          elsif token.is_a?(Token) then
             return token.description
          else
+            nyi()
             return token.nil? ? "$" : (token.is_a?(Symbol) ? ":#{token}" : "'#{token.gsub("\n", "\\n")}'")
          end
       end
@@ -263,7 +282,7 @@ module Nodes
       #  - builds a fake Token of the specified type
       
       def self.fake( type, follow_position = nil, start_position = nil, line_number = nil, column_number = nil, source_descriptor = nil )
-         return new( "", start_position, line_number, column_number, source_descriptor, type, true, follow_position )
+         return new( "", type, start_position, line_number, column_number, source_descriptor, true, follow_position )
       end
       
       
@@ -272,7 +291,7 @@ module Nodes
       #  - builds an "end of file" Token
       
       def self.end_of_file( start_position, line_number, column_number, source_descriptor )
-         return new( "", start_position, line_number, column_number, source_descriptor, nil )
+         return new( "", Name.end_of_file_type, start_position, line_number, column_number, source_descriptor )
       end
 
 

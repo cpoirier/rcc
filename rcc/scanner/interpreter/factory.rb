@@ -36,6 +36,11 @@ module Interpreter
          @parser_plan    = parser_plan
          @recovery_limit = 3
       end
+      
+      def lexer_plan()
+         return @parser_plan.lexer_plan
+      end
+      
 
       
       #

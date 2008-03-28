@@ -10,6 +10,7 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/plan/symbol.rb"
+require "#{$RCCLIB}/scanner/artifacts/name.rb"
 
 module RCC
 module Plan
@@ -36,8 +37,6 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader   :number
-      attr_reader   :grammar_name
-      attr_reader   :rule_name
       attr_reader   :name
       attr_reader   :label                  # The label by which this Production is known for CST/AST purposes
       attr_reader   :label_number           # The number within all Productions that share this label
@@ -51,11 +50,11 @@ module Plan
       attr_accessor :ast_class
       attr_accessor :master_plan
 
-      def initialize( number, grammar_name, rule_name, symbols, slots, associativity, priority, ast_class, minimal_phrasing = true )
+      def initialize( number, name, symbols, slots, associativity, priority, ast_class, minimal_phrasing = true )
+         type_check( name, Scanner::Artifacts::Name )
+         
          @number           = number
-         @grammar_name     = grammar_name
-         @rule_name        = rule_name
-         @name             = rule_name.intern
+         @name             = name
          @symbols          = symbols
          @slots            = slots
          @associativity    = associativity
@@ -64,11 +63,12 @@ module Plan
          @minimal_phrasing = minimal_phrasing         
       end
       
+      alias rule_name name
+      
       
       def signature()
-         return "#{@grammar_name}.#{@rule_name}"
+         return @name.signature
       end
-         
       
       
       def length()

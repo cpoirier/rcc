@@ -82,11 +82,11 @@ module Model
       # add_string()
       #  - adds a string definition (ExpressionForm of SparseRanges) to the Grammar
       
-      def add_string( name, string_pattern )
-         type_check( string_pattern, Elements::StringPattern )
+      def add_string( name, string_descriptor )
+         type_check( string_descriptor, Elements::StringDescriptor )
          assert( !name_defined?(name), "name [#{name}] is already in use" )
          
-         @strings[name] = string_pattern
+         @strings[name] = string_descriptor
       end
       
       
@@ -160,7 +160,7 @@ module Model
       #  - returns a RuleReference to the start rule for the Grammar
       
       def start_rule()
-         return References::RuleReference.new( Model::Name.create(start_rule_name(), @name) )
+         return References::RuleReference.new( start_rule_name() )
       end
     
     

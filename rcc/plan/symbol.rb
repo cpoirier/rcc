@@ -33,19 +33,13 @@ module Plan
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :grammar_name
-      attr_reader :symbol_name
+      attr_reader :name
       attr_writer :recoverable
       
-      def initialize( grammar_name, symbol_name, refers_to_token )
-         @grammar_name    = grammar_name
-         @symbol_name     = symbol_name
+      def initialize( name, refers_to_token )
+         @name            = name
          @refers_to_token = refers_to_token
          @recoverable     = false
-      end
-      
-      def each_symbol()
-         return self
       end
       
       def refers_to_token?()
@@ -56,31 +50,31 @@ module Plan
          !@refers_to_token
       end
       
-      def name()
-         return [@grammar_name, @symbol_name]
-      end
-      
       def recoverable?()
          @recoverable
       end
       
-      def signature()
-         return "#{@grammar_name}.#{@symbol_name}"
+      def signature( elide_grammar = nil )
+         if elide_grammar.exists? and not @name.literal? and elide_grammar == @name.grammar then
+            return @name.name
+         else
+            return @name.signature
+         end
       end      
       
       def hash()
          return signature().hash
       end
       
-      def eql?( rhs )
-         return false unless rhs.is_a?(Plan::Symbol)
-         return signature() == rhs.signature
-      end
-      
-      def to_s()
-         return (@refers_to_token ? "lex" : "parse") + " " + (@symbol_name.nil? ? "$" : (@grammar_name + ":" + @symbol_name))
-      end
-      
+      # def eql?( rhs )
+      #    return false unless rhs.is_a?(Plan::Symbol)
+      #    return signature() == rhs.signature
+      # end
+      # 
+      # def to_s()
+      #    return (@refers_to_token ? "lex" : "parse") + ":" + (@symbol_name.nil? ? "$" : (@grammar_name + "." + @symbol_name))
+      # end
+      # 
       # def self.describe( name )
       #    return "$" if name.nil?
       #    return name.to_s

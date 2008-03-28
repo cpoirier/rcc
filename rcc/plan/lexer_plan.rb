@@ -28,32 +28,50 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :literal_processor
-      attr_reader :complex_patterns
-      attr_reader :simple_patterns
+      attr_reader :closed_patterns
+      attr_reader :open_patterns
       attr_reader :fallback_plan
       
       
-      def initialize( fallback_plan = nil, complex_patterns = [], simple_patterns = [] )
-         @complex_patterns = complex_patterns
-         @simple_patterns  = simple_patterns
-         @fallback_plan    = fallback_plan      # Another LexerPlan to be tried if this one generates no token
-         @lexer_state      = nil
+      def initialize( fallback_plan = nil, closed_patterns = [], open_patterns = [] )
+         @closed_patterns = closed_patterns       # ExpressionForm patterns that are not complex and do not overlap, and should be tried first
+         @open_patterns   = open_patterns         # ExpressionForm patterns that may be complex and must be tried in order
+         @fallback_plan   = fallback_plan         # Another LexerPlan to be tried if this one generates no token
+         @lexer_state     = nil
       end
       
       
       #
-      # add_pattern()
+      # add_closed_pattern()
+      #  - adds a closed pattern to the plan
+      #  - closed patterns can be processed in any order, and must be unique across all closed patterns
       
-      def add_pattern( grammar_name, symbol_name, expression, is_complex = true )
+      def add_closed_pattern( grammar_name, symbol_name, expression )
          assert( @lexer_state.nil?, "you cannot add_pattern()s to this LexerPlan after close()ing it" )
-         
-         if is_complex then
-            @complex_patterns << [grammar_name, symbol_name, expression]
-         else
-            @simple_patterns  << [grammar_name, symbol_name, expression]
-         end
+         @closed_patterns << [grammar_name, symbol_name, expression]
       end
       
+      
+      #
+      # add_open_pattern()
+      #  - adds an open pattern to the plan
+      #  - open patterns must be processed in added order, and may overlap each other
+      
+      def add_open_pattern( grammar_name, symbol_name, expression )
+         assert( @lexer_state.nil?, "you cannot add_pattern()s to this LexerPlan after close()ing it" )
+         @open_patterns << [grammar_name, symbol_name, expression]
+      end
+      
+      
+      #
+      # each_open_pattern()
+
+      def each_open_pattern()
+         @open_patterns.each do |line|
+            yield( line[0], line[1], line[2] )
+         end
+      end
+
       
       #
       # lexer_state()
@@ -63,12 +81,12 @@ module Plan
          if @lexer_state.nil? then
             
             #
-            # Organize the @simple_patterns into something that can be represented by a LexerState.
-            # Simple patterns have no branching or anything else, so we can just convert them to arrays
+            # Organize the @closed_patterns into something that can be represented by a LexerState.
+            # Closed patterns have no branching or anything else, so we can just convert them to arrays
             # of SparseRanges.
          
             vectors = []
-            @simple_patterns.each do |descriptor|
+            @closed_patterns.each do |descriptor|
                grammar_name, symbol_name, sequence = *descriptor
             
                vectors << (sequence.elements + [grammar_name, symbol_name])
@@ -99,11 +117,11 @@ module Plan
          #
          # Collect the expressions we are prioritizing, maintain declaration order within the set.
          
-         complex_patterns = []
-         simple_patterns  = []
+         closed_patterns = []
+         open_patterns   = []
          if names.is_a?(String) then
             grammar_name = names
-            [[@complex_patterns, complex_patterns], [@simple_patterns, simple_patterns]].each do |pair|
+            [[@closed_patterns, closed_patterns], [@open_patterns, open_patterns]].each do |pair|
                from, to = *pair
                to = from.select{|descriptor| descriptor[0] == grammar_name}
             end
@@ -120,7 +138,7 @@ module Plan
                index[grammar_name][symbol_name] = true
             end
             
-            [[@complex_patterns, complex_patterns], [@simple_patterns, simple_patterns]].each do |pair|
+            [[@closed_patterns, closed_patterns], [@open_patterns, open_patterns]].each do |pair|
                from, to = *pair
                to = from.select{|descriptor| index.member?(descriptor[0]) and index[descriptor[0]].member?(descriptor[1]) }
             end
@@ -131,9 +149,9 @@ module Plan
          # If there is no effective change in order between the produced set and this LexerPlan,
          # just return self.  Otherwise, construct a new LexerPlan.
 
-         return self if (complex_patterns.empty? and simple_patterns.empty?)
-         return self if complex_patterns == @complex_patterns.order.slice(0..complex_patterns.length) and simple_patterns == @simple_patterns.order.slice(0..simple_patterns.length)
-         return self.class.new( self, complex_patterns, simple_patterns )
+         return self if (open_patterns.empty? and closed_patterns.empty?)
+         return self if open_patterns == @open_patterns.order.slice(0..open_patterns.length) and closed_patterns == @closed_patterns.order.slice(0..closed_patterns.length)
+         return self.class.new( self, closed_patterns, open_patterns )
       end
 
 

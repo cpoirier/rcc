@@ -73,9 +73,9 @@ module PositionStack
       # next_token()
       #  - returns the next_token from this Position
 
-      def next_token( explain_indent = nil )
+      def next_token( estream = nil )
          if @next_token.nil?
-            @next_token = self.class.lex_token( @state, @lexer, @stream_position, explain_indent )
+            @next_token = self.class.lex_token( @state, @lexer, @stream_position, estream )
          end
 
          return @next_token
@@ -398,14 +398,14 @@ module PositionStack
       #  - produces a new position similar to this one, but with the second next token on lookahead
       #  - pass in the recovery_registry if you want the position (and its followers) checked
       
-      def correct_by_deletion( recovery_context, explain_indent = nil )
+      def correct_by_deletion( recovery_context, estream = nil )
          
          #
          # Re-arrange our lookahead.  We taint the new next Token to get the Correction in place,
          # then untaint it, as the Token is real.
          
-         deleted_token = next_token( explain_indent )
-         token = self.class.lex_token( @state, @lexer, deleted_token.follow_position, explain_indent )
+         deleted_token = next_token( estream )
+         token = self.class.lex_token( @state, @lexer, deleted_token.follow_position, estream )
          token.taint( Artifacts::Deletion.new(deleted_token, deleted_token.follow_position, recovery_context) )
          token.untaint()
 
@@ -601,17 +601,16 @@ module PositionStack
       # ::lex_token()
       #  - returns the next_token from this Position
 
-      def self.lex_token( state, lexer, stream_position, explain_indent = nil )
-         unless explain_indent.nil? then
-            lexer_explanation = "Lexing with prioritized symbols: #{state.lookahead.collect{|symbol| Plan::Symbol.describe(symbol)}.join(" ")}"
+      def self.lex_token( state, lexer, stream_position, estream = nil )
+         if estream then 
+            lexer_explanation = "Lexing with prioritized symbols: #{state.lookahead.collect{|symbol_name| symbol_name.nil? ? "$" : symbol_name}.join(" ")}"
 
-            STDOUT.puts ""
-            STDOUT.puts ""
-            STDOUT.puts "#{explain_indent}#{"-" * lexer_explanation.length}"
-            STDOUT.puts "#{explain_indent}#{lexer_explanation}"
+            estream.blank_lines(2)
+            estream.puts "-" * lexer_explanation.length
+            estream.puts lexer_explanation
          end
 
-         next_token = lexer.next_token( stream_position, state.lexer_plan, explain_indent )
+         next_token = ContextStream.indent_with(estream) { lexer.read( stream_position, state.lexer_plan, estream ) }
          next_token.rewind_position = stream_position
          
          return next_token

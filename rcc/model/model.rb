@@ -10,14 +10,13 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
-require "#{$RCCLIB}/model/name.rb"
 require "#{$RCCLIB}/model/grammar.rb"
 require "#{$RCCLIB}/model/system.rb"
 require "#{$RCCLIB}/model/elements/group.rb"
 require "#{$RCCLIB}/model/elements/rule.rb"
 require "#{$RCCLIB}/model/elements/slot.rb"
 require "#{$RCCLIB}/model/elements/pluralization.rb"
-require "#{$RCCLIB}/model/elements/string_pattern.rb"
+require "#{$RCCLIB}/model/elements/string_descriptor.rb"
 require "#{$RCCLIB}/model/references/string_reference.rb"
 require "#{$RCCLIB}/model/references/rule_reference.rb"
 require "#{$RCCLIB}/model/references/group_reference.rb"

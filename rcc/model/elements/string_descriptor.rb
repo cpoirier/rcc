@@ -11,63 +11,55 @@
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
-module Plan
+module Model
+module Elements
 
  
  #============================================================================================================================
- # class SymbolGroup
- #  - manages a series of Symbols in a Group 
+ # class StringDescriptor
+ #  - represents a string that can be produced by the Lexer
 
-   class SymbolGroup
-      
+   class StringDescriptor
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
+    
+      attr_reader :name
+      attr_reader :form
 
-      attr_reader :symbols
-      
-      def initialize( symbols = [] )
-         @symbols   = symbols
-         @signature = nil
+      def initialize( name, form, is_explicit = true, contraindications = nil )
+         @name              = name
+         @form              = form
+         @is_explicit       = is_explicit
+         @contraindications = contraindications
       end
       
+      def explicit?()
+         return @is_explicit
+      end
       
-      def each_symbol()
-         @symbols.each do |symbol|
-            yield( symbol )
+      def has_contraindications?()
+         return (@contraindications.exists? and !@contraindications.empty?)
+      end
+      
+      def contraindications()
+         @contraindications = [] if @contraindications.nil?
+         return @contraindications
+      end
+            
+      def display( stream = $stdout )
+         stream.puts "#{@is_explicit ? "explicit" : "implicit"} string form #{@name}:"
+         stream.indent do
+            @form.display( stream )
          end
       end
       
       
-      def <<( symbol )
-         @symbols << symbol
-      end
-      
-      
-      def signature()
-         @signature = @symbols.collect{|symbol| symbol.signature}.join("|") if @signature.nil?
-         return @signature
-      end      
-      
-      
-      def hash()
-         return signature().hash
-      end
-      
-      
-      def eql?( rhs )
-         return false unless rhs.is_a?(Plan::Symbol)
-         return signature() == rhs.signature
-      end
-      
-      
-   end # SymbolGroup
+   end # StringDescriptor
    
 
 
-   
-
-
-end  # module Plan
+end  # module Elements
+end  # module Model
 end  # module RCC

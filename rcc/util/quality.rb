@@ -59,7 +59,7 @@
    # nyi()
    #  - raises an NYI exception, indicating that something it Not Yet Implemented (but will be, one day)
    
-   def nyi( description, *data )
+   def nyi( description = nil, *data )
       if description.nil? then
          begin
             raise "tmp"

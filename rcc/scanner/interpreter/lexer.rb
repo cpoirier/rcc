@@ -27,157 +27,89 @@ module Interpreter
     # Initialization and public interface
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :line_number
-      attr_reader :column_number
-      attr_reader :position
+      attr_reader :next_position
       
       def initialize( source )
-         @source        = source        # The Source from where we will draw our input
-         @position      = 0             # The position within @source of the next unconsumed character
-         @pending_lines = []            # The working set of lines from @source starting at @position
-         @pending_chars = 0             # The number of characters in @pending_lines
-         @line_number   = 1             # The current line number, at the lex() point
-         @column_number = 1             # The current column number, at the lex() point
-         @last_consumed = nil           # The last String consumed() (used for updating line and column numbers)
+         @source         = source       # The Source from where we will draw our input
+         @start_position = 0            # The position at which we started the current read()
+         @next_position  = 0            # The position following the previous read()
       end
       
       
       #
-      # locate_token()
-      #  - sets a Token's position to the current position
+      # read()
+      #  - reads a single Token from the source, starting at the specified position, using
+      #    the supplied LexerPlan
+      #  - returns Token::end_of_file on the end of input
       
-      def locate_token( token, type_override = nil )
-         return token.locate( @position, @line_number, @column_number, @source, type_override, nil )
-      end
-      
-      
-      #
-      # input_remaining?() 
-      #  - returns true if there is input still to be processed
-      
-      def input_remaining?( position = nil )
-         set_position( position )
-         return @position < @source.length
-      end
-      
-      
-      #
-      # sample()
-      #  - returns the some number of the characters from a line starting at position
-      
-      def sample( position, count = 40 )
-         return @source.line_from( position ).to_s.slice( 0, count ) 
-      end
-      
+      def read( position, lexer_plan, estream = nil )
+         position = @next_position if position.nil?
+         
+         warn_nyi( "error handling in lexer" )
 
-      #
-      # next_token()
-      #  - runs the lexer against the input until one token is produced or the input is exhausted
-      #  - returns a Token::end_of_file token on the end of input
-      
-      def next_token( position, lexer_plan, estream = nil )
-         token = lex( position, lexer_plan, estream )
-         
-         if explain then
-            if token.nil? then
-               if input_remaining?() then
-                  estream.puts "===> ERROR LEXING: #{prep(@pending_lines[0])}; will PRODUCE one-character token of unknown type"
-               else
-                  estream.puts "===> DONE"
-               end
-            else
-               estream.puts "===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
-            end
-         end
-         
-         if token.nil? then
-            if input_remaining?() then
-               return locate_token( Artifacts::Token.new(consume()), false )
-            else
-               return Artifacts::Token.end_of_file( @position, @line_number, @column_number, @descriptor )
-            end
+         if @source.at_eof?(position) then
+            return nil
          else
+            @start_position = position 
+            token           = nil
+            line_number     = @source.line_number(position)
+            column_number   = @source.column_number(position)
+         
+            unless solution = read_via_lexer_state( position, lexer_plan.lexer_state, estream )
+               lexer_plan.each_open_pattern do |grammar_name, symbol_name, form|
+                  break if solution = read_via_pattern( position, form, grammar_name, symbol_name, estream )
+               end
+            end
+         
+            if solution then
+               token = solution.to_Token( position, line_number, column_number, @source )
+               @next_position = token.follow_position
+            else
+            
+               #
+               # If we couldn't produce a Token, perhaps there is another LexerPlan to try.
+            
+               if lexer_plan.fallback_plan then
+                  if lexer_plan.fallback_plan.nil? then
+                     estream.puts "there is no fallback plan for this lexer" if estream
+                  else
+                     estream.puts "attempting fallback plan" if estream
+                     token = read( position, lexer_plan.fallback_plan, estream )
+                  end
+               end
+            end
+         
             return token
          end
+
+         # if estream then
+         #    if token.nil? then
+         #       if input_remaining?() then
+         #          estream.puts "===> ERROR LEXING: #{prep(@pending_lines[0])}; will PRODUCE one-character token of unknown type"
+         #       else
+         #          estream.puts "===> DONE"
+         #       end
+         #    else
+         #       estream.puts "===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
+         #    end
+         # end
+         # 
+         # if token.nil? then
+         #    if input_remaining?() then
+         #       return locate_token( Artifacts::Token.new(consume()), false )
+         #    else
+         #       return Artifacts::Token.end_of_file( @position, @line_number, @column_number, @descriptor )
+         #    end
+         # else
+         #    return token
+         # end
+         
+
       end
-
-
-      #
-      # set_position()
-      #  - sets the position of the lexer
-      #  - returns true if you got the data you asked for
       
-      def set_position( to_position, lines = 1 )
-         if to_position.nil? then
-            if @last_consumed.nil? then
-               to_position = @position
-            else
-               to_position = @position + @last_consumed.length
-            end
-         end
-         
-         @last_consumed = nil
-         offset = to_position - @position
       
-         #
-         # If the data is already in @pending_lines, we just need to adjust our current data.
-         
-         if offset >= 0 and offset < @pending_chars then
-            
-            #
-            # Get to the right line.
-
-            while offset >= @pending_lines[0].length
-               retiring_chars  = @pending_lines[0].length
-               offset         -= retiring_chars
-               @pending_chars -= retiring_chars
-               @position      += retiring_chars
-               @line_number   += 1
-               @column_number  = 1
-               @pending_lines.shift
-            end
-            
-            #
-            # Get to the right character in the line.
-            
-            if offset > 0 then
-               @pending_lines[0].slice!( 0, offset )
-               @position      += offset
-               @column_number += offset
-               @pending_chars -= offset
-            end
-            
-         #
-         # Otherwise, we'll need to reload from the Source.
-         
-         else
-            @pending_lines.clear
-            @pending_chars = 0
-            @position      = to_position
-            
-            if @position >= @source.length then
-               @line_number   = nil
-               @column_number = nil
-            else
-               line_index = @source.line_index( to_position )
-               if line_fragment = @source.line_from(to_position, line_index) then
-                  @pending_lines << line_fragment
-                  @pending_chars += line_fragment.length
-                  @line_number    = line_index + 1
-                  @column_number  = @source.column_index( to_position, line_index ) + 1
-               end
-            end
-         end
-         
-         #
-         # Read additional lines, as required.
-
-         read_ahead( lines ) if lines > @pending_lines.length
-
-         return @pending_lines.length == lines
-      end
-
-
+      
+      
 
 
 
@@ -186,197 +118,210 @@ module Interpreter
     #---------------------------------------------------------------------------------------------------------------------
     
     protected
-      
+
       #
-      # lex()
-      #  - run a LexerPlan against the input
-      #  - returns a single token relevant to the supplied state
-      #  - always takes the longest match possible
-      #  - pass nil for position to pick up where you left off
-      
-      def lex( position, lexer_plan, explain_indent )
-         set_position( position )
-         
-         token = nil   
-         while token.nil? and input_remaining?()
-
-            #
-            # First, try to lex a literal token.
-            
-            token = lex_literal( lexer_plan.literal_processor, explain_indent )
-
-
-            #
-            # Next, try pattern matching.
-            
-            if token.nil? and !la().nil? then
-               if lexer_plan.patterns.empty? then
-                  puts "#{explain_indent}     there are no pattern matching options in this state" unless explain_indent.nil?
-               else
-                  puts "#{explain_indent}     attempting pattern matches:" unless explain_indent.nil?
-                  lexer_plan.patterns.each do |pattern, symbol_name|
-                     if match = consume_match(pattern) then
-                        token = locate_token( Artifacts::Token.new(match), symbol_name )
-                        puts "#{explain_indent}     matched #{symbol_name}" unless explain_indent.nil?
-                        break
-                     else
-                        puts "#{explain_indent}     did not match #{symbol_name}" unless explain_indent.nil?
-                     end
-                  end
-               end
-            end
-            
-            
-            #
-            # Finally, try tail processing, if available.
-            
-            if token.nil? and !la().nil? then
-               if lexer_plan.fallback_plan.nil? then
-                  puts "#{explain_indent}     there is no fallback plan for this lexer" unless explain_indent.nil?
-               else
-                  puts "#{explain_indent}     attempting fallback plan" unless explain_indent.nil?
-                  token = lex( position, lexer_plan.fallback_plan, explain_indent )
-               end
-            end
-
-            
-            #
-            # If we got something, and it is on the ignore list, ignore it.  We'll then try again, unless
-            # there is nothing more to do.  
-            
-            if token.nil? then
-               break
-            else
-               if !lexer_plan.ignore_list.nil? and lexer_plan.ignore_list.member?(token.type) then
-                  puts "#{explain_indent}===> IGNORING #{prep(token)}" unless explain_indent.nil?
-                  token = nil
-               end
-            end
-         end
-         
-         return token
-      end
-      
-      
-      #
-      # lex_literal()
+      # read_via_lexer_state()
       #  - processes a LexerState against the current lookahead
+      #  - returns a Solution if the lookahead matches the state, or nil
       
-      def lex_literal( state, explain_indent = nil, base_la = 1 )
-         token = nil
+      def read_via_lexer_state( position, state, estream = nil )
+         solution = nil
+         note     = nil
          
          #
          # First, try to read by character lookahead.  Note that for "+" and "++", "+" will match both
          # a child_plan and an accepted entry.  So we try the child_plan first.  If it fails, we'll try
          # accept instead.  In other words, we take the longest match we can.  
          
-         if c = la(base_la) then
-            if state.child_states.member?(c) then
-               puts "#{explain_indent}     la(#{base_la}) is #{prep(c)}, which matches a child state; recursing" unless explain_indent.nil?
-               token = lex_literal( state.child_states[c], explain_indent, base_la + 1 )
-            end
-      
-            if token.nil? and state.accepted.member?(c) then
-               puts "#{explain_indent}     la(#{base_la}) is #{prep(c)}, which is accepted by this state; producing type #{state.accepted[c]}" unless explain_indent.nil?
-               token = locate_token( Artifacts::Token.new(consume(base_la)), state.accepted[c] )
-            end
-         end
-
-         if token.nil? and !c.nil? then
-            puts "#{explain_indent}     la(#{base_la}) is #{prep(c)}, which does not match any literal options in this state" unless explain_indent.nil?
-         end
-         
-         return token
-      end
+         if c = @source[position] then
+            note = "source[#{position}] (+#{position - @start_position}) = #{sprintf("\\u%04X", c)};" if estream
             
+            if state.child_states.member?(c) then
+               estream.puts "#{note} matches a child state; trying child state [#{state.object_id}]" if estream
+               solution.prepend( c ) if solution = read_via_lexer_state(position + 1, state.child_states[c], estream)
+            end
+      
+            if solution.nil? and state.accepted.member?(c) then
+               estream.puts "#{note} is accepted by state [#{state.object_id}]; producing type #{state.accepted[c].join(".")}" if estream
+               solution = Solution.new( c, *state.accepted[c] )
+            end
+            
+            if solution.nil? then
+               estream.puts "#{note} does not match any literal options in this state" if estream
+            end
+         end
+         
+         return solution
+      end
+      
+      
       
       #
-      # la()
-      #  - looks ahead one or more characters
-      #  - reads write through line boundaries, if necessary
+      # read_via_pattern()
+      #  - processes an ExpressionForm of SparseRanges against the source to produce
+      #    a matching string of characters (longest match possible) or nil
       
-      def la( count = 1 )
-         c = nil
+      def read_via_pattern( position, form, grammar_name, symbol_name, estream = nil )
+         solution = nil
          
-         if set_position(nil) then
-            line = 0
-            while c.nil?
-               if count <= @pending_lines[line].length then
-                  c = @pending_lines[line].slice(count-1, 1)
-               else
-                  line += 1
-                  read_ahead( line ) or break
+         if estream then
+            description = "attempting pattern [#{grammar_name}.#{symbol_name}]   ".ljust(50)
+            
+            estream << description 
+            estream.indent(" " * description.length) do 
+               form.display(estream)
+            end
+            
+            estream.end_line()
+         end
+         
+         accepted, length = scan( position, form, estream ) 
+         
+         #
+         # We specifically refuse to accept 0-length matches at this level.  If something
+         # is entirely optional, and matches with 0-length, it really isn't there.
+         
+         if accepted && length > 0 then
+            solution = Solution.new( @source.slice(position, length), grammar_name, symbol_name ) 
+            estream.indent { estream.puts "==> matched against [#{solution.to_s.escape}]" } if estream
+         else
+            estream.indent { estream.puts "==> didn't match" } if estream
+         end
+         
+         return solution
+      end
+
+
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Pattern handling
+    #---------------------------------------------------------------------------------------------------------------------
+    
+    protected
+
+      #
+      # scan()
+      #  - compares the supplied ExpressionForm/SparseRange against the source at the specified position
+      #    and returns a flag indicating if it matches and a count of the number of characters it matches
+      
+      def scan( position, form, estream = nil )
+         accepted = false
+         length   = 0
+         
+         case form
+            
+            #
+            # For a sequence, all elements must be accepted, in successive order.
+         
+            when Util::ExpressionForms::Sequence
+               form.each_element do |element|
+                  accepted, match_length = scan( position + length, element, estream )
+                  break unless accepted
+                  
+                  length += match_length
                end
-            end
-         end
-         
-         return c
-      end
-      
-      
-      #
-      # consume()
-      #  - shifts some number of characters off the lookahead and returns it
-      
-      def consume( count = 1 )
-         c = nil
-         
-         if c = la(count) then 
-            @last_consumed = @pending_lines[0].slice(0, count)
-         end
-         
-         return @last_consumed
-      end
+               
+               
+            #
+            # For a repeater, loop.  We'll handle SparseRange directly, to improve
+            # performance in that loop.
+            
+            when Util::ExpressionForms::Repeater
+               range    = form.element.is_a?(Range) ? form.element : nil
+               accepted = form.times() do |number, required|
+                  if range then
+                     break !required unless range.member?(@stream[position + length])
+                     length += 1 
+                  else
+                     child_accepted, child_length = scan( position + length, form.element, estream )
+                     break !required unless child_accepted
+                     length += child_length
+                  end
+               end
+               
+            
+            # 
+            # For a branch, try all options and pick the longest.
+            # BUG: is picking the longest match the right choice?
+            
+            when Util::ExpressionForms::BranchPoint
+               form.each_element() do |element|
+                  option_accepted, option_length = scan( position, element, estream )
+                  if option_accepted then
+                     accepted = true
+                     length   = max( length, option_length )
+                  end
+               end
+                              
 
-
-      #
-      # consume_match()
-      #  - applies a Regexp to the unconsumed portion of the current line
-      #  - if a match occurs, consumes those characters and returns them
-      #  - matches must be wholly contained within the current line
-      
-      def consume_match( regexp )
-         match = nil
+            #
+            # SparseRange is the meat of our work, and is also the simplest thing.
+            
+            when Util::SparseRange
+               if form.member?(@source[position]) then
+                  accepted = true
+                  length   = 1
+               end
          
-         if set_position(nil) then
-            if @pending_lines[0] =~ regexp and $`.length == 0 then
-               match = @pending_lines[0].slice(0, $&.length)
-               @last_consumed = match
-            end
-         end
          
-         return match
-      end
-
-      
-      #
-      # read_ahead( lines = 1 )
-      #  - reads additional lines from the input
-      
-      def read_ahead( lines = 1 )
-         (lines - @pending_lines.length).times do |i|
-            if !@line_number.nil? and line = @source.line( @line_number - 1, true ) then
-               @pending_lines << line
-               @pending_chars += line.length
+            #
+            # Anything else is a bug.
+            
             else
-               return false
-            end
+               nyi( nil, form )
+               
          end
          
-         return true
-      end
-   
-      
-      # 
-      # prep()
-      #  - formats a String/Token for explain output
-      
-      def prep( data )
-         return "<end of input>" if data.nil?
-         return "[#{data.gsub("\n", "\\n")}]"
+         
+         
+         if accepted then
+            return accepted, length
+         else
+            return false, 0
+         end
       end
       
       
+      
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Internal Data Structures
+    #---------------------------------------------------------------------------------------------------------------------
+    
+    protected
+    
+      class Solution
+         def initialize( character_string, grammar_name, symbol_name )
+            @character_string = character_string.to_a
+            @grammar_name     = grammar_name
+            @symbol_name      = symbol_name
+         end
+         
+         def prepend( c )
+            @character_string.unshift c
+         end
+         
+         def append( c )
+            @character_string.push c
+         end
+         
+         def follow_position( position )
+            return position + @character_string.length
+         end
+         
+         def to_s()
+            return @character_string.pack("U*")
+         end
+                  
+         def to_Token( start_position, line_number, column_number, source )
+            return Artifacts::Nodes::Token.new( self.to_s, @grammar_name, @symbol_name, start_position, line_number, column_number, source, false, start_position + @character_string.length )
+         end
+      end
+
    end # Lexer
    
 

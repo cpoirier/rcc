@@ -69,6 +69,10 @@ module Artifacts
          return @commit_position
       end
       
+      def at_eof?( position = nil )
+         position = @last_position if position.nil?
+         return !read_through( position )
+      end
       
       
       #
@@ -76,62 +80,37 @@ module Artifacts
       #  - returns the character code at the specified position
       
       def []( position )
+         position = @last_position if position.nil?
          read_through( position ) or return nil
+         
          @last_position = position
          return @codes[position - (@commit_position + 1)]
       end
-
+      
       
       #
-      # each_character()
-      #  - calls your block once for each character in the Source, passing:
-      #     - position
-      #     - code
-      #     - line_number
-      #     - column_number
-      #  - this routine should be a bit faster than doing the work yourself
+      # slice()
       
-      def each_character( position = 0 )
-         line_number   = line_number(position)
-         column_number = column_number(position)
+      def slice( *args )
+         first_position = nil
+         last_position  = nil
          
-         while true
-            while @codes.length > position - (@commit_position + 1)
-               code = @codes[position - (@commit_position + 1)]     
-               yield( position, code, line_number, column_number )  
+         if args.length == 1 then
+            range          = args[0]
+            first_position = range.begin
+            last_position  = range.end
+         else
+            first_position = (args[0].nil? ? @last_position : args[0])
+            last_position  = first_position + (args[1] - 1)
+         end
 
-               if code == 10 then
-                  line_number  += 1
-                  column_number = 1
-               else
-                  column_number += 1
-               end
-               
-               position += 1
-            end
-            
-            break if @stream.nil?
-            read_through( position )
-         end
+         first_index = max( first_position - (@commit_position + 1), @commit_position + 1 )
+         last_index  = last_position - (@commit_position + 1)
+
+         read_through( last_position ) or return nil
+         return @codes[first_index..last_index]
       end
-      
-      #
-      # each_character_slow()
-      #  - primarily for testing purposes, does the same as each_character(), but using all
-      #    the Source interface for the work
-      
-      def each_character_slow( position = 0 )   
-         while (@stream || position < read_so_far())
-            while position < read_so_far()
-               yield( position, self[position], line_number(position), column_number(position) )
-               @last_position = position
-               position += 1
-            end
-         
-            read_through( position )
-         end
-      end
-      
+
       
       #
       # line_number()
@@ -159,6 +138,41 @@ module Artifacts
       
       
       #
+      # each_character()
+      #  - calls your block once for each character in the Source, passing:
+      #     - position
+      #     - code
+      #     - line_number
+      #     - column_number
+      #  - this routine should be a bit faster than doing the work yourself
+      
+      def each_character( position = 0 )
+         line_number   = line_number(position)
+         column_number = column_number(position)
+         
+         while true
+            while @codes.length > position - (@commit_position + 1)
+               code = @codes[position - (@commit_position + 1)]     
+               @last_position = position
+               yield( position, code, line_number, column_number )  
+
+               if code == 10 then
+                  line_number  += 1
+                  column_number = 1
+               else
+                  column_number += 1
+               end
+               
+               position += 1
+            end
+            
+            break if @stream.nil?
+            read_through( position )
+         end
+      end
+
+      
+      #
       # commit()
       #  - discards storage (only) for codes on or before the specified position
       #  - useful for streaming operations, to keep old data from filling up memory
@@ -182,17 +196,138 @@ module Artifacts
          # Discard @codes and @eol_positions and patch up the offsets.
          
          @codes.slice!( 0..(position - @commit_position - 1) )
-         @eol_positions.slice!( 0..(eol_discard_count - 1) )
+         @eol_positions.slice!( 0..(eol_discard_count - 1) ) if eol_discard_count > 0
          
          @commit_position                   = position
          @commit_eol_positions_discarded   += eol_discard_count
          @commit_first_line_start_position  = first_line_start_position
          
-         @last_position  = -1
          @last_located   = -1
          @last_eol_index = 0
       end
 
+      
+      #
+      # sample()
+      #  - returns a sample of some number of characters starting at the specified position
+      #  - doesn't block for more characters unless you tell it to
+      
+      def sample( count = 40, position = nil, as_string = true, block = false )
+         position = @last_position if position.nil?
+         read_through( position + (count - 1), false )
+         
+         first = position - (@commit_position + 1)
+         limit = @codes.length - first
+         count = min(count, limit) 
+
+         last   = first + count - 1
+         sample = last >= 0 ? @codes.slice( max(first, 0)..last ) : []
+         
+         return (as_string ? sample.pack("U*") : sample)
+      end
+      
+      
+      #
+      # sample_line()
+      #  - similar to sample(), but limits itself to the line of the specified position
+      #  - returns the sample and the column number of the position within the sample
+      #  - if you clear one_piece, you'll receive three strings/arrays: before, on, and after position,
+      #    instead of a single sample and a column number of the requested position
+      #  - if you call this for a committed position, you probably won't get anything useful
+      
+      def sample_line( position = nil, as_string = true, one_piece = true, block = false )
+         position = @last_position if position.nil?
+         read_through( position + 100, false )
+         
+         sample = nil
+         column = 1
+         
+         if position < @commit_first_line_start_position then
+            # no op -- there's nothing to sample
+         elsif @eol_positions.empty? or position <= @eol_positions[0] then
+            sample = @codes.slice( 0..(@eol_positions.empty? ? -1 : code_index(@eol_positions[0])) )
+            column = code_index(position) + 1
+         else
+            eol_index = eol_index( position )
+            if eol_index >= @eol_positions.length then
+               first  = code_index(@eol_positions[-1] + 1)
+               sample = @codes.slice( first..-1 )
+               column = code_index(position) - first + 1
+            else
+               first  = code_index(@eol_positions[eol_index-1] + 1)
+               sample = @codes.slice( first..code_index(@eol_positions[eol_index]) )
+               column = code_index(position) - first + 1
+            end
+         end
+         
+         if one_piece then
+            return [(as_string ? sample.pack("U*") : sample), column]
+         else
+            if sample then
+               before = column == 1 ? [] : sample.slice(0..(column - 2))
+               on     = sample.slice( (column - 1)..(column - 1) )
+               after  = column == sample.length ? [] : sample.slice(column..-1)
+            
+               if as_string then
+                  return [before.pack("U*"), on.pack("U*"), after.pack("U*")]
+               else
+                  return [before, on, after]
+               end
+            else
+               return [nil, nil, nil]
+            end
+         end
+      end
+      
+      
+      #
+      # sample_line_and_mark_position()
+      #  - calls sample_line(), then returns the sample and a marker line you can print
+      #    out to show the position within the sample
+      #  - ie:
+      #     identifier_char => [{word_first_char}{digit}]\n
+      #     --------------------------------------------^
+      #  - returns nil for committed positions 
+      
+      def sample_line_and_mark_position( spacer = "-", marker = "^", position = nil, block = false )
+         before, on, after = sample_line( position, true, false, block )
+         
+         if on then
+            before = before.escape
+            on     = on.escape
+            after  = after.escape
+            
+            return [ before + on + after, (spacer * before.length) + (marker * on.length)]
+         end
+         
+         return [nil, nil]
+      end
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Miscellaneous stuff
+    #---------------------------------------------------------------------------------------------------------------------
+    
+
+      #
+      # each_character_slow()
+      #  - primarily for testing purposes, does the same as each_character(), but using all
+      #    the Source interface for the work
+      
+      def each_character_slow( position = 0 )   
+         while (@stream || position < read_so_far())
+            while position < read_so_far()
+               yield( position, self[position], line_number(position), column_number(position) )
+               position += 1
+            end
+         
+            read_through( position )
+         end
+      end
+      
+      
 
 
 
@@ -275,6 +410,15 @@ module Artifacts
       end
       
       
+      #
+      # code_index()
+      #  - returns the current @codes index of the specified position
+      #  - doesn't range check, so be sure the position is valid!
+      
+      def code_index( position )
+         return position - (@commit_position + 1)
+      end
+      
 
 
 
@@ -288,8 +432,8 @@ module Artifacts
       # read_through()
       #  - reads Unicode characters through the specified position
       
-      def read_through( position )
-         return true if position < read_so_far()
+      def read_through( position, blocking = true )
+         return true if position < @codes.length + (@commit_position + 1)
          old_length = @codes.length
          
          #
@@ -300,8 +444,8 @@ module Artifacts
          
          if @stream then
             begin
-               until position < read_so_far() 
-                  if utf8 = @stream.readpartial(128) then
+               until position < @codes.length + (@commit_position + 1)
+                  if utf8 = read( blocking ) then
                      utf8 = @pending + utf8
                      @pending = ""
                
@@ -332,9 +476,27 @@ module Artifacts
             end
          end
          
-         return position < read_so_far()
+         return position < @codes.length + (@commit_position + 1)
       end
     
+    
+      #
+      # read()
+      #  - reads up to some number of bytes from the source, either blocking or not
+      
+      def read( blocking = true, bytes = 128 )
+         if blocking or !@stream.class.method_defined?(:read_nonblock) then
+            return @stream.readpartial( bytes )
+         else
+            begin
+               return @stream.read_nonblock( bytes )
+            rescue Errno
+               # no op
+            end
+         end
+         
+         return ""
+      end
       
       
    end # Source

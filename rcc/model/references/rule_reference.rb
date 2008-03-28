@@ -29,6 +29,7 @@ module References
 
       attr_reader :rule_name
       alias symbol_name rule_name
+      alias name rule_name
       
       def initialize( rule_name )
          @rule_name = rule_name

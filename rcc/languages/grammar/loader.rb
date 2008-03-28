@@ -55,10 +55,12 @@ module Grammar
       # initialize_bootstrap_parser()
       #  - loads and initializes the bootstrap parser that will be used to load Grammars
       
-      def self.initialize_bootstrap_parser()
+      def self.initialize_bootstrap_parser( )
          system_model = ModelBuilder.build( BootstrapGrammar.ast )
+         p system_model.start_rule
          master_plan  = system_model.compile_master_plan()
-         parser_plan  = master_plan.compile_parser_plan( system_model.start_rule ).compile_actions()
+         parser_plan  = master_plan.compile_parser_plan( system_model.start_rule ).compile_actions( true )
+      
       
          @@bootstrap_parser_factory = RCC::Scanner::Interpreter::Factory.new( parser_plan )
       end

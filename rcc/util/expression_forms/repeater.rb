@@ -114,6 +114,64 @@ module ExpressionForms
          end
       end
 
+
+      #
+      # times()
+      #  - calls your block the appropriate number of times for our minimum and maximum
+      #  - passes invocation number, and a flag indicating if this pass is required
+      #  - returns true; you can break with a different value, if you have a problem
+
+      def times()
+         i = 0
+         
+         @minimum.times do |i|
+            yield( i + 1, @element, true )
+         end
+         
+         if @maximum.nil? then
+            while true
+               i += 1
+               yield( i + 1, false )
+            end
+         elsif @maximum > @minimum
+            @minimum.upto(@maximum-1) do |i|
+               yield( i + 1, false )
+            end
+         end
+         
+         return true
+      end
+      
+      # def times()
+      #    required_completions = 0
+      # 
+      #    begin
+      #       i = 0
+      #       @minimum.times do |i|
+      #          yield( i + 1, @element, true )
+      #          required_completions += 1
+      #       end
+      #    
+      #       if @maximum.nil? then
+      #          while true
+      #             i += 1
+      #             yield( i + 1, false )
+      #          end
+      #       elsif @maximum > @minimum
+      #          @minimum.upto(@maximum-1) do |i|
+      #             yield( i + 1, false )
+      #          end
+      #       end
+      #       
+      #    #
+      #    # I don't like doing this this way, but I can't seem to catch LocalJumpError, and we
+      #    # need the result, so . . . .
+      #    
+      #    ensure
+      #       return required_completions >= @minimum
+      #    end
+      #    
+      # end
       
       
    end # Repeater

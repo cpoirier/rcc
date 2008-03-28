@@ -54,7 +54,7 @@ module Grammar
       #  - given a AST of a grammar source file, returns a Model::Grammar or an error report
       
       def build_model( system_spec )
-         assert( system_spec.type == :system_spec, "Um, perhaps you meant to pass a system_spec AST?" )
+         assert( system_spec.type == "RCC.system_spec", "Um, perhaps you meant to pass a system_spec AST?" )
          
          #
          # Pass 1: load up all the GrammarBuilders so that all names can be verified.

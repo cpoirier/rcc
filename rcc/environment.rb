@@ -80,11 +80,39 @@
          end
       end
    
-   
+
+      #
+      # each_index_of()
+      #  - calls your block with each position of the search string
+      
       def each_index_of( search, pos = 0 )
          while next_pos = ruby_index( search, pos )
             yield( next_pos )
             pos = next_index + 1
+         end
+      end
+
+
+      #
+      # escape()
+      #  - returns a string with newline etc. escaped
+      
+      def escape()
+         self.inspect.slice(1..-2).gsub("\\\"", "\"").gsub("\\'", "'")
+      end
+      
+      
+      #
+      # <<
+      #  - adds unicode character code support to the standard << 
+
+      alias ruby_append <<
+      
+      def <<( data )
+         if data.is_a?(Numeric) then
+            self << [data].pack("U*")
+         else
+            ruby_append( data )
          end
       end
 
@@ -174,6 +202,14 @@
          return self[1..-1]
       end
 
+
+      #
+      # to_a()
+      
+      def to_a()
+         return self
+      end
+      
    end
    
    
@@ -197,6 +233,11 @@
       def specialize_method_name( name )
          return "#{name}#{self.class.name.split("::")[-1].gsub(/[A-Z]/){|s| "_#{s.downcase}"}}".intern
       end
+      
+      
+      def to_a()
+         return [self]
+      end
    end
    
    
@@ -205,6 +246,9 @@
       def each()
       end
       
+      def to_a()
+         return []
+      end
    end
    
    
@@ -243,7 +287,7 @@
       #
       # ::indent_with( stream )
       
-      def indent_with( stream )
+      def self.indent_with( stream )
          if stream then
             stream.indent { yield(stream) }
          else
@@ -261,7 +305,7 @@
          begin
             additional = "   " * additional if additional.is_a?(Numeric)
             @indent += additional
-            yield( self )
+            return yield( self )
          ensure
             @indent = old_indent
          end

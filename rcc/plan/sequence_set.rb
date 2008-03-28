@@ -80,9 +80,9 @@ module Plan
       attr_reader :sequences
       
       def initialize( sequences = [], unique = true )
-         @sequences       = []
-         @signatures      = unique ? {} : nil
-         @start_terminals = nil
+         @sequences  = []
+         @signatures = unique ? {} : nil
+         @lookahead  = nil
          
          sequences.each do |sequence|
             add_sequence( sequence )
@@ -108,7 +108,7 @@ module Plan
             end
          end
          
-         @start_terminals = nil
+         @lookahead = nil
       end
       
       def <<( sequence )
@@ -154,33 +154,31 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
     
       #
-      # start_terminals()
-      #  - returns a set of all terminal Symbols that can start any of the sequences in this set
+      # lookahead()
+      #  - returns a set of all token Symbols that can start any of the sequences in this set
       #  - you must pass in a hash of ProductionSets that covers the Symbol namespace
       
-      def start_terminals( master_plan, loop_detection=[] )
-         return @start_terminals unless @start_terminals.nil? 
+      def lookahead( master_plan, loop_detection=[] )
+         return @lookahead unless @lookahead.nil? 
          return [] if loop_detection.member?(self.object_id)
          
-         start_terminals = {}
-         @sequences.collect{|sequence| sequence[0]}.each do |symbol|
-            symbol.each_symbol do |start_symbol|
-               if start_symbol.refers_to_token? then
-                  start_terminals[start_symbol] = true
-               else
-                  if set = master_plan.get_production_set(start_symbol) then
-                     set.start_terminals(master_plan, loop_detection + [self.object_id]).each do |terminal|
-                        start_terminals[terminal.signature] = terminal
-                     end
-                  else
-                     # BUG: Should we do anything if the symbol isn't define?  Shouldn't this have been caught by now?
+         lookahead = {}
+         @sequences.collect{|sequence| sequence[0]}.each do |start_symbol|
+            if start_symbol.refers_to_token? then
+               lookahead[start_symbol.signature] = start_symbol
+            else
+               if set = master_plan.production_sets[start_symbol.name] then
+                  set.lookahead(master_plan, loop_detection + [self.object_id]).each do |lookahead_symbol|
+                     lookahead[lookahead_symbol.signature] = lookahead_symbol
                   end
+               else
+                  # BUG: Should we do anything if the symbol isn't defined?  Shouldn't this have been caught by now?
                end
             end
          end
          
-         @start_terminals = start_terminals.values
-         return @start_terminals
+         @lookahead = lookahead.values
+         return @lookahead
       end
       
     

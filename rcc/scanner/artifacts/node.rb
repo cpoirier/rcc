@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/name.rb"
 
 module RCC
 module Scanner
@@ -28,17 +29,15 @@ module Artifacts
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :type         # The Symbol this Node represents
-      
-      alias :symbol      :type
-      alias :root_symbol :type
-      
+      attr_reader :type
+         
       def initialize( type )
+         type_check( type, Scanner::Artifacts::Name )
          @type = type
       end
       
       def description()
-         return "#{@type}"
+         return @type.signature
       end
       
       def follow_position()

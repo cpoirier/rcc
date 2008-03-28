@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/name.rb"
 require "#{$RCCLIB}/languages/grammar/naming_context.rb"
 require "#{$RCCLIB}/util/sparse_range.rb"
 require "#{$RCCLIB}/util/directed_acyclic_graph.rb"
@@ -28,10 +29,11 @@ module Grammar
    class GrammarBuilder
       
       Node                   = RCC::Scanner::Artifacts::Node
+      Name                   = RCC::Scanner::Artifacts::Name
       Group                  = RCC::Model::Elements::Group
       Rule                   = RCC::Model::Elements::Rule
       Pluralization          = RCC::Model::Elements::Pluralization
-      StringPattern          = RCC::Model::Elements::StringPattern
+      StringDescriptor       = RCC::Model::Elements::StringDescriptor
       StringReference        = RCC::Model::References::StringReference
       RuleReference          = RCC::Model::References::RuleReference
       GroupReference         = RCC::Model::References::GroupReference
@@ -45,21 +47,21 @@ module Grammar
     #---------------------------------------------------------------------------------------------------------------------
 
       def initialize( grammar_spec, model_builder )
-         assert( grammar_spec.type == :grammar_spec, "Um, perhaps you meant to pass a grammar_spec AST?" )
+         assert( grammar_spec.type == "RCC.grammar_spec", "Um, perhaps you meant to pass a grammar_spec AST?" )
          
          @name                = grammar_spec.name.text
          @grammar_spec        = grammar_spec
          @model_builder       = model_builder
          
-         @specifications      = Util::OrderedHash.new()   # name => spec, in declaration order
+         @specifications      = Util::OrderedHash.new()       # name => spec, in declaration order
          @option_specs        = []
          @pluralization_specs = Util::OrderedHash.new()
          @precedence_specs    = []
          
-         @string_defs         = Util::OrderedHash.new()    # name => ExpressionForm of SparseRange
-         @group_defs          = Util::OrderedHash.new()    # name => Group
-         @element_defs        = Util::OrderedHash.new()    # name => Rule or Group
-         @naming_contexts     = Util::OrderedHash.new()    # name => naming context data
+         @string_defs         = Util::OrderedHash.new()       # name => ExpressionForm of SparseRange
+         @group_defs          = Util::OrderedHash.new()       # name => Group
+         @element_defs        = Util::OrderedHash.new()       # name => Rule or Group
+         @naming_contexts     = Util::OrderedHash.new()       # name => naming context data
          
          register_specs( [grammar_spec] )
       end
@@ -76,15 +78,15 @@ module Grammar
          # Resolve string specs into ExpressionForms of SparseRanges of character codes.  
 
          @specifications.each do |name, spec|
-            next unless spec.type == :string_spec
-            @string_defs[name] = StringPattern.new( create_name(name), process_string_data(spec.definition, [name]) ) unless @string_defs.member?(name)
+            next unless spec.type == "string_spec"
+            @string_defs[name] = StringDescriptor.new( create_name(name), process_string_data(spec.definition, [name]) ) unless @string_defs.member?(name)
             
             warn_nyi( "skipping contraindications on string -- these are only done here, so must be done for every string" )
          end
          
          if false then
-            @string_defs.each do |name, string_pattern|
-               string_pattern.display( $stdout )
+            @string_defs.each do |name, string_descriptor|
+               string_descriptor.display( $stdout )
                $stdout.end_line
                $stdout.puts ""
             end
@@ -95,7 +97,7 @@ module Grammar
          # Resolve group specs into Group objects.
          
          @specifications.each do |name, spec|
-            next unless spec.type == :group_spec
+            next unless spec.type == "group_spec"
             @group_defs[name] = process_group_data( spec, [name] ) unless @group_defs.member?(name)
             @group_defs[name].name = create_name(name)
          end
@@ -106,8 +108,8 @@ module Grammar
          # we'll also import Groups into the @elements list at this time.
 
          @specifications.each do |name, spec|
-            case spec.type
-               when :rule_spec
+            case spec.type.name
+               when "rule_spec"
                   
                   #
                   # Create the rule.
@@ -119,8 +121,8 @@ module Grammar
                   # Process any directives.
                   
                   spec.directives.each do |directive|
-                     case directive.type
-                        when :associativity_directive
+                     case directive.type.name
+                        when "associativity_directive"
                            case directive.direction.text
                               when "left"
                                  @element_defs[name].associativity = :left
@@ -146,8 +148,8 @@ module Grammar
             
                   warn_nyi( "skipping transformations on rule" )
                   
-               when :group_spec
-                  @element_defs[name] = @group_defs[name]
+               when "group_spec"
+                  @element_defs[name] = @group_defs[name].group_rule
             end
          end
          
@@ -160,8 +162,8 @@ module Grammar
          end
             
          if false then
-            @string_defs.each do |name, string_pattern|
-               string_pattern.display( $stdout )
+            @string_defs.each do |name, string_descriptor|
+               string_descriptor.display( $stdout )
                $stdout.end_line
                $stdout.puts ""
             end
@@ -214,38 +216,39 @@ module Grammar
       def register_specs( work_queue )
          until work_queue.empty?
             node = work_queue.shift
-            case node.type
-               when :grammar_spec, :section_spec
+            case node.type.name
+               when "grammar_spec", "section_spec"
                   node.specifications.reverse.each do |spec| 
                      work_queue.unshift spec 
                   end
 
-                  warn_nyi( "ModelBuilder: support for options" )
-                  
-               when :strings_spec
+               when "strings_spec"
                   work_queue = node.string_specs + work_queue if node.slot_filled?(:string_specs)
-               when :macros_spec
+               when "macros_spec"
                   work_queue = node.macro_specs + work_queue if node.slot_filled?(:macro_specs)
                   warn_nyi "ModelBuilder: macro_specs are not being validated, currently"
                   
-               when :string_spec, :macro_spec, :rule_spec, :group_spec
+               when "string_spec", "macro_spec", "rule_spec", "group_spec"
                   if @specifications.member?(node.name.text) then
                      nyi( "error handling for duplicate name [#{node.name.text}]" )
                   else
                      @specifications[node.name.text] = node
                      
-                     if node.type == :group_spec then
+                     if node.type == "group_spec" then
                         node.specifications.reverse.each do |spec|
                            work_queue.unshift spec
                         end
                      end
                   end
                   
-               when :spec_reference
+               when "spec_reference"
                   # no op -- this is just a side-effect of :group_spec processing
                   
-               when :precedence_spec
+               when "precedence_spec"
                   @precedence_specs << node
+
+               when "start_rule", "ignore_switch", "backtracking_switch"
+                  warn_nyi( "ModelBuilder: support for options" )
                   
                else
                   nyi( "support for node type [#{node.type}]", node )
@@ -477,18 +480,18 @@ module Grammar
       def process_string_data( node, loop_detection = [] )
          result = nil
          
-         case node.type
-            when :sp_concat
+         case node.type.name
+            when "sp_concat"
                result = create_sequence( process_string_data(node.lhs, loop_detection), process_string_data(node.rhs, loop_detection) )
 
-            when :sp_reference
+            when "sp_reference"
                if resolution = resolve_string_reference(node.name, loop_detection) then
                   result = resolution
                else
                   nyi( "error handling for missing character/word_definition [#{node.name.text}]" )
                end
 
-            when :sp_repeated
+            when "sp_repeated"
                minimum = 0
                maximum = nil
 
@@ -506,31 +509,31 @@ module Grammar
                      bug( "unsupported repeat_count [#{node.repeat_count}]")
                end
 
-               result = create_repeater( process_string_data(node.string_pattern, loop_detection), minimum, maximum )
+               result = create_repeater( process_string_data(node.string_descriptor, loop_detection), minimum, maximum )
 
-            when :cs_characters, :cs_difference
+            when "cs_characters", "cs_difference"
                result = create_sequence( process_character_data(node, loop_detection) )
 
-            when :string
+            when "string"
                result = create_sequence()
                node.string_elements.each do |string_element|
                   result << process_string_data( string_element, loop_detection )
                end
 
-            when :general_text
+            when "general_text"
                result = create_sequence()
                node.text.length.times do |i|
                   result << Util::SparseRange.new( node.text[i] )
                end
 
-            when :escape_sequence
+            when "escape_sequence"
                if @@escape_sequences.member?(node.text) then
                   result = create_sequence( Util::SparseRange.new(@@escape_sequences[node.text][0]) )
                else
                   result = create_sequence( Util::SparseRange.new(node.text[1]) )
                end
 
-            when :unicode_sequence
+            when "unicode_sequence"
                result = create_sequence( Util::SparseRange.new(node.text.slice(2..-1).to_i(16)) )
 
             else
@@ -551,19 +554,19 @@ module Grammar
          if @specifications.member?(name) then
             spec = @specifications[name]
             
-            case spec.type
-               when :string_spec
+            case spec.type.name
+               when "string_spec"
                   unless @string_defs.member?(name)
                      if loop_detection.member?(name) then
                         nyi( "error handling for detected reference loop [#{name}]" )
                      else
                         if resolution = process_string_data(spec.definition, loop_detection + [name]) then
-                           @string_defs[name] = StringPattern.new( create_name(name), resolution ) 
+                           @string_defs[name] = StringDescriptor.new( create_name(name), resolution ) 
                         end
                      end
                   end
             
-                  resolution = @string_defs[name].pattern
+                  resolution = @string_defs[name].form
                   
                else
                   nyi( "error handling for string reference that resolves to non-string" )
@@ -581,37 +584,37 @@ module Grammar
       def process_character_data( node, loop_detection = [] )
          result = nil
          
-         case node.type
-            when :cs_difference
+         case node.type.name
+            when "cs_difference"
                result = process_character_data( node.lhs, loop_detection ) - process_character_data( node.rhs, loop_detection )
             
-            when :cs_characters
+            when "cs_characters"
                result = Util::SparseRange.new()
                node.cs_elements.each do |element|
                   result += process_character_data( element, loop_detection )
                end
                
-            when :cs_range
+            when "cs_range"
                result = Util::SparseRange.new( process_character_data(node.from, loop_detection)..process_character_data(node.to, loop_detection) )
                
-            when :cs_reference
+            when "cs_reference"
                if resolution = resolve_character_reference(node.name, loop_detection) then
                   result = resolution
                else
                   nyi( "error handling for missing character_definition [node.name.text]" )
                end
       
-            when :general_character
+            when "general_character"
                result = node.text[0]
                
-            when :escape_sequence
+            when "escape_sequence"
                if @@escape_sequences.member?(node.text) then
                   result = @@escape_sequences[node.text][0]
                else
                   result = node.text[1]
                end
                
-            when :unicode_sequence
+            when "unicode_sequence"
                result = node.text.slice(2..-1).to_i(16)
               
             else
@@ -633,14 +636,14 @@ module Grammar
          if @specifications.member?(name) then
             spec = @specifications[name]
 
-            case spec.type 
-               when :string_spec
+            case spec.type.name
+               when "string_spec"
                   unless @string_defs.member?(name)
                      if loop_detection.member?(name) then
                         nyi( "error handling for detected reference loop [#{name}]" )
                      else
                         if string_def = process_string_data(spec.definition, loop_detection + [name]) then
-                           @string_defs[name] = StringPattern.new( create_name(name), string_def )
+                           @string_defs[name] = StringDescriptor.new( create_name(name), string_def )
                         end
                      end
                   end
@@ -650,7 +653,7 @@ module Grammar
                   # that SparseRange, ensuring we never have to choose from multiple SparseRanges on the 
                   # way.
                   
-                  form = @string_defs[name].pattern
+                  form = @string_defs[name].form
                   until resolution.exists? or form.nil?
                      if form.element_count == 1 then
                         form.each_element {|child| form = child }
@@ -676,8 +679,8 @@ module Grammar
       def process_group_data( node, loop_detection = [] )
          result = nil
          
-         case node.type
-            when :group_spec
+         case node.type.name
+            when "group_spec"
                result = Group.new()
                node.specifications.each do |spec|
                   if element = process_group_data(spec, loop_detection) then
@@ -687,18 +690,18 @@ module Grammar
                   end
                end
                
-            when :rule_spec
+            when "rule_spec"
                result = Group.new()
                result << RuleReference.new( create_name(node.name.text) )
       
-            when :spec_reference
+            when "spec_reference"
                name = node.name.text
                if @specifications.member?(name) then
                   spec = @specifications[name]
                   
                   result = Group.new()
-                  case spec.type
-                     when :group_spec
+                  case spec.type.name
+                     when "group_spec"
                         if @group_defs.member?(name) then
                            result << @group_defs[name]
                         else
@@ -713,9 +716,9 @@ module Grammar
                            end
                         end
                         
-                     when :rule_spec
+                     when "rule_spec"
                         result << RuleReference.new( create_name(name) )
-                     when :string_spec
+                     when "string_spec"
                         result << StringReference.new( create_name(name) )
                      else
                         nyi( "error handling for group reference to macro or other ineligible name [#{name}]" )
@@ -740,17 +743,17 @@ module Grammar
       def process_rule_expression( node, naming_context )
          result = nil
          
-         case node.type
-            when :macro_call
+         case node.type.name
+            when "macro_call"
                result = process_rule_expression( process_macro_call(node), naming_context )
       
-            when :sequence_exp
+            when "sequence_exp"
                result = create_sequence( 
                   process_rule_expression( node.tree, naming_context ), 
                   process_rule_expression( node.leaf, naming_context ) 
                )
       
-            when :repeated_exp
+            when "repeated_exp"
                case node.repeat_count.text
                   when "?"
                      element = process_rule_expression( node.expression, naming_context )
@@ -804,32 +807,32 @@ module Grammar
                      bug( "unsupported repeat_count [#{node.repeat_count}]")
                end
                   
-            when :branch_exp
+            when "branch_exp"
                result = create_branch_point(
                   process_rule_expression( node.tree, naming_context ),
                   process_rule_expression( node.leaf, naming_context )
                )
                
-            when :gateway_exp
+            when "gateway_exp"
                warn_nyi( "skipping gateway_exp, because I've no clue what to do with it" )
                result = create_sequence()
                
-            when :recovery_commit
+            when "recovery_commit"
                result = create_sequence( RecoveryCommit.new() )
             
-            when :string_exp
+            when "string_exp"
                word_name = anonymous_string( process_string_data(node.string) )
-               symbol = StringReference.new( create_name(word_name) )
+               symbol = StringReference.new( word_name )
                result = create_sequence( symbol )
                
                naming_context.name( symbol, node.label, true ) if node.label.exists?
             
-            when :reference_exp
+            when "reference_exp"
                referenced_name = node.name.text
                if @specifications.member?(referenced_name) then
                   spec = @specifications[referenced_name]
                   
-                  if spec.type == :macro_spec then
+                  if spec.type == "macro_spec" then
 
                      #
                      # Expand the macro and recurse to process.  We use any explicit node label, or the macro
@@ -847,14 +850,14 @@ module Grammar
                      
                      naming_context.apply_label(node.label, true) do
                         symbol = nil
-                        case spec.type
-                           when :string_spec
+                        case spec.type.name
+                           when "string_spec"
                               symbol = StringReference.new( create_name(referenced_name) )
                         
-                           when :rule_spec
+                           when "rule_spec"
                               symbol = RuleReference.new( create_name(referenced_name) )
                            
-                           when :group_spec
+                           when "group_spec"
                               symbol = GroupReference.new( @group_defs[referenced_name] )
                            
                            else  
@@ -870,15 +873,15 @@ module Grammar
                   nyi( "error handling for missing referenced name [#{referenced_name}]")
                end
             
-            when :group_exp
+            when "group_exp"
                naming_context.apply_label(node.label, true) do
                   result = process_rule_expression( node.expression, naming_context )
                end
                
-            when :variable_exp
+            when "variable_exp"
                nyi( "error handling for variable in regular rule" )
                
-            when :transclusion
+            when "transclusion"
                nyi( "error handling for transclusion in regular rule" )
                
             else
@@ -899,10 +902,10 @@ module Grammar
          body       = nil
          macro_name = nil
          
-         case call_exp.type
-            when :reference_exp
+         case call_exp.type.name
+            when "reference_exp"
                macro_name = call_exp.name.text        # NB: the label is being handled elsewhere!
-            when :macro_call
+            when "macro_call"
                macro_name = call_exp.macro_name.text
                parameters = call_exp.parameters 
                body       = call_exp.body if call_exp.slot_filled?(:body)
@@ -912,7 +915,7 @@ module Grammar
          
          
          nyi( "error handling for undefined macro call [#{macro_name}]" ) unless @specifications.member?(macro_name) 
-         nyi( "error handling for bad macro call [#{macro_name}]"       ) unless @specifications[macro_name].type == :macro_spec
+         nyi( "error handling for bad macro call [#{macro_name}]"       ) unless @specifications[macro_name].type == "macro_spec"
          macro_spec = @specifications[macro_name]
          
          #
@@ -932,12 +935,12 @@ module Grammar
          # nodes replaced appropriately.
          
          return macro_spec.expression.duplicate do |node|
-            case node.type
-               when :transclusion
+            case node.type.name
+               when "transclusion"
                   nyi( "error handling for missing macro_call body" ) if body.nil?
                   body
                
-               when :variable_exp
+               when "variable_exp"
                   nyi( "error handling for non-existent macro parameter definition [#{node.name.text}] in [#{parameter_lookup.keys.join(", ")}]" ) unless parameter_lookup.member?(node.name.text)
                   if node.label.nil? then
                      parameter_lookup[node.name.text]
@@ -970,34 +973,32 @@ module Grammar
       #    anonymous name and returns the name
       
       def anonymous_string( string_def )
-         representation = ""
+
+         #
+         # Covert the string_def back into a string, if possible.
+         
+         string = ""
          string_def.each_element do |element|
-            if element.is_an?(Util::SparseRange) and element.length == 1 then
-               code = element.first
-               if (code >= "A"[0] and code <= "Z"[0]) or (code >= "a"[0] and code <= "z"[0]) or code == "_"[0] then
-                  representation << code
-               elsif @@code_representations.member?(code) then
-                  representation << "__#{@@code_representations[code]}_"
-               else
-                  representation << "__#{code}_"
-               end
+            if element.is_a?(Util::SparseRange) and element.length == 1 then
+               string << element.first
             else
-               representation = nil
+               string = nil
                break
             end
          end
          
-         name = "_literal_" + @string_defs.length.to_s
-         if representation.exists? and representation.length > 0 and representation.length < 30 then
-            representation = "_literal_#{representation}"
-            if @string_defs.member?(representation) then
-               name = representation if @string_defs[representation].pattern == string_def
-            else
-               name = representation
-            end
+         
+         #
+         # Produce a StringDescriptor and register it appropriately.
+         
+         name = nil
+         if string.nil? or string.empty? then
+            name = Name.new( "_literal_" + @string_defs.length.to_s, @name )
+         else
+            name = Name.new( string )
          end
-
-         @string_defs[name] = StringPattern.new( create_name(name), string_def, false ) unless @string_defs.member?(name)
+            
+         @string_defs[name] = StringDescriptor.new( name, string_def, false ) unless @string_defs.member?(name)
          return name
       end
       
@@ -1045,50 +1046,18 @@ module Grammar
       #  - returns a Token for internal use
       
       def create_token( text )
-         return Scanner::Artifacts::Nodes::Token.new( text, 0, 0, 0, 0 )
+         return Scanner::Artifacts::Nodes::Token.new( text, nil, 0, 0, 0, 0 )
       end
 
 
       #
       # create_name()
-      #  - returns a Model::Name
+      #  - returns a symbolic Name
       
       def create_name( name )
-         return Model::Name.create(name, @name)
+         return Name.new(name, @name)
       end
-
-
-      @@code_representations = { 
-         "!"[0]  => "exclamation_mark", 
-         "@"[0]  => "at", 
-         "\#"[0] => "hash", 
-         "$"[0]  => "dollar", 
-         "%"[0]  => "percent", 
-         "^"[0]  => "caret", 
-         "&"[0]  => "ampersand", 
-         "*"[0]  => "star", 
-         "("[0]  => "open_paren", 
-         ")"[0]  => "close_paren", 
-         "-"[0]  => "minus", 
-         "+"[0]  => "plus", 
-         "="[0]  => "equals", 
-         "{"[0]  => "open_brace",
-         "}"[0]  => "close_brace",
-         "["[0]  => "open_bracket",
-         "]"[0]  => "close_bracket",
-         "|"[0]  => "pipe",
-         "\\"[0] => "backslash",
-         ":"[0]  => "colon",
-         ";"[0]  => "semicolon",
-         "\""[0] => "double_quote",
-         "'"[0]  => "single_quote",
-         "<"[0]  => "less_than",
-         ">"[0]  => "greater_than",
-         "?"[0]  => "question_mark",
-         "/"[0]  => "slash",
-         "."[0]  => "period",
-         ","[0]  => "comma"
-      }
+      
       
     
       

@@ -9,6 +9,7 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/scanner/artifacts/name.rb"
 require "#{$RCCLIB}/scanner/artifacts/node.rb"
 require "#{$RCCLIB}/scanner/artifacts/nodes/token.rb"
 
@@ -216,14 +217,14 @@ module Grammar
                         
          #
          #    section strings_spec
-         #       string_spec      => statement() [ word:name '=>' string_pattern:definition ]
+         #       string_spec      => statement() [ word:name '=>' string_descriptor:definition ]
          # 
-         #       group string_pattern
+         #       group string_descriptor
          #          sp_reference  => word:name
-         #          sp_group      => '(' string_pattern ')'
-         #          sp_branch     => string_pattern '|' string_pattern          @associativity=left
-         #          sp_concat     => string_pattern string_pattern              @associativity=left
-         #          sp_repeated   => string_pattern ('*'|'+'|'?'):repeat_count
+         #          sp_group      => '(' string_descriptor ')'
+         #          sp_branch     => string_descriptor '|' string_descriptor          @associativity=left
+         #          sp_concat     => string_descriptor string_descriptor              @associativity=left
+         #          sp_repeated   => string_descriptor ('*'|'+'|'?'):repeat_count
          #          string        => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
          #          character_set
          #       end
@@ -232,14 +233,14 @@ module Grammar
             
             section_spec( 'strings_spec',
             
-               rule_spec( 'string_spec', statement_macro_call(reference_exp('word', 'name'), '=>', reference_exp('string_pattern', 'definition')) ),
+               rule_spec( 'string_spec', statement_macro_call(reference_exp('word', 'name'), '=>', reference_exp('string_descriptor', 'definition')) ),
                
-               group_spec( 'string_pattern',
+               group_spec( 'string_descriptor',
                   rule_spec( 'sp_reference', reference_exp('word', 'name')                   ),
-                  rule_spec( 'sp_group'    , '(', reference_exp('string_pattern'), ')'                                             ),
-                  rule_spec( 'sp_branch'   , reference_exp('string_pattern'), '|', reference_exp('string_pattern'), assoc('left')  ),
-                  rule_spec( 'sp_concat'   , reference_exp('string_pattern'), reference_exp('string_pattern'),      assoc('left')  ),
-                  rule_spec( 'sp_repeated' , reference_exp('string_pattern'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') ),
+                  rule_spec( 'sp_group'    , '(', reference_exp('string_descriptor'), ')'                                             ),
+                  rule_spec( 'sp_branch'   , reference_exp('string_descriptor'), '|', reference_exp('string_descriptor'), assoc('left')  ),
+                  rule_spec( 'sp_concat'   , reference_exp('string_descriptor'), reference_exp('string_descriptor'),      assoc('left')  ),
+                  rule_spec( 'sp_repeated' , reference_exp('string_descriptor'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') ),
                   
                   rule_spec( 'string', 
                      est("'"), 
@@ -527,7 +528,8 @@ module Grammar
     #---------------------------------------------------------------------------------------------------------------------
     # Support
     #---------------------------------------------------------------------------------------------------------------------
-    
+
+      Name  = RCC::Scanner::Artifacts::Name
       Node  = RCC::Scanner::Artifacts::Node
       Token = RCC::Scanner::Artifacts::Nodes::Token
       
@@ -629,12 +631,7 @@ module Grammar
          
          
          def display( stream = $stdout )
-            if @subtype.nil? or @subtype == @type then
-               stream << "#{@type} =>" << "\n"
-            else
-               stream << "#{@type} (#{@subtype}) =>" << "\n"
-            end
-
+            stream.puts @type
             stream.indent do
                @slots.each do |slot_name, value|
                   stream << slot_name << ":\n"
@@ -679,6 +676,19 @@ module Grammar
     # Token Production
     #---------------------------------------------------------------------------------------------------------------------
     
+      # 
+      # ::type_name()
+      #  - produces a Name
+      
+      def self.type_name( name, grammar = "RCC" )
+         return name if name.is_a?(Name)
+         return Name.new( name, grammar )
+      end
+      
+      #
+      # ::rcc()
+      #  - produe
+    
 
       #
       # ::t()
@@ -686,7 +696,7 @@ module Grammar
       
       def self.t( text, type = nil )
          return text if text.is_a?(Node)
-         return Token.new( text, 0, 0, 0, nil, type, false, nil )
+         return Token.new( text, type.nil? ? type_name(text, nil) : type, 0, 0, 0, nil, false, nil )
       end
 
       #
@@ -694,7 +704,7 @@ module Grammar
       #  - produces a :word Token
       
       def self.w( word )
-         return t( word, :word )
+         return t( word, type_name("word") )
       end
 
       #
@@ -703,7 +713,7 @@ module Grammar
       
       def self.ust( number )
          return number if number.is_a?(Node)
-         return t( "\\u#{number}", :unicode_sequence )
+         return t( "\\u#{number}", type_name("unicode_sequence") )
       end
     
       #
@@ -712,7 +722,7 @@ module Grammar
       
       def self.est( code )
          return code if code.is_a?(Node)
-         return t( "\\#{code}", :escape_sequence )
+         return t( "\\#{code}", type_name("escape_sequence") )
       end
 
       #
@@ -721,7 +731,7 @@ module Grammar
       
       def self.gct( letter )
          return letter if letter.is_a?(Node)
-         return t( letter, :general_character)
+         return t( letter, type_name("general_character") )
       end
 
       #
@@ -730,7 +740,7 @@ module Grammar
       
       def self.gtt( text )
          return text if text.is_a?(Node)
-         return t( text, :general_text )
+         return t( text, type_name("general_text") )
       end      
             
       #
@@ -739,7 +749,7 @@ module Grammar
       
       def self.vt( variable )
          return variable if variable.is_a?(Node)
-         return t( variable, :variable )
+         return t( variable, type_name("variable") )
       end
       
       #
@@ -748,7 +758,7 @@ module Grammar
       
       def self.ptt( text )
          return text if text.is_a?(Node)
-         return t( text, :property_text )
+         return t( text, type_name("property_text") )
       end
 
 
@@ -767,71 +777,71 @@ module Grammar
          return true if node.type == type
          
          case type
-            when :option
-               return true if node.type == :start_rule
-               return true if node.type == :ignore_switch
-               return true if node.type == :backtracking_switch
-            when :specification
-               return true if node.type == :macros_spec
-               return true if node.type == :section_spec
-               return true if node.type == :characters_spec
-               return true if node.type == :words_spec
-               return true if node.type == :precedence_spec
-               return true if node.type == :group_spec
-               return true if node.type == :rule_spec
-            when :character_set
-               return true if node.type == :cs_characters 
-               return true if node.type == :cs_difference
-            when :cs_element
-               return true if node.type == :cs_range
-               return true if node.type == :cs_reference
-               return true if node_has_type?(node, :character)
-            when :character
-               return true if node.type == :unicode_sequence
-               return true if node.type == :escape_sequence
-               return true if node.type == :general_character
-            when :string_pattern
-               return true if node.type == :sp_reference
-               return true if node.type == :sp_group
-               return true if node.type == :sp_branch
-               return true if node.type == :sp_concat
-               return true if node.type == :sp_repeated
-               return true if node.type == :string
-               return true if node_has_type?(node, :character_set)
-            when :expression
-               return true if node.type == :reference_exp   
-               return true if node.type == :string_exp      
-               return true if node.type == :group_exp       
-               return true if node.type == :variable_exp    
-               return true if node.type == :sequence_exp    
-               return true if node.type == :branch_exp      
-               return true if node.type == :repeated_exp    
-               return true if node.type == :gateway_exp     
-               return true if node.type == :recovery_commit 
-               return true if node.type == :transclusion    
-               return true if node.type == :macro_call      
-            when :parameters
-               return true if node.type == :parameter_tree   
-               return true if node_has_type?(node, :expression)
-            when :directive
-               return true if node.type == :associativity_directive
-            when :transformation_spec
-               return true if node.type == :assignment_transform
-               return true if node.type == :append_transform
-            when :npath
-               return true if node.type == :npath_self_exp
-               return true if node.type == :npath_type_exp   
-               return true if node.type == :npath_slot_exp 
-               return true if node.type == :npath_recurse_exp             
-               return true if node.type == :npath_path_exp           
-               return true if node.type == :npath_branch_exp         
-               return true if node.type == :npath_group_exp            
-            when :macro_spec
-               return true if node.type == :simple_macro
-               return true if node.type == :parameterized_macro
-            when :parameter_definitions
-               return true if node.type == :parameter_definition_tree
-               return true if node.type == :word
+            when "option"
+               return true if node.type == "start_rule"
+               return true if node.type == "ignore_switch"
+               return true if node.type == "backtracking_switch"
+            when "specification"
+               return true if node.type == "macros_spec"
+               return true if node.type == "section_spec"
+               return true if node.type == "characters_spec"
+               return true if node.type == "words_spec"
+               return true if node.type == "precedence_spec"
+               return true if node.type == "group_spec"
+               return true if node.type == "rule_spec"
+            when "character_set"
+               return true if node.type == "cs_characters"
+               return true if node.type == "cs_difference"
+            when "cs_element"
+               return true if node.type == "cs_range"
+               return true if node.type == "cs_reference"
+               return true if node_has_type?(node, "character")
+            when "character"
+               return true if node.type == "unicode_sequence"
+               return true if node.type == "escape_sequence"
+               return true if node.type == "general_character"
+            when "string_descriptor"
+               return true if node.type == "sp_reference"
+               return true if node.type == "sp_group"
+               return true if node.type == "sp_branch"
+               return true if node.type == "sp_concat"
+               return true if node.type == "sp_repeated"
+               return true if node.type == "string"
+               return true if node_has_type?(node, "character_set")
+            when "expression"
+               return true if node.type == "reference_exp"
+               return true if node.type == "string_exp"
+               return true if node.type == "group_exp"
+               return true if node.type == "variable_exp"
+               return true if node.type == "sequence_exp"
+               return true if node.type == "branch_exp"   
+               return true if node.type == "repeated_exp"
+               return true if node.type == "gateway_exp"   
+               return true if node.type == "recovery_commit"
+               return true if node.type == "transclusion"
+               return true if node.type == "macro_call"   
+            when "parameters"
+               return true if node.type == "parameter_tree"
+               return true if node_has_type?(node, "expression")
+            when "directive"
+               return true if node.type == "associativity_directive"
+            when "transformation_spec"
+               return true if node.type == "assignment_transform"
+               return true if node.type == "append_transform"
+            when "npath"
+               return true if node.type == "npath_self_exp"
+               return true if node.type == "npath_type_exp"
+               return true if node.type == "npath_slot_exp"
+               return true if node.type == "npath_recurse_exp"
+               return true if node.type == "npath_path_exp"
+               return true if node.type == "npath_branch_exp"
+               return true if node.type == "npath_group_exp"
+            when "macro_spec"
+               return true if node.type == "simple_macro"
+               return true if node.type == "parameterized_macro"
+            when "parameter_definitions"
+               return true if node.type == "parameter_definition_tree"
+               return true if node.type == "word"
          end
          
          return false
@@ -843,7 +853,7 @@ module Grammar
       #  - returns a new FakeASN from parts
       
       def self.node( type, slots = {} )
-         return ASN.new( type, slots )
+         return ASN.new( type_name(type), slots )
       end
       
       
@@ -851,7 +861,7 @@ module Grammar
       # ::system_spec()
       
       def self.system_spec( *clauses )
-         return node( :system_spec, :grammar_specs => clauses )
+         return node( "system_spec", :grammar_specs => clauses )
       end
       
       
@@ -863,14 +873,14 @@ module Grammar
          specifications = []
          
          clauses.each do |clause|
-            if node_has_type?(clause, :option) then
+            if node_has_type?(clause, "option") then
                options << clause
             else
                specifications << clause
             end
          end
          
-         return node( :grammar_spec, :name => w(name), :options => options, :specifications => specifications )
+         return node( "grammar_spec", :name => w(name), :options => options, :specifications => specifications )
       end
       
       
@@ -878,21 +888,21 @@ module Grammar
       # ::start_rule()
       
       def self.start_rule( name )
-         return node( :start_rule, :rule_name => w(name) )
+         return node( "start_rule", :rule_name => w(name) )
       end
       
       #
       # ::ignore_switch()
       
       def self.ignore_switch( name )
-         return node( :ignore_switch, :name => w(name) )
+         return node( "ignore_switch", :name => w(name) )
       end
       
       #
       # ::enable_backtracking()
       
       def self.enable_backtracking()
-         return node( :backtracking_switch )
+         return node( "backtracking_switch" )
       end
       
       
@@ -900,28 +910,28 @@ module Grammar
       # ::macros_spec()
       
       def self.macros_spec( *specs )
-         return node( :macros_spec, :macro_specs => specs )
+         return node( "macros_spec", :macro_specs => specs )
       end
             
       #
       # ::section_spec()
       
       def self.section_spec( name, *specs )
-         return node( :section_spec, :name => w(name), :specifications => specs )
+         return node( "section_spec", :name => w(name), :specifications => specs )
       end
       
       #
       # ::strings_spec()
       
       def self.strings_spec( *specs )
-         return node( :strings_spec, :string_specs => specs )
+         return node( "strings_spec", :string_specs => specs )
       end
       
       #
       # ::precedence_spec()
       
       def self.precedence_spec( *levels )
-         return node( :precedence_spec, :precedence_levels => levels )
+         return node( "precedence_spec", :precedence_levels => levels )
       end
       
       #
@@ -933,7 +943,7 @@ module Grammar
             spec.categories << name
          end
          
-         return node( :group_spec, :name => name, :specifications => specs, :categories => [name] )
+         return node( "group_spec", :name => name, :specifications => specs, :categories => [name] )
       end
       
       #
@@ -945,16 +955,16 @@ module Grammar
          transformations = []
          
          clauses.each do |clause|
-            if node_has_type?(clause, :directive) then
+            if node_has_type?(clause, "directive") then
                directives << clause
-            elsif node_has_type?(clause, :transformation_spec) then
+            elsif node_has_type?(clause, "transformation_spec") then
                transformations << clause
             else
                expressions << clause
             end
          end
          
-         return node( :rule_spec, :name => w(name), :expression => expression(*expressions), :directives => directives, :transformation_specs => transformations, :categories => [] )
+         return node( "rule_spec", :name => w(name), :expression => expression(*expressions), :directives => directives, :transformation_specs => transformations, :categories => [] )
       end
       
       
@@ -962,14 +972,14 @@ module Grammar
       # ::spec_reference()
       
       def self.spec_reference( name )
-         return node( :spec_reference, :name => w(name), :categories => [] )
+         return node( "spec_reference", :name => w(name), :categories => [] )
       end
       
       #
       # ::precedence_level()
       
       def self.precedence_level( *references )
-         return node( :precedence_level, :references => references.collect{|r| w(r)} )
+         return node( "precedence_level", :references => references.collect{|r| w(r)} )
       end
       
       
@@ -977,14 +987,14 @@ module Grammar
       
       #
       # ::string_spec()
-      #  - produces a :string_spec Node, given one or more :string_pattern
+      #  - produces a :string_spec Node, given one or more :string_descriptor
       #  - Strings are up-converted to :general_text Tokens
-      #  - all terms are up-converted to string_patterns, as necessary
+      #  - all terms are up-converted to string_descriptors, as necessary
       #  - multiple terms are up-converted to a tree of sp_concat Nodes
       
       def self.string_spec( name, *terms )
          terms.unshift sp_concat( terms.shift, terms.shift ) until terms.length < 2
-         return node( :string_spec, :name => w(name), :definition => string_pattern(terms[0]) )
+         return node( "string_spec", :name => w(name), :definition => string_descriptor(terms[0]) )
       end
       
 
@@ -992,7 +1002,7 @@ module Grammar
       # ::cs_characters()
       
       def self.cs_characters( *cs_elements )
-         return node( :cs_characters, :cs_elements => cs_elements.collect{|c| character(c)} )
+         return node( "cs_characters", :cs_elements => cs_elements.collect{|c| character(c)} )
       end
       
       
@@ -1000,7 +1010,7 @@ module Grammar
       # ::cs_difference()
       
       def self.cs_difference( lhs, rhs )
-         return node( :cs_difference, :lhs => lhs, :rhs => rhs )
+         return node( "cs_difference", :lhs => lhs, :rhs => rhs )
       end
 
 
@@ -1008,7 +1018,7 @@ module Grammar
       # ::cs_range()
       
       def self.cs_range( from, to )
-         return node( :cs_range, :from => character(from), :to => character(to) )
+         return node( "cs_range", :from => character(from), :to => character(to) )
       end
       
       
@@ -1016,7 +1026,7 @@ module Grammar
       # ::cs_reference()
       
       def self.cs_reference( name )
-         return node( :cs_reference, :name => w(name) )
+         return node( "cs_reference", :name => w(name) )
       end
       
       
@@ -1034,14 +1044,14 @@ module Grammar
       
       
       #
-      # ::string_pattern()
-      #  - :string_pattern is a group, not a rule
+      # ::string_descriptor()
+      #  - :string_descriptor is a group, not a rule
       
-      def self.string_pattern( term )
+      def self.string_descriptor( term )
          if term.is_an?(ASN) then
             
-            return term if node_has_type?(term, :string_pattern)
-            return sp_characters(term) if node_has_type?(term, :character_set)
+            return term if node_has_type?(term, "string_descriptor")
+            return sp_characters(term) if node_has_type?(term, "character_set")
          end
          
          return string(term)
@@ -1052,15 +1062,15 @@ module Grammar
       # ::sp_reference()
       
       def self.sp_reference( name )
-         return node( :sp_reference, :name => w(name) )
+         return node( "sp_reference", :name => w(name) )
       end
       
       
       #
       # ::sp_group()
       
-      def self.sp_group( string_pattern )
-         return node( :sp_group, :string_pattern => string_pattern(string_pattern) )
+      def self.sp_group( string_descriptor )
+         return node( "sp_group", :string_descriptor => string_descriptor(string_descriptor) )
       end
       
       
@@ -1068,15 +1078,15 @@ module Grammar
       # ::sp_concat()
       
       def self.sp_concat( lhs, rhs )
-         return node( :sp_concat, :lhs => string_pattern(lhs), :rhs => string_pattern(rhs) )
+         return node( "sp_concat", :lhs => string_descriptor(lhs), :rhs => string_descriptor(rhs) )
       end
       
       
       #
       # ::sp_repeated()
       
-      def self.sp_repeated( count, string_pattern )
-         return node( :sp_repeated, :repeat_count => t(count), :string_pattern => string_pattern(string_pattern) )
+      def self.sp_repeated( count, string_descriptor )
+         return node( "sp_repeated", :key => "value", :repeat_count => t(count), :string_descriptor => string_descriptor(string_descriptor) )
       end
       
       
@@ -1084,7 +1094,7 @@ module Grammar
       # ::string()
       
       def self.string( *elements )
-         return node( :string, :string_elements => elements.collect{|e| gtt(e)} )
+         return node( "string", :string_elements => elements.collect{|e| gtt(e)} )
       end
       
 
@@ -1104,7 +1114,7 @@ module Grammar
       # ::reference_exp()
       
       def self.reference_exp( name, label = nil )
-         return node( :reference_exp, :name => w(name), :label => label.nil? ? nil : w(label) )
+         return node( "reference_exp", :name => w(name), :label => label.nil? ? nil : w(label) )
       end
          
          
@@ -1112,8 +1122,8 @@ module Grammar
       # ::string_exp()
       
       def self.string_exp( string, label = nil )
-         return string if node_has_type?(string, :expression)
-         return node( :string_exp, :string => string(string), :label => label.nil? ? nil : w(label) )
+         return string if node_has_type?(string, "expression")
+         return node( "string_exp", :string => string(string), :label => label.nil? ? nil : w(label) )
       end
       
       
@@ -1121,7 +1131,7 @@ module Grammar
       # ::group_exp()
       
       def self.group_exp( expression, label = nil )
-         return node( :group_exp, :expression => expression, :label => label.nil? ? nil : w(label) )
+         return node( "group_exp", :expression => expression, :label => label.nil? ? nil : w(label) )
       end
       
       
@@ -1129,7 +1139,7 @@ module Grammar
       # ::variable_exp()
       
       def self.variable_exp( name, label = nil )
-         return node( :variable_exp, :name => w(name), :label => label.nil? ? nil : w(label) )
+         return node( "variable_exp", :name => w(name), :label => label.nil? ? nil : w(label) )
       end
       
       
@@ -1137,7 +1147,7 @@ module Grammar
       # ::sequence_exp()
       
       def self.sequence_exp( tree, leaf )
-         return node( :sequence_exp, :tree => string_exp(tree), :leaf => string_exp(leaf) )
+         return node( "sequence_exp", :tree => string_exp(tree), :leaf => string_exp(leaf) )
       end
       
       
@@ -1146,7 +1156,7 @@ module Grammar
       
       def self.branch_exp( tree, leaf, *more )
          if more.empty? then
-            return node( :branch_exp, :tree => expression(tree), :leaf => expression(leaf) )
+            return node( "branch_exp", :tree => expression(tree), :leaf => expression(leaf) )
          else
             return branch_exp( branch_exp(tree, leaf), *more )
          end
@@ -1157,7 +1167,7 @@ module Grammar
       # ::repeated_exp()
    
       def self.repeated_exp( count, expression )
-         return node( :repeated_exp, :repeat_count => t(count), :expression => expression )
+         return node( "repeated_exp", :repeat_count => t(count), :expression => expression )
       end
       
       
@@ -1173,7 +1183,7 @@ module Grammar
       # ::gateway_exp()
       
       def self.gateway_exp( word )
-         return node( :gateway_exp, :word => w(word) )
+         return node( "gateway_exp", :word => w(word) )
       end
       
       
@@ -1181,7 +1191,7 @@ module Grammar
       # ::recovery_commit()
       
       def self.recovery_commit()
-         return node( :recovery_commit )
+         return node( "recovery_commit" )
       end
       
       
@@ -1189,7 +1199,7 @@ module Grammar
       # ::transclusion()
       
       def self.transclusion()
-         return node( :transclusion )
+         return node( "transclusion" )
       end
       
       
@@ -1197,7 +1207,7 @@ module Grammar
       # ::macro_call()
       
       def self.macro_call( name, parameters, *data )
-         return node( :macro_call, 
+         return node( "macro_call", 
             :macro_name => w(name), 
             :parameters => parameters.collect{|p| expression(p)},
             :body       => expression( *data )
@@ -1233,7 +1243,7 @@ module Grammar
       # ::associativity_directive()
       
       def self.associativity_directive( direction )
-         return node( :associativity_directive, :direction => w(direction) )
+         return node( "associativity_directive", :direction => w(direction) )
       end
       
       def self.assoc( direction )
@@ -1247,7 +1257,7 @@ module Grammar
       # ::assignment_transform()
       
       def self.assignment_transform( destination, source )
-         return node( :assignment_transform, :destination => destination, :source => source )
+         return node( "assignment_transform", :destination => destination, :source => source )
       end
       
       
@@ -1255,7 +1265,7 @@ module Grammar
       # ::append_transform()
       
       def self.append_transform( destination, source )
-         return node( :append_transform, :destination => destination, :source => source )
+         return node( "append_transform", :destination => destination, :source => source )
       end
       
       
@@ -1263,7 +1273,7 @@ module Grammar
       # ::npath_self_exp()
       
       def self.npath_self_exp()
-         return node( :npath_self_exp )
+         return node( "npath_self_exp" )
       end
       
       
@@ -1272,7 +1282,7 @@ module Grammar
       
       def self.npath_type_exp( type_name )
          return type_name if type_name.is_an?(ASN)
-         return node( :npath_type_exp, :type_name => w(type_name) )
+         return node( "npath_type_exp", :type_name => w(type_name) )
       end
       
       
@@ -1280,7 +1290,7 @@ module Grammar
       # ::npath_slot_exp()
       
       def self.npath_slot_exp( slot_name )
-         return node( :npath_slot_exp, :slot_name => w(slot_name) )
+         return node( "npath_slot_exp", :slot_name => w(slot_name) )
       end
       
       
@@ -1288,7 +1298,7 @@ module Grammar
       # ::npath_recurse_exp()
       
       def self.npath_recurse_exp( npath )
-         return node( :npath_recurse_exp, :npath => npath )
+         return node( "npath_recurse_exp", :npath => npath )
       end
       
       
@@ -1297,7 +1307,7 @@ module Grammar
       
       def self.npath_path_exp( tree, leaf, *more )
          if more.empty? then
-            return node( :npath_path_exp, :tree => tree, :leaf => leaf )
+            return node( "npath_path_exp", :tree => tree, :leaf => leaf )
          else
             return npath_path_exp( npath_path_exp(tree, leaf), *more )
          end
@@ -1309,7 +1319,7 @@ module Grammar
       
       def self.npath_branch_exp( tree, leaf, *more )
          if more.empty? then
-            return node( :npath_branch_exp, :tree => tree, :leaf => leaf )
+            return node( "npath_branch_exp", :tree => tree, :leaf => leaf )
          else
             return npath_branch_exp( npath_branch_exp(tree, leaf), *more )
          end
@@ -1331,7 +1341,7 @@ module Grammar
       # ::simple_macro()
       
       def self.simple_macro( name, *terms )
-         return node( :macro_spec, :name => w(name), :parameter_definitions => [], :expression => expression(*terms) )
+         return node( "macro_spec", :name => w(name), :parameter_definitions => [], :expression => expression(*terms) )
       end
       
             
@@ -1339,7 +1349,7 @@ module Grammar
       # ::parameterized_macro()
       
       def self.parameterized_macro( name, parameters, *terms )
-         return node( :macro_spec, :name => w(name), :parameter_definitions => parameters.collect{|p| w(p)}, :expression => expression(*terms) )
+         return node( "macro_spec", :name => w(name), :parameter_definitions => parameters.collect{|p| w(p)}, :expression => expression(*terms) )
       end
 
 

@@ -44,6 +44,7 @@ module Interpreter
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+
       #
       # initialize()
       #  - initializes this Parser for use
@@ -89,7 +90,7 @@ module Interpreter
       #  - parse() drives the parser through attempts and error corrections as far as it can go
       #  - error corrections will not be run indefinitely
       
-      def parse( recovery_time_limit = 3, estream = nil )
+      def parse( estream = nil, recovery_time_limit = 3 )
          recovery_time_limit = 3
          allow_shortcutting  = true
          
@@ -125,7 +126,7 @@ module Interpreter
                   
                   error_queue.each do |error_position|
                      if error_position.corrections_cost <= discard_threshold then
-                        generate_recovery_positions( error_position, soft_correction_limit )
+                        generate_recovery_positions( error_position, soft_correction_limit, estream )
                      end
                   end
                   
@@ -156,7 +157,7 @@ module Interpreter
 
             pass_start_time = Time.now()
             begin
-               solution = position = parse_until_error( position, explain )
+               solution = position = parse_until_error( position, estream )
                complete_solutions << solution
                hard_correction_limit = min( hard_correction_limit, solution.corrections_cost )
                soft_correction_limit = min( hard_correction_limit, soft_correction_limit     )
@@ -392,6 +393,7 @@ module Interpreter
             #
             # Select the next action.
             
+            p state.actions.keys
             action = state.actions[next_token.type]
             if estream then
                estream.puts "| #{state.lookahead_explanations}"

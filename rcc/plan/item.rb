@@ -184,9 +184,8 @@ module Plan
       
       def determinants( k = 1 )
          assert( k == 1, "only k = 1 supported, presently" )
-         return sequences_after_mark(k).start_terminals( @master_plan )
+         return sequences_after_mark(k).lookahead( @master_plan )
       end
-      
       
       
       #
@@ -199,7 +198,7 @@ module Plan
          production_sets = @production_sets if production_sets.nil?
          assert( !production_sets.nil?, "you must supply a hash of ProductionSets to followers() when it is calculated" )
          
-         return sequences_after_leader( 1, production_sets ).start_terminals(production_sets)
+         return sequences_after_leader( 1, production_sets ).lookahead(production_sets)
       end
 
 
@@ -223,7 +222,7 @@ module Plan
          end
          
          @production_la_sequences = SequenceSet.merge( sequence_sets )
-         @production_la = @production_la_sequences.start_terminals( production_sets )
+         @production_la = @production_la_sequences.lookahead( production_sets )
          
          return @production_la
       end
@@ -411,7 +410,7 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       def to_s()
-         base = rule_name() + " => " + prefix().join(" ") + " . " + rest().join(" ")
+         base = rule_name().signature + " => " + prefix().join(" ") + " . " + rest().join(" ")
       end
       
       def display( stream = $stdout )

@@ -84,15 +84,24 @@ module Util
       #  - calls your block once for each number in the range
       
       def each()
-         ranges.each do |range|
+         @ranges.each do |range|
             range.each do |number|
                yield( number )
             end
          end
       end
       
+      
+      def member?( number )         
+         @ranges.each do |range|
+            return true if range.member?(number)
+         end
+         
+         return false
+      end
 
       
+
 
 
     #---------------------------------------------------------------------------------------------------------------------

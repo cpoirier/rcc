@@ -33,15 +33,16 @@ module Elements
       attr_reader :member_references
       
       def initialize( name = nil, member_references = [] )
-         type_check( name, Model::Name, true )
+         type_check( name, Scanner::Artifacts::Name, true )
          
-         @name = name
+         @name              = name
          @member_references = member_references
+         @group_rule        = nil
       end
       
       
       def name=( name )
-         type_check( name, Model::Name, true )
+         type_check( name, Scanner::Artifacts::Name, true )
          @name = name
       end
 
@@ -52,7 +53,17 @@ module Elements
          end
       end
       
+            
+      #
+      # group_rule()
+      #  - returns a Rule capable of processing this Group
       
+      def group_rule()
+         @group_rule = Rule.new( @name, Util::ExpressionForms::BranchPoint.new(@member_references) ) if @group_rule.nil?
+         return @group_rule
+      end
+
+
       #
       # display()
       

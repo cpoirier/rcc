@@ -34,8 +34,9 @@ module Plan
       end
       
       
-      def self.start_state( master_plan, start_set )
+      def self.start_state( master_plan, context_grammar_name, start_set )
          state = new( master_plan, 0 )
+         state.context_grammar_name = context_grammar_name
          state.add_productions( start_set )
          
          return state
@@ -48,34 +49,36 @@ module Plan
     # Initialization and construction
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :master_plan
-      attr_reader :signature
-      attr_reader :number
-      attr_reader :items
-      attr_reader :transitions
-      attr_reader :reductions
-      attr_reader :lookahead
-      attr_reader :actions
-      attr_reader :explanations
-      attr_reader :lookahead_explanations
-      attr_reader :lexer_plan
-      attr_reader :recovery_predicates
+      attr_reader   :master_plan
+      attr_reader   :signature
+      attr_reader   :number
+      attr_reader   :items
+      attr_reader   :transitions
+      attr_reader   :reductions
+      attr_reader   :lookahead
+      attr_reader   :actions
+      attr_reader   :explanations
+      attr_reader   :lookahead_explanations
+      attr_reader   :lexer_plan
+      attr_reader   :recovery_predicates
+      attr_accessor :context_grammar_name
       
       def initialize( master_plan, state_number = 0, start_items = [], context_state = nil  )
-         @master_plan  = master_plan     # I think this is self-explanatory ;-)
-         @number       = state_number    # The number of this State within the overall ParserPlan
-         @items        = []              # All Items in this State
-         @start_items  = []              # The Items that started this State (ie. weren't added by close())
-         @closed       = false           # A flag indicating that close() has been called
-         @signature    = nil             # A representation of this State that will be common to all mergable States
-         @transitions  = {}              # Symbol.name => State
-         @reductions   = []              # An array of complete? Items
-         @queue        = []              # A queue of unclosed Items in this State
-         @lookahead    = []              # The names of the Terminals we expect on lookahead
-         @actions      = nil             # Symbol.name => Action
-         @explanations = nil             # A set of Explanations for the Actions, if requested during creation
-         @lookahead_explanations = nil   # An InitialOptions Explanation, if requested
-         @lexer_plan   = nil             # A LexerPlan that gives our lookahead requirements precedence
+         @master_plan            = master_plan        # I think this is self-explanatory ;-)
+         @number                 = state_number       # The number of this State within the overall ParserPlan
+         @items                  = []                 # All Items in this State
+         @start_items            = []                 # The Items that started this State (ie. weren't added by close())
+         @closed                 = false              # A flag indicating that close() has been called
+         @signature              = nil                # A representation of this State that will be common to all mergable States
+         @transitions            = {}                 # Symbol.name => State
+         @reductions             = []                 # An array of complete? Items
+         @queue                  = []                 # A queue of unclosed Items in this State
+         @lookahead              = []                 # The names of the Terminals we expect on lookahead
+         @actions                = nil                # Symbol.name => Action
+         @explanations           = nil                # A set of Explanations for the Actions, if requested during creation
+         @lookahead_explanations = nil                # An InitialOptions Explanation, if requested
+         @lexer_plan             = nil                # A LexerPlan that gives our lookahead requirements precedence
+         @context_grammar_name   = context_state.nil? ? nil : context_state.context_grammar_name
 
          @item_index   = {}              # An index used to avoid duplication of Items within the State
          start_items.each do |item|
@@ -284,18 +287,14 @@ module Plan
             #
             # We only have (further) work to do if the Item has a Production leader.  Our add_productions()
             # subsystem deals with adding/merging Items, as appropriate.
-            
+                        
             if item.complete? then
                @reductions << item
-            else
-               item.leader.each_symbol do |leader|
-                  if leader.refers_to_production? then
-                     if @master_plan.has_production_set?(leader) then
-                        add_productions( master_plan.get_production_set(leader), item )
-                     else
-                        nyi "error handling for missing reference name [#{leader.signature}]" 
-                     end
-                  end
+            elsif item.leader.refers_to_production? then
+               if @master_plan.production_sets.member?(item.leader.name) then
+                  add_productions( @master_plan.production_sets[item.leader.name], item )
+               else
+                  nyi "error handling for missing reference name [#{item.leader.name}]" 
                end
             end
          end
@@ -357,11 +356,11 @@ module Plan
          enumeration = Util::OrderedHash.new()
          @items.each do |item|
             unless item.complete?
-               symbol = item.leader()
-               if enumeration.member?(symbol.signature) then
-                  enumeration[symbol.signature] << item.shift
+               symbol = item.leader
+               if enumeration.member?(symbol.name) then
+                  enumeration[symbol.name] << item.shift
                else
-                  enumeration[symbol.signature] = [item.shift]
+                  enumeration[symbol.name] = [item.shift]
                end
             end
          end
@@ -369,8 +368,8 @@ module Plan
          #
          # Yield for each in turn.
          
-         enumeration.each do |leader_signature, items|
-            yield( leader_signature, items )
+         enumeration.each do |leader_name, items|
+            yield( leader_name, items )
          end
       end
       
@@ -389,26 +388,26 @@ module Plan
       #  - resolves conflicts and generates a list of actions for this State
       #  - each action indicates what to do when a specific terminal is on lookahead
       
-      def compile_actions( k_limit = 1, use_backtracking = false, explain = false )
-         assert( k_limit == 1, "k really does need to be 1, at present; sorry" )
-         
+      def compile_actions( use_backtracking = false, estream = nil )
+         explain       = @master_plan.produce_explanations
          @explanations = (explain ? {} : nil)
          @actions      = {}
          
          #
          # First, sort into lists of options.  If the Item leader is a production, generate Goto actions immediately 
-         # (they're a no-brainer).  Otherwise, generate lists of options: Items grouped by la(1) terminal name.
+         # (they're a no-brainer).  Otherwise, generate lists of options: Items grouped by la(1) token name.
          
          options = {}
-         @items.each do |item|
+         @items.each do |item|            
+            
             if !item.complete? and item.leader.refers_to_production? then
-               @actions[item.leader.signature] = Actions::Goto.new( @transitions[item.leader.signature] )
+               @actions[item.leader.name.signature] = Actions::Goto.new( @transitions[item.leader.name.signature] )
             else
                determinants = nil
                duration = Time.measure do
                   determinants = item.determinants( 1 )
                end
-               
+
                $stderr.puts "Determinants calculation for state #{@number} item [#{item.signature}] duration: #{duration}s" if $stderr['show_statistics'] and duration > 0.1
 
                determinants.each do |determinant|
@@ -457,10 +456,6 @@ module Plan
             
             else
                
-               process_associativity = lambda() do |shift, reduction|
-               end
-
-
                #
                # Start by splitting the Items into reductions and shifts.
                
@@ -476,21 +471,28 @@ module Plan
                #
                # Sort the reductions by priority.
                
-               all_reductions.sort!{|lhs, rhs| lhs.priority <=> rhs.priority }
+               all_reductions.sort!{|lhs, rhs| lhs.production.priority <=> rhs.production.priority }
                explanations << Explanations::ReductionsSorted.new( all_reductions ) if explain and all_reductions.length > 1
-
+               
+               p "shifts: #{all_shifts.length}   reductions: #{all_reductions.length}"
                
                #
                # Arbitrate between shift/reduce conflicts by precedence and associativity, where available.
                
                all_shifts.each do |shift|
-                  reductions.each do |reduction|
+
+                  #
+                  # This used to be "reductions.each", which refers to @reductions.  It's been that way for
+                  # a long while.  Not sure if it was intential or a mistake.  I'm changing it for now to 
+                  # see if it fixes a problem.
+                  
+                  all_reductions.each do |reduction|
 
                      #
                      # Lower priority numbers indicate higher priority.  To make the math more intuitive,
                      # we'll negate them.
                   
-                     shift_priority     = shift.production.priority * -1
+                     shift_priority     = shift.production.priority     * -1
                      reduction_priority = reduction.production.priority * -1
 
                   
@@ -498,6 +500,7 @@ module Plan
                      # If the shift priority is higher, we shift.  The reduction is eliminated.
                   
                      if shift_priority > reduction_priority then
+                        puts "eliminating reduction: #{reduction.signature}\n   via #{shift.signature}"
                         eliminated_reductions << reduction
                         explanations          << Explanations::ShiftTrumpsReduce.new( shift, reduction ) if explain
                      
@@ -505,6 +508,7 @@ module Plan
                      # If the reduction priority is higher, we reduce.  The shift is eliminated.
                      
                      elsif shift_priority < reduction_priority then
+                        puts "eliminating shift: #{shift.signature}\n   via #{reduction.signature}"
                         eliminated_shifts << shift
                         explanations      << Explanations::ReduceTrumpsShift.new( reduction, shift ) if explain
 
@@ -525,12 +529,15 @@ module Plan
                         case reduction.production.associativity
                            when :none
                               eliminated_reductions << reduction
-                              error_actions         << Actions::NonAssociativityViolation.new( shift, reduction )
-                              explanations          << Explanations::NonAssociativityViolation.new( shift, reduction ) if explain
+                              warn_nyi( "nonassociativity" )
+                              # error_actions         << Actions::NonAssociativityViolation.new( shift, reduction )
+                              # explanations          << Explanations::NonAssociativityViolation.new( shift, reduction ) if explain
                            when :left
+                              puts "eliminating shift due to assoc: #{shift.signature}\n   via #{reduction.signature}"
                               eliminated_shifts     << shift
                               explanations          << Explanations::ReduceTrumpsShift.new( reduction, shift, true ) if explain
                            else
+                              puts "eliminating reduction due to assoc: #{reduction.signature}\n   via #{shift.signature}"
                               eliminated_reductions << reduction
                               explanations          << Explanations::ShiftTrumpsReduce.new( shift, reduction, true ) if explain
                         end
@@ -554,6 +561,8 @@ module Plan
             chosen_reduce_actions = []
             
             valid_shifts = (all_shifts - eliminated_shifts)
+            p valid_shifts.length
+            
             unless valid_shifts.empty?
                
                #
@@ -584,6 +593,13 @@ module Plan
             actions.concat( error_actions )
             
             if actions.length == 0 then
+               options.each do |symbol_signature, items|
+                  puts "#{symbol_signature}:"
+                  items.each do |item|
+                     puts "   #{item.signature}"
+                  end
+               end
+
                bug "what the hell does this mean?"
             elsif actions.length == 1 then
                @actions[symbol_signature] = actions[0]
@@ -645,127 +661,128 @@ module Plan
          # Now we have a problem.  * is worth trying even if + fails, because it leads to more than
          # one place.  In this case, we want to eliminate +, not *, as it can't get us anywhere * can't.  
          # That said, there may be cases where both forms diverge, in which case, both must stay in.
-         
-         recoverable_items = @items.select{|item| (item.leader.nil? or item.leader.refers_to_token?) }
-         
-         #
-         # Start by grouping the shiftable items (this technique does nothing for reduce) by:
-         #    product symbol, length, leader index, and item form (less the leader)
-         
-         items_by_form = {}
-         recoverable_items.each do |item|
-            unless item.complete?
-               production = item.production
-               prefix     = item.prefix.collect{|symbol| symbol.signature}.join(":")
-               suffix     = item.rest.slice(1..-1).collect{|symbol| symbol.signature}.join(":")
-               key = "#{production.signature}|#{production.length}|#{item.at}|#{prefix}::#{suffix}"
-               
-               items_by_form[key] = [] unless items_by_form.member?(key)
-               items_by_form[key] << item
-            end
-         end
-         
-         #
-         # Select the minimum number of items necessary to ensure at least one item is represented
-         # from each form.  We'll take the cross-product of the groups and pick the first, shortest
-         # combination.  
-         
-         leader_options = []
-         items_by_form.each do |key, items|
-            leader_options << items.collect{|item| item.leader}
-         end
+     
+         warn_nyi( "redudant recovery elimination" )
+         # recoverable_items = @items.select{|item| (item.leader.nil? or item.leader.refers_to_token?) }
+         # 
+         # #
+         # # Start by grouping the shiftable items (this technique does nothing for reduce) by:
+         # #    product symbol, length, leader index, and item form (less the leader)
+         # 
+         # items_by_form = {}
+         # recoverable_items.each do |item|
+         #    unless item.complete?
+         #       production = item.production
+         #       prefix     = item.prefix.collect{|symbol| symbol.signature}.join(":")
+         #       suffix     = item.rest.slice(1..-1).collect{|symbol| symbol.signature}.join(":")
+         #       key = "#{production.signature}|#{production.length}|#{item.at}|#{prefix}::#{suffix}"
+         #       
+         #       items_by_form[key] = [] unless items_by_form.member?(key)
+         #       items_by_form[key] << item
+         #    end
+         # end
+         # 
+         # #
+         # # Select the minimum number of items necessary to ensure at least one item is represented
+         # # from each form.  We'll take the cross-product of the groups and pick the first, shortest
+         # # combination.  
+         # 
+         # leader_options = []
+         # items_by_form.each do |key, items|
+         #    leader_options << items.collect{|item| item.leader.token_referring_symbols }.flatten
+         # end
+         # 
+         # recoverable_shift_symbol_names = []
+         # unless leader_options.empty?
+         #    matrix = leader_options[0].collect{|e| [e]}
+         #    1.upto(leader_options.length-1) do |index|
+         #       old_matrix = matrix
+         #       matrix     = []
+         #       
+         #       leader_options[index].each do |element|
+         #          old_matrix.each do |row|
+         #             matrix << row + [element]
+         #          end
+         #       end
+         #    end
+         #    
+         #    count = matrix.inject(1000000000){ |current, row| row.uniq!; min(current, row.length) }
+         # 
+         #    matrix.each do |row|
+         #       if row.length == count then
+         #          recoverable_shift_symbol_names = row.collect{ |symbol| symbol.name }
+         #          break
+         #       end
+         #    end
+         # end
 
-         recoverable_shift_symbol_names = []
-         unless leader_options.empty?
-            matrix = leader_options[0].collect{|e| [e]}
-            1.upto(leader_options.length-1) do |index|
-               old_matrix = matrix
-               matrix     = []
-               
-               leader_options[index].each do |element|
-                  old_matrix.each do |row|
-                     matrix << row + [element]
-                  end
-               end
-            end
-            
-            count = matrix.inject(1000000000){ |current, row| row.uniq!; min(current, row.length) }
-
-            matrix.each do |row|
-               if row.length == count then
-                  recoverable_shift_symbol_names = row.collect{ |symbol| symbol.name }
-                  break
-               end
-            end
-         end
-
-         
-         #
-         # Phase 2: Given the list of acceptable shift recoveries, go through and generate recovery
-         # options for both shift and reduce actions.
-         
-         recovery_data.each do |symbol_signature, recoverable_items|
-            predicate = nil
-            recoverable_items.each do |item|
-               predicate = Predicates::TryIt.new( item.minimal_phrasing? )
-               
-               #
-               # For REDUCE operations, we use the lookahead token only if a (run-time) context State
-               # can SHIFT the token.
-         
-               if item.complete? then 
-                  predicate = Predicates::CheckContext.new()
-            
-               #
-               # For SHIFT operations, exclude anything not on our recoverable_shift_symbols list.
-         
-               elsif !recoverable_shift_symbol_names.member?(symbol_name) then
-                  predicate = nil 
-               
-               #
-               # If we are here, it's a SHIFT and we will be choosing predicates.
-         
-               else
-                  @used_to_states[@transitions[symbol_name].number] = true
-               
-                  #
-                  # If this is not a primary form, we do not insert tokens.
-         
-                  if item.production.minimal_phrasing? then
-         
-                     #
-                     # Forms that begin and end with a terminal are special.  We can consider them "matched" pairs.
-                     #
-                     #   e => . ( e )      ==> insert ( only if ) is the error
-                     #   e => ( . e )      ==> not applicable (leader is a non-terminal)
-                     #   e => ( e . )      ==> TryIt
-                     #   e => ( e ) .      ==> REDUCE (already handled)
-         
-                     if item.at == 0 and item.production.symbols.length == 3 and item.production.symbols[0].refers_to_token? and item.production.symbols[-1].refers_to_token? then
-                        predicate = Predicates::CheckErrorType.new( item.production.symbols[-1] )
-         
-                     #
-                     # Prefix and postfix forms that result in the same type as one of their terms are a dead-end.
-                     #   e => . - e        ==> bad, bad idea
-                     #   e => - . e        ==> not applicable (leader is a non-terminal)
-                     #   e => - e .        ==> REDUCE (already handled)
-                     #
-                     #   e => . e ++       ==> not applicable (leader is a non-terminal)
-                     #   e => e . ++       ==> bad, bad idea
-                     #   e => e ++ .       ==> REDUCE (already handled)
-            
-                     elsif item.production.symbols.length == 2 and item.leader.refers_to_token? and item.production.symbols[0].refers_to_token? ^ item.production.symbols[1].refers_to_token? and item.production.symbols[(item.at - 1).abs].signature == item.production.signature then
-                        predicate = nil
-                        
-                     end
-                  end
-               end
-            
-               break unless predicate.is_a?(Predicates::TryIt)
-            end
-         
-            @recovery_predicates[symbol_signature] = predicate unless predicate.nil? 
-         end
+         # 
+         # #
+         # # Phase 2: Given the list of acceptable shift recoveries, go through and generate recovery
+         # # options for both shift and reduce actions.
+         # 
+         # recovery_data.each do |symbol_signature, recoverable_items|
+         #    predicate = nil
+         #    recoverable_items.each do |item|
+         #       predicate = Predicates::TryIt.new( item.minimal_phrasing? )
+         #       
+         #       #
+         #       # For REDUCE operations, we use the lookahead token only if a (run-time) context State
+         #       # can SHIFT the token.
+         # 
+         #       if item.complete? then 
+         #          predicate = Predicates::CheckContext.new()
+         #    
+         #       #
+         #       # For SHIFT operations, exclude anything not on our recoverable_shift_symbols list.
+         # 
+         #       elsif !recoverable_shift_symbol_names.member?(symbol_signature) then
+         #          predicate = nil 
+         #       
+         #       #
+         #       # If we are here, it's a SHIFT and we will be choosing predicates.
+         # 
+         #       else
+         #          @used_to_states[@transitions[symbol_signature].number] = true
+         #       
+         #          #
+         #          # If this is not a primary form, we do not insert tokens.
+         # 
+         #          if item.production.minimal_phrasing? then
+         # 
+         #             #
+         #             # Forms that begin and end with a terminal are special.  We can consider them "matched" pairs.
+         #             #
+         #             #   e => . ( e )      ==> insert ( only if ) is the error
+         #             #   e => ( . e )      ==> not applicable (leader is a non-terminal)
+         #             #   e => ( e . )      ==> TryIt
+         #             #   e => ( e ) .      ==> REDUCE (already handled)
+         # 
+         #             if item.at == 0 and item.production.symbols.length == 3 and item.production.symbols[0].refers_to_token? and item.production.symbols[-1].refers_to_token? then
+         #                predicate = Predicates::CheckErrorType.new( item.production.symbols[-1] )
+         # 
+         #             #
+         #             # Prefix and postfix forms that result in the same type as one of their terms are a dead-end.
+         #             #   e => . - e        ==> bad, bad idea
+         #             #   e => - . e        ==> not applicable (leader is a non-terminal)
+         #             #   e => - e .        ==> REDUCE (already handled)
+         #             #
+         #             #   e => . e ++       ==> not applicable (leader is a non-terminal)
+         #             #   e => e . ++       ==> bad, bad idea
+         #             #   e => e ++ .       ==> REDUCE (already handled)
+         #    
+         #             elsif item.production.symbols.length == 2 and item.leader.refers_to_token? and item.production.symbols[0].refers_to_token? ^ item.production.symbols[1].refers_to_token? and item.production.symbols[(item.at - 1).abs].signature == item.production.signature then
+         #                predicate = nil
+         #                
+         #             end
+         #          end
+         #       end
+         #    
+         #       break unless predicate.is_a?(Predicates::TryIt)
+         #    end
+         # 
+         #    @recovery_predicates[symbol_signature] = predicate unless predicate.nil? 
+         # end
       end
       
       
@@ -786,7 +803,7 @@ module Plan
       # compile_customized_lexer_plan()
       #  - produces/returns a LexerPlan that prioritizes the lookahead for this State's actions
       
-      def compile_customized_lexer_plan( base_plan )
+      def compile_customized_lexer_plan( base_plan, estream = nil )
          @lexer_plan = base_plan.prioritize( @lookahead )
       end
       
@@ -804,97 +821,99 @@ module Plan
 
       def display( stream = $stdout )  # BUG: Pass on ContextStream: complete = true, show_context = :reduce_determinants )
          stream.puts "State #{@number}"
-         # stream.indent do
-         #    stream.puts "Context states: #{@context_states.keys.sort.join(", ")}"
-         # 
-         #    #
-         #    # We'd like our Item descriptors to be output in nice columns, so we will bypass the Item.display() routine.
-         # 
-         #    rows = []
-         #    @items.each do |item|
-         #       rows << row = [ item.start_item ? "*" : " ", item.rule_name, item.prefix.join(" ") + " . " + item.rest.join(" ") ]
-         #    
-         #       case stream.property(:show_context)
-         #          when nil, :reduce_determinants
-         #             tail = item.complete? ? item.determinants.join(" | ") : nil
-         #          when :all_determinants
-         #             tail = item.complete? ? item.determinants.join(" | ") : item.sequences_after_mark(3).sequences.collect{|sequence| sequence.join(" ")}.join(" | ")
-         #          when :follow_contexts
-         #             tail = item.follow_contexts.collect{|context| context.to_s}.join(" | ")
-         #          when :raw_follow_contexts
-         #             tail = ""
-         #             item.instance_eval do
-         #                tail = item.follow_contexts.collect{|context| context.object_id.to_s}.join( " | " ) +
-         #                       "Sources: " + item.follow_sources.collect{|source| source.object_id.to_s}.join( " | " )
-         #             end
-         #          else
-         #             bug( "what were you looking for? [#{show_context.to_s}]" )
-         #       end
-         #    
-         #       row << tail
-         #    end
-         # 
-         #    #
-         #    # Calculate a width for each column.
-         # 
-         #    widths = [0, 0, 0, 0]
-         #    rows.each do |row|
-         #       column = 0
-         #       row.each do |datum|
-         #          unless datum.nil?
-         #             widths[column] = datum.length if widths[column] < datum.length
-         #          end
-         #          column += 1
-         #       end
-         #    end
-         #          
-         #    #
-         #    # Display the formatted items.
-         # 
-         #    format_string = "%s %-#{widths[1]}s => %-#{widths[2]}s"
-         #    rows.each do |row|
-         #       output = sprintf(format_string, row[0], row[1], row[2]).ljust(60)
-         #       if row[3].nil? then
-         #          stream << output << "\n"
-         #       else
-         #          stream << output << "   >>> Context >>> " << row[3] << "\n"
-         #       end
-         #    end
-         # 
-         #    #
-         #    # Display transitions and reductions, but only if requested.
-         # 
-         #    if stream.property(:complete) then
-         #    
-         #       #
-         #       # Display the transitions.
-         # 
-         #       unless @transitions.empty?
-         #          width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
-         #          @transitions.each do |symbol_name, state|
-         #             stream << sprintf("Transition %-#{width}s to %d", symbol_name, state.number) << "\n"
-         #          end
-         #       end
-         # 
-         #       #
-         #       # Display the reductions.
-         # 
-         #       unless @reductions.empty?
-         #          @reductions.each do |item|
-         #             stream << "Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" 
-         #             stream << " (*)" if item.object_id == @chosen_reduction.object_id
-         #             stream << "\n"
-         #          end
-         #       end
-         #    
-         #       #
-         #       # Display the recovery options.
-         #    
-         #       @recovery_predicates.each do |symbol, predicate|
-         #          stream << "Recovery predicate for #{symbol}: #{predicate.class.name}" << "\n"
-         #       end
-         #    end
-         # end
+         stream.indent do
+            stream.puts "Context states: #{@context_states.keys.sort.join(", ")}"
+         
+            #
+            # We'd like our Item descriptors to be output in nice columns, so we will bypass the Item.display() routine.
+         
+            rows = []
+            @items.each do |item|
+               prefix_signatures = item.prefix.collect{|symbol| symbol.signature(@context_grammar_name)}
+               rest_signatures   = item.rest.collect{|symbol| symbol.signature(@context_grammar_name)}
+               rows << row = [ item.start_item ? "*" : " ", item.rule_name, prefix_signatures.join(" ") + " . " + rest_signatures.join(" ") ]
+            
+               case stream[:show_context]
+                  when nil, :reduce_determinants
+                     tail = item.complete? ? item.determinants.join(" | ") : nil
+                  when :all_determinants
+                     tail = item.complete? ? item.determinants.join(" | ") : item.sequences_after_mark(3).sequences.collect{|sequence| sequence.join(" ")}.join(" | ")
+                  when :follow_contexts
+                     tail = item.follow_contexts.collect{|context| context.to_s}.join(" | ")
+                  when :raw_follow_contexts
+                     tail = ""
+                     item.instance_eval do
+                        tail = item.follow_contexts.collect{|context| context.object_id.to_s}.join( " | " ) +
+                               "Sources: " + item.follow_sources.collect{|source| source.object_id.to_s}.join( " | " )
+                     end
+                  else
+                     bug( "what were you looking for? [#{show_context.to_s}]" )
+               end
+            
+               row << tail
+            end
+         
+            #
+            # Calculate a width for each column.
+         
+            widths = [0, 0, 0, 0]
+            rows.each do |row|
+               column = 0
+               row.each do |datum|
+                  unless datum.nil?
+                     widths[column] = datum.length if widths[column] < datum.length
+                  end
+                  column += 1
+               end
+            end
+                  
+            #
+            # Display the formatted items.
+         
+            format_string = "%s %-#{widths[1]}s => %-#{widths[2]}s"
+            rows.each do |row|
+               output = sprintf(format_string, row[0], row[1], row[2]).ljust(60)
+               if row[3].nil? then
+                  stream << output << "\n"
+               else
+                  stream << output << "   >>> Context >>> " << row[3] << "\n"
+               end
+            end
+         
+            #
+            # Display transitions and reductions, but only if requested.
+         
+            if stream[:complete] then
+            
+               #
+               # Display the transitions.
+         
+               unless @transitions.empty?
+                  width = @transitions.keys.inject(0) {|current, symbol| length = symbol.to_s.length; current > length ? current : length }
+                  @transitions.each do |symbol_signature, state|
+                     stream << sprintf("Transition %-#{width}s to %d", symbol_signature, state.number) << "\n"
+                  end
+               end
+         
+               #
+               # Display the reductions.
+         
+               unless @reductions.empty?
+                  @reductions.each do |item|
+                     stream << "Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" 
+                     stream << " (*)" if item.object_id == @chosen_reduction.object_id
+                     stream << "\n"
+                  end
+               end
+            
+               #
+               # Display the recovery options.
+            
+               @recovery_predicates.each do |symbol, predicate|
+                  stream << "Recovery predicate for #{symbol}: #{predicate.class.name}" << "\n"
+               end
+            end
+         end
       end
 
 

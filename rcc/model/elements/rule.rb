@@ -35,7 +35,7 @@ module Elements
       attr_accessor :priority   
 
       def initialize( name, master_form )
-         type_check( name, Model::Name, false )
+         type_check( name, Scanner::Artifacts::Name, false )
          
          @name            = name
          @master_form     = master_form
