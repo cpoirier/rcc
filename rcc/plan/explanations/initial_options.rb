@@ -32,7 +32,7 @@ module Explanations
       
       
       def to_s()
-         return "Option summary: #{@options.keys.collect{|symbol_name| @options[symbol_name].length.to_s + " for " + Symbol.describe(symbol_name) }.join("; ")}"
+         return "Option summary: #{@options.keys.collect{|symbol_name| @options[symbol_name].length.to_s + " for " + symbol_name.description() }.join("; ")}"
       end
       
       

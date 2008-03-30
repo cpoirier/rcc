@@ -67,15 +67,39 @@ module PositionStack
          return false
       end
       
+      
+      def stream_position=( position )
+         @next_token = nil
+         @stream_position = position
+      end
+      
 
 
       #
       # next_token()
       #  - returns the next_token from this Position
 
-      def next_token( estream = nil )
-         if @next_token.nil?
-            @next_token = self.class.lex_token( @state, @lexer, @stream_position, estream )
+      def next_token( estream = nil, position = nil )
+         if position.nil? and @state.actions.length == 1 and @state.actions.member?(Name.any_type) then
+            return Artifacts::Nodes::Token.hypothetical
+         elsif @next_token.nil? or !position.nil? then
+            if estream then 
+               lexer_explanation = "Lexing with prioritized symbols: #{@state.lexer_plan.order.collect{|symbol_name| symbol_name.description}.join(" ")}"
+
+               estream.blank_lines(2)
+               estream.puts "=" * lexer_explanation.length
+               estream.puts lexer_explanation
+               estream.puts "=" * lexer_explanation.length
+            end
+         
+            token = ContextStream.indent_with(estream, "|   ") { @lexer.read( position.nil? ? @stream_position : position, @state.lexer_plan, estream ) }            
+            token.rewind_position = stream_position
+         
+            if position.nil? then 
+               @next_token = token
+            else
+               return token
+            end
          end
 
          return @next_token
@@ -405,7 +429,7 @@ module PositionStack
          # then untaint it, as the Token is real.
          
          deleted_token = next_token( estream )
-         token = self.class.lex_token( @state, @lexer, deleted_token.follow_position, estream )
+         token = next_token( estream, deleted_token.follow_position )
          token.taint( Artifacts::Deletion.new(deleted_token, deleted_token.follow_position, recovery_context) )
          token.untaint()
 
@@ -597,25 +621,6 @@ module PositionStack
       end
 
 
-      #
-      # ::lex_token()
-      #  - returns the next_token from this Position
-
-      def self.lex_token( state, lexer, stream_position, estream = nil )
-         if estream then 
-            lexer_explanation = "Lexing with prioritized symbols: #{state.lookahead.collect{|symbol_name| symbol_name.nil? ? "$" : symbol_name}.join(" ")}"
-
-            estream.blank_lines(2)
-            estream.puts "-" * lexer_explanation.length
-            estream.puts lexer_explanation
-         end
-
-         next_token = ContextStream.indent_with(estream) { lexer.read( stream_position, state.lexer_plan, estream ) }
-         next_token.rewind_position = stream_position
-         
-         return next_token
-      end
-      
       
 
 

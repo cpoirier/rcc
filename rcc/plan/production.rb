@@ -44,13 +44,11 @@ module Plan
       attr_reader   :slots                  # A slot name or nil for each Symbol
       attr_reader   :associativity          # nil, :left, :right, or :none
       attr_reader   :priority
-      attr_reader   :ignore_conflicts
-      attr_reader   :form_id                # Unique within the Grammar
-      attr_reader   :form_number            # Unique within the Form
+      attr_reader   :ignore_symbols
       attr_accessor :ast_class
       attr_accessor :master_plan
 
-      def initialize( number, name, symbols, slots, associativity, priority, ast_class, minimal_phrasing = true )
+      def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries = true )
          type_check( name, Scanner::Artifacts::Name )
          
          @number           = number
@@ -60,28 +58,30 @@ module Plan
          @associativity    = associativity
          @priority         = priority
          @ast_class        = ast_class
-         @minimal_phrasing = minimal_phrasing         
+         @generate_error_recoveries = generate_error_recoveries
       end
       
       alias rule_name name
       
+      def generate_error_recoveries?()
+         return @generate_error_recoveries
+      end
       
+      def discard?()
+         return false
+      end
+
       def signature()
          return @name.signature
       end
       
+      def description( elide_grammar = nil )
+         return @name.description( elide_grammar )
+      end      
+
       
       def length()
          return @symbols.length
-      end
-      
-      
-      #
-      # minimal_phrasing?()
-      #  - if true, this Production represents a simplest phrasing of the Form (ie. no optional tokens)
-      
-      def minimal_phrasing?()
-         return @minimal_phrasing
       end
       
       
@@ -95,15 +95,10 @@ module Plan
       
       
       def display( stream = $stdout )
-         stream.puts "#{@grammar_name}:#{@rule_name} =>"
+         stream.puts "#{@name}#{self.discard? ? " (discard result)" : ""} =>"
          stream.indent do
             length().times do |i|
-               if @symbols[i].is_an?(Array) then
-                  stream << @symbols[i].join("|")
-               else
-                  stream << @symbols[i]
-               end
-               
+               stream << @symbols[i].description
                stream.puts( @slots[i].nil? ? ", then discard" : ", store in #{@slots[i]}" )  
             end
          end

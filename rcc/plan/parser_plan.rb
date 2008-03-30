@@ -33,10 +33,12 @@ module Plan
       attr_reader :ast_classes       # Our ASTClasses, in declaration order
 
       def initialize( master_plan, name, state_table, enable_backtracking = false )         
+         assert( master_plan.lexer_plans.member?(name), "why is there no LexerPlan for this ParserPlan [#{name}]?" )
+         
          @master_plan         = master_plan
          @name                = name
          @state_table         = state_table
-         @lexer_plan          = master_plan.get_lexer_plan( name )
+         @lexer_plan          = master_plan.lexer_plans[ name ]
          @ast_classes         = master_plan.get_ast_plan( name )
          @enable_backtracking = enable_backtracking
       end

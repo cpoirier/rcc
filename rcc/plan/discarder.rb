@@ -9,52 +9,40 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/production.rb"
 
 module RCC
 module Plan
-module Explanations
 
  
  #============================================================================================================================
- # class Explanation
- #  - base class for things that explain why actions where produced the way they were
+ # class Discarder
+ #  - a Production that results in a Discard instead of a Reduce on completion, meaning its data will immediately stop
+ #    affecting the parse
 
-   class Explanation
+   class Discarder < Production
+      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
+
+      def initialize( number, name, symbols, slots, associativity, priority, ast_class )
+         super( number, name, symbols, slots, associativity, priority, ast_class, false )
       end
       
-      def to_s()
-         return self.class.name
-      end
-      
-      def display( stream = $stdout )
-         stream << self.to_s << "\n"
+      def discard?()
+         return true
       end
       
       
-      
-   end # Explanation
+   end # Discarder
    
 
 
 
-end  # module Explanations
+
+
 end  # module Plan
 end  # module RCC
-
-
-
-require "#{$RCCLIB}/plan/explanations/selected_action.rb"
-require "#{$RCCLIB}/plan/explanations/only_one_choice.rb"
-require "#{$RCCLIB}/plan/explanations/reductions_sorted.rb"
-require "#{$RCCLIB}/plan/explanations/shift_trumps_reduce.rb"
-require "#{$RCCLIB}/plan/explanations/reduce_trumps_shift.rb"
-require "#{$RCCLIB}/plan/explanations/initial_options.rb"
-require "#{$RCCLIB}/plan/explanations/favourite_chosen.rb"
-require "#{$RCCLIB}/plan/explanations/backtracking_activated.rb"
-

@@ -9,46 +9,39 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/model.rb"
+require "#{$RCCLIB}/plan/actions/action.rb"
 
 module RCC
-module Model
-module References   
-   
+module Plan
+module Actions
+
  
  #============================================================================================================================
- # class StringReference
- #  - represents a string reference in a rule
+ # class Discard
+ #  - an Discard action for the ParserPlan, used on ignorable Tokens
 
-   class StringReference
-      include Model::Elements::SlotInfo
+   class Discard < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :string_name
-      alias symbol_name string_name
+      attr_reader :by_production
       
-      def initialize( string_name )
-         @string_name = string_name
+      def initialize( by_production )
+         @by_production = by_production
       end
       
       
-      #
-      # display()
-      
-      def display( stream )
-         display_slot_info(stream) do 
-            stream.puts "lex(#{@string_name})"
-         end
+      def to_s()
+         return "Discard #{@by_production.to_s}"
       end
       
       
-   end # StringReference
+   end # Discard
    
 
 
-end  # module References
-end  # module Model
+end  # module Actions
+end  # module Plan
 end  # module RCC

@@ -45,12 +45,12 @@ module Plan
          
          follow_by_firsts = {}
          vectors.each do |vector|
-            assert( vector.length >= 3, "wtf?" )
+            assert( vector.length >= 2, "expected at least a range and a name in the vector" )
             
-            if vector.length == 3 then
-               range, grammar_name, symbol_name = *vector
+            if vector.length == 2 then
+               range, name = *vector
                range.each do |code|
-                  @accepted[code] = [grammar_name, symbol_name]
+                  @accepted[code] = name
                end
             else
                range = vector.shift

@@ -36,8 +36,8 @@ module Artifacts
          @type = type
       end
       
-      def description()
-         return @type.signature
+      def description( elide_grammar = nil )
+         return @type.description(elide_grammar)
       end
       
       def follow_position()

@@ -87,6 +87,18 @@
 
 
    #
+   # warn_bug()
+   #  - dumps an NYI warning to $stderr, once per message
+   
+   def warn_bug( description )
+      unless $nyi_warnings_already_given.member?(description)
+         $stderr.puts "BUG: " + description
+         $nyi_warnings_already_given[description] = true
+      end
+   end
+
+
+   #
    # ignore_errors()
    #  - catches any exceptions raised in your block, and returns error_return instead
    #  - returns your block return otherwise

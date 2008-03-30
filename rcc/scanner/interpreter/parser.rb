@@ -10,6 +10,7 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/scanner/artifacts/solution.rb"
+require "#{$RCCLIB}/scanner/artifacts/name.rb"
 require "#{$RCCLIB}/scanner/artifacts/nodes/token.rb"
 require "#{$RCCLIB}/scanner/artifacts/nodes/asn.rb"
 require "#{$RCCLIB}/scanner/artifacts/nodes/csn.rb"
@@ -30,6 +31,7 @@ module Interpreter
 
    class Parser
       
+      Name            = Artifacts::Name
       Solution        = Artifacts::Solution
       Token           = Artifacts::Nodes::Token
       CSN             = Artifacts::Nodes::CSN
@@ -164,39 +166,45 @@ module Interpreter
                
             rescue ParseError => e
                position = e.position
-               if position.next_token.tainted? then
-                  # we're done -- it's already been corrected and the correction failed
-               elsif position.recovered? then
-                  estream.puts "POSITION IS RECOVERED; QUEUEING NEW ERROR PROCESSING: #{position.description(true)};" if estream
-                  soft_correction_limit = min( soft_correction_limit, position.corrections_cost )
+               position.state.provide_context do 
+                  if position.next_token.tainted? then
+                     # we're done -- it's already been corrected and the correction failed
+                  elsif position.recovered? then
+                     estream.puts "POSITION IS RECOVERED; QUEUEING NEW ERROR PROCESSING: #{position.description(true)};" if estream
+                     soft_correction_limit = min( soft_correction_limit, position.corrections_cost )
                   
-                  signature = position.signature()
-                  if error_positions.member?(signature) then
-                     error_positions[signature].join_position( position )
-                  else
-                     error_positions[signature] = position
-                     error_queue << position
-                  end
-               elsif position.corrections_cost < soft_correction_limit then
-                  if position.tainted? then
-                     generate_recovery_positions( position, soft_correction_limit, estream )
-                  else
-                     error_queue << position
-                     soft_correction_limit = min( soft_correction_limit, position.corrections_cost ) if @in_recovery
-                     if estream then
-                        estream.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
-                        estream.indent do 
-                           estream.puts "CORRECTION LIMIT FOR THIS ERROR IS NOW #{soft_correction_limit}"
+                     signature = position.signature()
+                     if error_positions.member?(signature) then
+                        error_positions[signature].join_position( position )
+                     else
+                        error_positions[signature] = position
+                        error_queue << position
+                     end
+                  elsif position.corrections_cost < soft_correction_limit then
+                     if position.tainted? then
+                        generate_recovery_positions( position, soft_correction_limit, estream )
+                     else
+                        error_queue << position
+                        soft_correction_limit = min( soft_correction_limit, position.corrections_cost ) if @in_recovery
+                        if estream then
+                           estream.puts "QUEUEING ERROR FOR FURTHER PROCESSING: #{position.description(true)};"
+                           estream.indent do 
+                              estream.puts "CORRECTION LIMIT FOR THIS ERROR IS NOW #{soft_correction_limit}"
+                           end
                         end
                      end
+                  else
+                     estream.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" if estream
                   end
-               else
-                  estream.puts "TOO MANY ERRORS: DISCARDING POSITION #{position.description(true)}" if estream
                end
                
             rescue PositionSeen => e
                position = e.position
-               estream.puts "DISCARDING LOOPED RECOVERY: #{position.description(true)}" if estream
+               if estream then
+                  position.state.provide_context do 
+                     estream.puts "DISCARDING LOOPED RECOVERY: #{position.description(true)}" 
+                  end
+               end
             end
             
             estream.puts "PASS TOOK: #{Time.now-pass_start_time}s" if estream
@@ -381,55 +389,57 @@ module Interpreter
          # Process actions until a solution is found or an exception is raised (AttemptsPending, for instance).
          
          while solution.nil?
-            
-            #
-            # Get the lookahead.
-            
-            state      = position.state
-            next_token = position.next_token( estream )
-            
-            position.display( estream ) if estream
-            
-            #
-            # Select the next action.
-            
-            p state.actions.keys
-            action = state.actions[next_token.type]
-            if estream then
-               estream.puts "| #{state.lookahead_explanations}"
-               estream.puts "| Action analysis for lookahead #{next_token.description}"
+            position.state.provide_context do |state|
 
-               if state.explanations.nil? then
-                  bug( "no explanations found" )
-               else
-                  state.explanations[next_token.type].each do |explanation|
-                     explanation.to_s.split("\n").each do |line|
-                        estream << "|    " << line.to_s << "\n"
+               #
+               # Get the lookahead.
+         
+               next_token = position.next_token( estream )
+               position.display( estream ) if estream
+
+               
+               #
+               # Select the next action.
+         
+               action = state.actions[next_token.type]
+               if estream then
+                  if next_token.type.wildcard? then
+                     estream.puts "| Skipping lookahead, as it is irrelevant to this State"
+                  else
+                     estream.puts "| #{state.lookahead_explanations}"
+                     estream.puts "| Action analysis for lookahead #{next_token.description}"
+                  end
+
+                  if state.explanations.nil? then
+                     bug( "no explanations found" )
+                  else
+                     state.explanations[next_token.type].each do |explanation|
+                        estream.indent( "|    " ) { estream.puts explanation }
                      end
                   end
                end
-            end
+               
                         
-            #
-            # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
-            # perform_action() raises an AttemptsPending exception if it encounters a branch point -- we pass it
-            # through to our caller.
+               #
+               # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
+               # perform_action() raises an AttemptsPending exception if it encounters a branch point -- we pass it
+               # through to our caller.
 
-            if action.exists? then
-               if action.is_a?(Plan::Actions::Accept) then
-                  solution = position
+               if action.exists? then
+                  if action.is_a?(Plan::Actions::Accept) then
+                     solution = position
+                  else
+                     position = perform_action( position, action, next_token, estream )
+                  end
                else
-                  position = perform_action( position, action, next_token, estream )
-               end
-            else
-               if estream then
-                  estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
-                  # BUG: how do we handle this with the ContextStream: explain_indent += "   "
-               end
+                  if estream then
+                     estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
+                     # BUG: how do we handle this with the ContextStream: explain_indent += "   "
+                  end
 
-               raise ParseError.new( position )
+                  raise ParseError.new( position )
+               end
             end
-            
          end
          
          return solution
@@ -451,12 +461,30 @@ module Interpreter
                estream.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if estream
                next_position = position.push( next_token, action.to_state )
                
+            when Plan::Actions::Discard
+               production = action.by_production
+               estream.puts "===> DISCARD #{production.to_s}" if estream
+               
+               #
+               # Pop the right number of nodes.  Position.pop() may throw and exception if it detects an error.
+               # We pass it through to our caller.
+               
+               top_position = position
+               production.symbols.length.times do |i|
+                  position = position.pop( production, top_position )
+               end
+               
+               warn_nyi( "not sure this changing stream_position thing is a good idea" )
+               position.stream_position = top_position.stream_position
+               next_position = position
+               
+               
             when Plan::Actions::Reduce
                production = action.by_production
                estream.puts "===> REDUCE #{production.to_s}" if estream
                
                #
-               # Pop the right number of nodes.  Position.pop() may through an exception if it detects an error.  
+               # Pop the right number of nodes.  Position.pop() may throw an exception if it detects an error.  
                # We pass it through to our caller. 
                
                nodes = []

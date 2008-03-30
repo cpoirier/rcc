@@ -21,6 +21,7 @@ module Util
    class OrderedHash
 
       attr_reader :order
+      alias keys order
 
       #
       # ::new(), initialize()
@@ -238,6 +239,33 @@ module Util
             end
          end
          results
+      end
+      
+      
+      #
+      # select()
+      #  - iterates over the elements in the has, returning an OrderedHash of any for which
+      #    your block returns true
+      
+      def select()
+         result = self.new()
+         self.each do |name, value|
+            result[name] = value if yield( name, value )
+         end
+         
+         return result
+      end
+      
+      
+      #
+      # import()
+      #  - iterates over a different hash and adds to this OrderedHash any elements for
+      #    which your block returns true
+      
+      def import( hash )
+         hash.each do |name, value|
+            self[name] = value if yield(name, value)
+         end
       end
 
       

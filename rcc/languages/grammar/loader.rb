@@ -57,7 +57,6 @@ module Grammar
       
       def self.initialize_bootstrap_parser( )
          system_model = ModelBuilder.build( BootstrapGrammar.ast )
-         p system_model.start_rule
          master_plan  = system_model.compile_master_plan()
          parser_plan  = master_plan.compile_parser_plan( system_model.start_rule ).compile_actions( true )
       

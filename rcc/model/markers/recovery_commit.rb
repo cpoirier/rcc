@@ -11,50 +11,30 @@
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 
 module RCC
-module Plan
-module Explanations
+module Model
+module Markers
 
  
  #============================================================================================================================
- # class Explanation
- #  - base class for things that explain why actions where produced the way they were
+ # class RecoveryCommit
+ #  - a marker showing a recovery commit in a Rule
 
-   class Explanation
+   class RecoveryCommit
+      include Model::Elements::SlotInfo
+      
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
       def initialize()
+         
       end
       
-      def to_s()
-         return self.class.name
-      end
-      
-      def display( stream = $stdout )
-         stream << self.to_s << "\n"
-      end
-      
-      
-      
-   end # Explanation
+   end # RecoveryCommit
    
 
 
-
-end  # module Explanations
-end  # module Plan
+end  # module Markers
+end  # module Model
 end  # module RCC
-
-
-
-require "#{$RCCLIB}/plan/explanations/selected_action.rb"
-require "#{$RCCLIB}/plan/explanations/only_one_choice.rb"
-require "#{$RCCLIB}/plan/explanations/reductions_sorted.rb"
-require "#{$RCCLIB}/plan/explanations/shift_trumps_reduce.rb"
-require "#{$RCCLIB}/plan/explanations/reduce_trumps_shift.rb"
-require "#{$RCCLIB}/plan/explanations/initial_options.rb"
-require "#{$RCCLIB}/plan/explanations/favourite_chosen.rb"
-require "#{$RCCLIB}/plan/explanations/backtracking_activated.rb"
-

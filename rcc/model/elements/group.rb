@@ -84,7 +84,7 @@ module Elements
                member.member_references.each do |reference|
                   self << reference
                end
-            when References::RuleReference, References::StringReference
+            when Markers::RuleReference, Markers::StringReference
                @member_references << member.clone()
             else
                nyi( nil, member )

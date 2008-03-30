@@ -56,8 +56,8 @@ module Interpreter
             column_number   = @source.column_number(position)
          
             unless solution = read_via_lexer_state( position, lexer_plan.lexer_state, estream )
-               lexer_plan.each_open_pattern do |grammar_name, symbol_name, form|
-                  break if solution = read_via_pattern( position, form, grammar_name, symbol_name, estream )
+               lexer_plan.open_patterns.each do |name, form|
+                  break if solution = read_via_pattern( position, form, name, estream )
                end
             end
          
@@ -142,8 +142,8 @@ module Interpreter
             end
       
             if solution.nil? and state.accepted.member?(c) then
-               estream.puts "#{note} is accepted by state [#{state.object_id}]; producing type #{state.accepted[c].join(".")}" if estream
-               solution = Solution.new( c, *state.accepted[c] )
+               estream.puts "#{note} is accepted by state [#{state.object_id}]; producing type #{state.accepted[c].description}" if estream
+               solution = Solution.new( c, state.accepted[c] )
             end
             
             if solution.nil? then
@@ -161,17 +161,13 @@ module Interpreter
       #  - processes an ExpressionForm of SparseRanges against the source to produce
       #    a matching string of characters (longest match possible) or nil
       
-      def read_via_pattern( position, form, grammar_name, symbol_name, estream = nil )
+      def read_via_pattern( position, form, name, estream = nil )
          solution = nil
          
          if estream then
-            description = "attempting pattern [#{grammar_name}.#{symbol_name}]   ".ljust(50)
-            
-            estream << description 
-            estream.indent(" " * description.length) do 
-               form.display(estream)
-            end
-            
+            estream.puts ""
+            estream.puts "attempting pattern [#{name.description}] at source[#{position}] (+#{position - @start_position})"
+            estream.indent("|   " ) { form.display(estream) }
             estream.end_line()
          end
          
@@ -182,10 +178,10 @@ module Interpreter
          # is entirely optional, and matches with 0-length, it really isn't there.
          
          if accepted && length > 0 then
-            solution = Solution.new( @source.slice(position, length), grammar_name, symbol_name ) 
-            estream.indent { estream.puts "==> matched against [#{solution.to_s.escape}]" } if estream
+            solution = Solution.new( @source.slice(position, length), name ) 
+            estream.puts " ==> matched: [#{solution.to_s.escape}]" if estream
          else
-            estream.indent { estream.puts "==> didn't match" } if estream
+            estream.puts " ==> didn't match" if estream
          end
          
          return solution
@@ -295,10 +291,9 @@ module Interpreter
     protected
     
       class Solution
-         def initialize( character_string, grammar_name, symbol_name )
+         def initialize( character_string, name )
             @character_string = character_string.to_a
-            @grammar_name     = grammar_name
-            @symbol_name      = symbol_name
+            @name             = name
          end
          
          def prepend( c )
@@ -318,7 +313,7 @@ module Interpreter
          end
                   
          def to_Token( start_position, line_number, column_number, source )
-            return Artifacts::Nodes::Token.new( self.to_s, @grammar_name, @symbol_name, start_position, line_number, column_number, source, false, start_position + @character_string.length )
+            return Artifacts::Nodes::Token.new( self.to_s, @name, start_position, line_number, column_number, source, false, start_position + @character_string.length )
          end
       end
 

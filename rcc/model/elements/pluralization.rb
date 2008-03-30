@@ -37,7 +37,7 @@ module Elements
       def initialize( name, singular_form )
          @singular_form = singular_form
          
-         tree_side = References::RuleReference.new( name )
+         tree_side = Markers::RuleReference.new( name )
          rule_form = Sequence.new( Optional.new(tree_side), @singular_form )
          super( name, rule_form )
 
@@ -47,7 +47,7 @@ module Elements
       
       
       def reference( optional = true )
-         return References::PluralizationReference.new( self, optional )
+         return Markers::PluralizationReference.new( self, optional )
       end
       
       

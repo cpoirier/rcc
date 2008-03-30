@@ -34,11 +34,11 @@ module Grammar
       Rule                   = RCC::Model::Elements::Rule
       Pluralization          = RCC::Model::Elements::Pluralization
       StringDescriptor       = RCC::Model::Elements::StringDescriptor
-      StringReference        = RCC::Model::References::StringReference
-      RuleReference          = RCC::Model::References::RuleReference
-      GroupReference         = RCC::Model::References::GroupReference
-      PluralizationReference = RCC::Model::References::PluralizationReference
-      RecoveryCommit         = RCC::Model::References::RecoveryCommit
+      StringReference        = RCC::Model::Markers::StringReference
+      RuleReference          = RCC::Model::Markers::RuleReference
+      GroupReference         = RCC::Model::Markers::GroupReference
+      PluralizationReference = RCC::Model::Markers::PluralizationReference
+      RecoveryCommit         = RCC::Model::Markers::RecoveryCommit
       
       
       
@@ -62,8 +62,6 @@ module Grammar
          @group_defs          = Util::OrderedHash.new()       # name => Group
          @element_defs        = Util::OrderedHash.new()       # name => Rule or Group
          @naming_contexts     = Util::OrderedHash.new()       # name => naming context data
-         
-         register_specs( [grammar_spec] )
       end
 
 
@@ -73,7 +71,13 @@ module Grammar
       #  - builds the Model::Grammar from specs
       
       def build_model()
+
+         #
+         # Register the grammar specifications (only).  Only do this on the first call.
          
+         register_specs( @grammar_spec.specifications ) if @specifications.empty?
+         
+
          #
          # Resolve string specs into ExpressionForms of SparseRanges of character codes.  
 
@@ -177,11 +181,40 @@ module Grammar
          
          
          #
-         # Finally, build the Grammar Model and return it.
+         # Build the Grammar Model.
 
          grammar = RCC::Model::Grammar.new( @grammar_spec.name.text )
-         @string_defs.each {|name, definition| grammar.add_string(name, definition)}
+         @string_defs.each {|name, definition| grammar.add_string(definition.name, definition)}
          @element_defs.each{|name, definition| grammar.add_element(definition)}
+
+
+         #
+         # Finally, process options.  We do this last for convenience.
+         
+         @grammar_spec.options.each do |option|
+            case option.type.name
+               
+               when "start_rule"
+                  if @element_defs[option.rule_name.text].is_a?(Rule) then
+                     grammar.start_rule_name = create_name(option.rule_name.text)
+                  else
+                     nyi( "error handling for bad start_rule [#{option.rule_name.text}]" )
+                  end
+                  
+               when "ignore_switch"
+                  if @string_defs.member?(option.name.text) then
+                     name = create_name( option.name.text )
+                     grammar.ignore_symbols << name unless grammar.ignore_symbols.member?(name)
+                  else
+                     nyi( "error handling for bad ignore switch [#{option.ignore_switch.text}]" )
+                  end
+                  
+               when "backtracking_switch"
+                  warn_nyi( "backtracking switch support (isn't this going away?)" )
+               else
+                  nyi( "support for option type [#{option.type}]", option )
+            end
+         end
 
          return grammar
       end
@@ -217,7 +250,7 @@ module Grammar
          until work_queue.empty?
             node = work_queue.shift
             case node.type.name
-               when "grammar_spec", "section_spec"
+               when "section_spec"
                   node.specifications.reverse.each do |spec| 
                      work_queue.unshift spec 
                   end
@@ -247,9 +280,6 @@ module Grammar
                when "precedence_spec"
                   @precedence_specs << node
 
-               when "start_rule", "ignore_switch", "backtracking_switch"
-                  warn_nyi( "ModelBuilder: support for options" )
-                  
                else
                   nyi( "support for node type [#{node.type}]", node )
             end
@@ -1055,7 +1085,9 @@ module Grammar
       #  - returns a symbolic Name
       
       def create_name( name )
-         return Name.new(name, @name)
+         name =  Name.new(name, @name)
+         yield( name )  if block_given?
+         return name
       end
       
       

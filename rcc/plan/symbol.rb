@@ -34,11 +34,13 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :name
+      attr_reader :prefilter
       attr_writer :recoverable
       
-      def initialize( name, refers_to_token )
+      def initialize( name, refers_to_token, prefilter = nil )
          @name            = name
          @refers_to_token = refers_to_token
+         @prefilter       = prefilter          # A Symbol that might be need to be Discarded before reading this one
          @recoverable     = false
       end
       
@@ -54,16 +56,20 @@ module Plan
          @recoverable
       end
       
-      def signature( elide_grammar = nil )
-         if elide_grammar.exists? and not @name.literal? and elide_grammar == @name.grammar then
-            return @name.name
-         else
-            return @name.signature
-         end
+      def signature()
+         return @name.signature
+      end
+      
+      def description(elide_grammar = nil)
+         return @name.description(elide_grammar)
       end      
       
       def hash()
          return signature().hash
+      end
+      
+      def to_s()
+         return description()
       end
       
       # def eql?( rhs )

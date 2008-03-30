@@ -34,7 +34,7 @@ module Model
       attr_reader :groups               # name => Group
       attr_reader :rules                # name => Rule
 
-      attr_reader :ignore_terminals     # The names of any Terminals the lexer should eat
+      attr_reader :ignore_symbols       # The names of any symbols the lexer should (usually) eat
       attr_writer :enable_backtracking  # If true, backtracking will be used, where necessary, to handle conflicts
 
       attr_reader :state_table          # An Array of States for all states in the Grammar
@@ -42,9 +42,11 @@ module Model
       attr_accessor :system
 
       def initialize( name )
+         type_check( name, String )
+         
          @name                = name
          @start_rule_name     = nil
-         @ignore_terminals    = []
+         @ignore_symbols      = []
          @enable_backtracking = false
                             
          @strings = Util::OrderedHash.new()
@@ -83,6 +85,7 @@ module Model
       #  - adds a string definition (ExpressionForm of SparseRanges) to the Grammar
       
       def add_string( name, string_descriptor )
+         type_check( name, Scanner::Artifacts::Name )
          type_check( string_descriptor, Elements::StringDescriptor )
          assert( !name_defined?(name), "name [#{name}] is already in use" )
          
@@ -160,7 +163,7 @@ module Model
       #  - returns a RuleReference to the start rule for the Grammar
       
       def start_rule()
-         return References::RuleReference.new( start_rule_name() )
+         return Markers::RuleReference.new( start_rule_name() )
       end
     
     

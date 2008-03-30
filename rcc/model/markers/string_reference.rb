@@ -9,52 +9,46 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/model/model.rb"
 
 module RCC
-module Plan
-module Explanations
-
+module Model
+module Markers   
+   
  
  #============================================================================================================================
- # class Explanation
- #  - base class for things that explain why actions where produced the way they were
+ # class StringReference
+ #  - represents a string reference in a rule
 
-   class Explanation
+   class StringReference
+      include Model::Elements::SlotInfo
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize()
-      end
+      attr_reader :string_name
+      alias symbol_name string_name
       
-      def to_s()
-         return self.class.name
-      end
-      
-      def display( stream = $stdout )
-         stream << self.to_s << "\n"
+      def initialize( string_name )
+         @string_name = string_name
       end
       
       
+      #
+      # display()
       
-   end # Explanation
+      def display( stream )
+         display_slot_info(stream) do 
+            stream.puts "lex(#{@string_name})"
+         end
+      end
+      
+      
+   end # StringReference
    
 
 
-
-end  # module Explanations
-end  # module Plan
+end  # module Markers
+end  # module Model
 end  # module RCC
-
-
-
-require "#{$RCCLIB}/plan/explanations/selected_action.rb"
-require "#{$RCCLIB}/plan/explanations/only_one_choice.rb"
-require "#{$RCCLIB}/plan/explanations/reductions_sorted.rb"
-require "#{$RCCLIB}/plan/explanations/shift_trumps_reduce.rb"
-require "#{$RCCLIB}/plan/explanations/reduce_trumps_shift.rb"
-require "#{$RCCLIB}/plan/explanations/initial_options.rb"
-require "#{$RCCLIB}/plan/explanations/favourite_chosen.rb"
-require "#{$RCCLIB}/plan/explanations/backtracking_activated.rb"
-

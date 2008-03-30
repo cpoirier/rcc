@@ -27,10 +27,10 @@ module Elements
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
     
-      attr_reader   :name         # The name of this rule
-      attr_reader   :master_form  # An unflattened ExpressionForm capturing the structure of this rule
-      attr_reader   :id_number    # The id number of this rule within the entire grammar
-      attr_reader   :forms        # The Forms in this Rule (this is where the real data is)
+      attr_reader   :name              # The name of this rule
+      attr_reader   :master_form       # An unflattened ExpressionForm capturing the structure of this rule
+      attr_reader   :id_number         # The id number of this rule within the entire grammar
+      attr_reader   :forms             # The Forms in this Rule (this is where the real data is)
       attr_accessor :associativity 
       attr_accessor :priority   
 
@@ -54,7 +54,7 @@ module Elements
       
       
       def register_plural_import( name, object, imported_slot_name )
-         type_check( object, References::PluralizationReference )
+         type_check( object, Markers::PluralizationReference )
          @slots[name] = Slot.new( name, self ) unless @slots.member?(name)
          @slots[name].add_pluralization_import( object, imported_slot_name )
       end

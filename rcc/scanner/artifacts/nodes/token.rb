@@ -101,6 +101,13 @@ module Nodes
       end
 
 
+      #
+      # length()
+      
+      def length()
+         return self.characters.length
+      end
+
 
 
 
@@ -238,9 +245,9 @@ module Nodes
          if @type.eof? then
             return "$"
          elsif @faked then
-            return "FAKE[" + @type.signature + "]"
+            return "FAKE[" + @type.description + "]"
          else
-            return "[#{@text.escape}]" + (@type.literal? ? "" : @type.signature)
+            return "[#{@text.escape}]" + (@type.literal? ? "" : ":#{@type.description}" )
          end
       end
       
@@ -291,9 +298,20 @@ module Nodes
       #  - builds an "end of file" Token
       
       def self.end_of_file( start_position, line_number, column_number, source_descriptor )
-         return new( "", Name.end_of_file_type, start_position, line_number, column_number, source_descriptor )
+         return new( "", Name.end_of_file_type, start_position, line_number, column_number, source_descriptor, false, start_position )
       end
 
+
+
+      #
+      # ::hypothetical()
+      #  - returns a hypothetical token useful as a placeholder
+      
+      def self.hypothetical()
+         return @@hypothetical_token
+      end
+      
+      @@hypothetical_token = new( "", Name.any_type, -1, 0, 0, nil, true, -1 )
 
 
 

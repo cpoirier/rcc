@@ -67,8 +67,8 @@ module Plan
          return self.signature == rhs.signature
       end
       
-      def minimal_phrasing?()
-         return @production.minimal_phrasing?
+      def generate_error_recoveries?()
+         return @production.generate_error_recoveries?
       end
       
       # 
@@ -78,8 +78,8 @@ module Plan
       def rule_name
          return @production.rule_name
       end
-    
-
+      
+      
       #
       # complete?()
       #  - returns true if the underlying form is complete in this Item (ie. ready for reduce)
@@ -410,7 +410,7 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       def to_s()
-         base = rule_name().signature + " => " + prefix().join(" ") + " . " + rest().join(" ")
+         base = rule_name().description + " => " + prefix().join(" ") + " . " + rest().join(" ")
       end
       
       def display( stream = $stdout )

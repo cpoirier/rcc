@@ -32,6 +32,22 @@
    end
    
    
+   def with_context_variables( pairs = {} )
+      old = pairs.keys.each{ |name| Thread.current[name] }
+      begin
+         pairs.each{ |name, value| Thread.current[name] = value }
+         yield( )
+      ensure
+         old.each{ |name, value| Thread.current[name] = value }
+      end      
+   end
+   
+   
+   def context_variable( name )
+      return Thread.current[name]
+   end
+   
+   
    def collect_from( container, method = :each, *parameters )
       collection = []
       container.send( method, *parameters ) do |element|
@@ -154,6 +170,49 @@
       
            
       #
+      # remove_if()
+      #  - just like delete_if(), except it returns an array of the deleted elements
+      
+      def remove_if()
+         removed = []
+         
+         delete_if() do |element|
+            if yield(element) then
+               removed << element
+               true
+            else
+               false
+            end
+         end
+         
+         return removed
+      end
+      
+      
+      #
+      # subsets()
+      #  - treating this list as a set, returns all possible subsets
+      #  - by way of definitions, sets have no intended order and no duplicate elements
+      
+      def subsets( pretty = true )
+         set     = self.uniq
+         subsets = [ [] ]
+         until set.empty?
+            work_point = [set.shift]
+            work_queue = subsets.dup
+            until work_queue.empty?
+               subsets.unshift work_queue.shift + work_point
+            end
+            
+         end
+         
+         subsets.sort!{|lhs, rhs| rhs.length == lhs.length ? lhs <=> rhs : rhs.length <=> lhs.length } if pretty
+
+         return subsets
+      end
+      
+      
+      #
       # to_hash( )
       #  - converts the elements of this array to keys in a hash and returns it
       #  - the item itself will be used as value if the value you specify is :value_is_element
@@ -172,25 +231,6 @@
          end
          
          return hash
-      end
-      
-      #
-      # remove_if()
-      #  - just like delete_if(), except it returns an array of the deleted elements
-      
-      def remove_if()
-         removed = []
-         
-         delete_if() do |element|
-            if yield(element) then
-               removed << element
-               true
-            else
-               false
-            end
-         end
-         
-         return removed
       end
       
       
@@ -280,16 +320,16 @@
          @stream     = stream
          @indent     = indent
          @pending    = true
-         @properties = []
+         @properties = {}
       end
       
       
       #
-      # ::indent_with( stream )
+      # ::indent_with()
       
-      def self.indent_with( stream )
+      def self.indent_with( stream, additional = "   " )
          if stream then
-            stream.indent { yield(stream) }
+            stream.indent(additional) { yield(stream) }
          else
             yield(stream)
          end
@@ -317,14 +357,14 @@
       #  - applies a set of name => value properties for the length of your block
       #  - properties can be retrieved with property()
       
-      def with( properties )
-         type_check( properties, Hash )
+      def with( pairs )
+         old = pairs.keys.each{ |name| @properties[name] }
          begin
-            @properties.unshift properties
-            yeild( self )
+            pairs.each{ |name, value| @properties[name] = value }
+            yield( )
          ensure
-            @properties.shift
-         end
+            old.each{ |name, value| @properties[name] = value }
+         end      
       end
       
       
@@ -333,15 +373,16 @@
       #  - returns the named property's current value, or nil
       
       def []( name )
-         value = nil
-         @properties.each do |set|
-            if set.member?(name) then
-               value = set[name]
-               break
-            end
-         end
-         
-         return value
+         return @properties[name]
+      end
+      
+      
+      #
+      # []=
+      #  - sets a named property (without any scope management)
+      
+      def []=( name, value )
+         @properties[name] = value
       end
       
       
@@ -381,6 +422,11 @@
          end_line()
          count.times { puts }
       end
+      
+      def method_missing( name, *args )
+         @stream.send( name, *args )
+      end
+      
       
    end # ContextStream
 
