@@ -46,6 +46,17 @@ module Markers
       end
       
       
+      def hash()
+         return @rule_name.hash
+      end
+      
+      def ==( rhs )
+         return @rule_name == rhs.symbol_name
+      end
+      
+      alias eql? ==
+      
+      
    end # RuleReference
    
 

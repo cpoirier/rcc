@@ -68,6 +68,24 @@ module Util
             @hash[name]
          end
       end
+      
+      
+      #
+      # reverse()
+      #  - returns an OrderedHash with the reverse order to this one
+      
+      def reverse()
+         reversed = self.class.new( @auto_fill )
+         order    = @order.reverse
+         hash     = @hash.dup
+         
+         reversed.instance_eval do
+            @order = order
+            @hash  = hash
+         end
+         
+         return reversed
+      end
 
 
       #

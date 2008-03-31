@@ -51,6 +51,7 @@ module Model
                             
          @strings = Util::OrderedHash.new()
          @rules   = Util::OrderedHash.new()
+         @groups  = Util::OrderedHash.new()
       end
       
       def start_rule_name=( name )
@@ -67,7 +68,7 @@ module Model
       # name_defined?()
       
       def name_defined?( name )
-         return (@strings.member?(name) || @rules.member?(name))
+         return (@strings.member?(name) || @rules.member?(name) || @groups.member?(name))
       end
       
       
@@ -101,7 +102,7 @@ module Model
          type_check( group, Elements::Group )
          assert( !name_defined?(name), "name [#{name}] is already in use" )
          
-         @rules[group.name] = group
+         @groups[group.name] = group
       end
       
       

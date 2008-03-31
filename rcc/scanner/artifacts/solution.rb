@@ -35,7 +35,7 @@ module Artifacts
          @partial_solutions  = partial_solutions
          
          @exemplars  = exemplars
-         @valid      = (@complete_solutions.length == 1 and @complete_solutions[0].corrections_cost == 0)
+         @valid      = (@complete_solutions.length == 1 && @complete_solutions[0].corrections_cost == 0)
          @error_map  = map_errors()
          @error_list = order_errors()
       end
@@ -47,6 +47,16 @@ module Artifacts
       
       def valid?()
          return @valid
+      end
+      
+      
+      #
+      # ast()
+      #  - returns the AST, if valid
+      
+      def ast()
+         return nil unless valid?
+         return @complete_solutions[0].node
       end
       
       
@@ -190,15 +200,15 @@ module Artifacts
          
          
          # @complete_solutions.each do |position|
-         #    STDERR.puts ""
-         #    STDERR.puts ""
-         #    STDERR.puts ""
-         #    STDOUT.puts "ABSTRACT SYNTAX TREE" 
-         #    STDOUT.puts "===================="
-         #    STDOUT.puts ""
+         #    stream.puts ""
+         #    stream.puts ""
+         #    stream.puts ""
+         #    stream.puts "ABSTRACT SYNTAX TREE" 
+         #    stream.puts "===================="
+         #    stream.puts ""
          # 
          #    position.node.format().each do |line|
-         #       STDERR.puts line
+         #       stream.puts line
          #    end
          # end
          
@@ -462,6 +472,7 @@ module Artifacts
       #  - generates a list of Errors in source order
       
       def order_errors()
+         return [] if valid?
          
          #
          # First up, flatten the error map to a list of unique Errors.

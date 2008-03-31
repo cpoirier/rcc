@@ -45,6 +45,19 @@ module Markers
       end
       
       
+      
+      def hash()
+         return @string_name.hash
+      end
+      
+      def ==( rhs )
+         return @string_name == rhs.symbol_name
+      end
+      
+      alias eql? ==
+      
+      
+      
    end # StringReference
    
 

@@ -29,6 +29,7 @@ module Grammar
    class GrammarBuilder
       
       Node                   = RCC::Scanner::Artifacts::Node
+      Token                  = RCC::Scanner::Artifacts::Nodes::Token
       Name                   = RCC::Scanner::Artifacts::Name
       Group                  = RCC::Model::Elements::Group
       Rule                   = RCC::Model::Elements::Rule
@@ -83,7 +84,7 @@ module Grammar
 
          @specifications.each do |name, spec|
             next unless spec.type == "string_spec"
-            @string_defs[name] = StringDescriptor.new( create_name(name), process_string_data(spec.definition, [name]) ) unless @string_defs.member?(name)
+            @string_defs[name] = StringDescriptor.new( create_name(spec.name), process_string_data(spec.definition, [name]) ) unless @string_defs.member?(name)
             
             warn_nyi( "skipping contraindications on string -- these are only done here, so must be done for every string" )
          end
@@ -95,68 +96,66 @@ module Grammar
                $stdout.puts ""
             end
          end
-         
-         
+
+
          #
          # Resolve group specs into Group objects.
          
          @specifications.each do |name, spec|
-            next unless spec.type == "group_spec"
+            next unless spec.type.name == "group_spec"
             @group_defs[name] = process_group_data( spec, [name] ) unless @group_defs.member?(name)
-            @group_defs[name].name = create_name(name)
+            @group_defs[name].name = create_name(spec.name)
          end
             
          
          #
-         # Resolve rule specs into Rules.  Because order matters (earlier definitions have precedence),
-         # we'll also import Groups into the @elements list at this time.
+         # Resolve rule specs into Rules. 
 
          @specifications.each do |name, spec|
-            case spec.type.name
-               when "rule_spec"
+            next unless spec.type.name == "rule_spec"
                   
-                  #
-                  # Create the rule.
-                  
-                  @naming_contexts[name] = NamingContext.new( self )
-                  @element_defs[name]    = Rule.new( create_name(name), process_rule_expression(spec.expression, @naming_contexts[name]) )
+            #
+            # Create the rule.
             
-                  #
-                  # Process any directives.
-                  
-                  spec.directives.each do |directive|
-                     case directive.type.name
-                        when "associativity_directive"
-                           case directive.direction.text
-                              when "left"
-                                 @element_defs[name].associativity = :left
-                              when "right"
-                                 @element_defs[name].associativity = :right
-                              when "none"
-                                 @element_defs[name].associativity = :none
-                              else
-                                 nyi( "unsupported associativity [#{directive.direction.text}]", directive.direction )
-                           end
+            @naming_contexts[name] = NamingContext.new( self )
+            @element_defs[name]    = Rule.new( create_name(spec.name), process_rule_expression(spec.expression, @naming_contexts[name]) )
+      
+            #
+            # Process any directives.
+            
+            spec.directives.each do |directive|
+               case directive.type.name
+                  when "associativity_directive"
+                     case directive.direction.text
+                        when "left"
+                           @element_defs[name].associativity = :left
+                        when "right"
+                           @element_defs[name].associativity = :right
+                        when "none"
+                           @element_defs[name].associativity = :none
                         else
-                           nyi( "unsupported directive [#{directive.type}]", directive )
+                           nyi( "unsupported associativity [#{directive.direction.text}]", directive.direction )
                      end
-                  end
-                  
-                  #
-                  # Commit the naming context into the Rule.
-            
-                  @naming_contexts[name].commit( @element_defs[name] )
-
-                  #
-                  # Deal with any transformations.
-            
-                  warn_nyi( "skipping transformations on rule" )
-                  
-               when "group_spec"
-                  @element_defs[name] = @group_defs[name].group_rule
+                  else
+                     nyi( "unsupported directive [#{directive.type}]", directive )
+               end
             end
+            
+            #
+            # Commit the naming context into the Rule.
+      
+            @naming_contexts[name].commit( @element_defs[name] )
+
+            #
+            # Deal with any transformations.
+      
+            warn_nyi( "skipping transformations on rule" )
          end
+
          
+         #
+         # Display the work, if appropriate.
+
          if false then
             @element_defs.each do |name, definition|
                definition.display( $stdout )
@@ -186,6 +185,7 @@ module Grammar
          grammar = RCC::Model::Grammar.new( @grammar_spec.name.text )
          @string_defs.each {|name, definition| grammar.add_string(definition.name, definition)}
          @element_defs.each{|name, definition| grammar.add_element(definition)}
+         @group_defs.each  {|name, definition| grammar.add_group(definition)}
 
 
          #
@@ -196,14 +196,14 @@ module Grammar
                
                when "start_rule"
                   if @element_defs[option.rule_name.text].is_a?(Rule) then
-                     grammar.start_rule_name = create_name(option.rule_name.text)
+                     grammar.start_rule_name = create_name(option.rule_name)
                   else
                      nyi( "error handling for bad start_rule [#{option.rule_name.text}]" )
                   end
                   
                when "ignore_switch"
                   if @string_defs.member?(option.name.text) then
-                     name = create_name( option.name.text )
+                     name = create_name( option.name )
                      grammar.ignore_symbols << name unless grammar.ignore_symbols.member?(name)
                   else
                      nyi( "error handling for bad ignore switch [#{option.ignore_switch.text}]" )
@@ -497,7 +497,7 @@ module Grammar
             end
          end
       end
-
+      
 
       
       @@escape_sequences = { '\n' => "\n", '\r' => "\r", '\t' => "\t", "\\\\" => "\\" }
@@ -591,7 +591,7 @@ module Grammar
                         nyi( "error handling for detected reference loop [#{name}]" )
                      else
                         if resolution = process_string_data(spec.definition, loop_detection + [name]) then
-                           @string_defs[name] = StringDescriptor.new( create_name(name), resolution ) 
+                           @string_defs[name] = StringDescriptor.new( create_name(name_token), resolution ) 
                         end
                      end
                   end
@@ -673,7 +673,7 @@ module Grammar
                         nyi( "error handling for detected reference loop [#{name}]" )
                      else
                         if string_def = process_string_data(spec.definition, loop_detection + [name]) then
-                           @string_defs[name] = StringDescriptor.new( create_name(name), string_def )
+                           @string_defs[name] = StringDescriptor.new( create_name(name_token), string_def )
                         end
                      end
                   end
@@ -722,7 +722,7 @@ module Grammar
                
             when "rule_spec"
                result = Group.new()
-               result << RuleReference.new( create_name(node.name.text) )
+               result << RuleReference.new( create_name(node.name) )
       
             when "spec_reference"
                name = node.name.text
@@ -747,9 +747,9 @@ module Grammar
                         end
                         
                      when "rule_spec"
-                        result << RuleReference.new( create_name(name) )
+                        result << RuleReference.new( create_name(node.name) )
                      when "string_spec"
-                        result << StringReference.new( create_name(name) )
+                        result << StringReference.new( create_name(node.name) )
                      else
                         nyi( "error handling for group reference to macro or other ineligible name [#{name}]" )
                   end
@@ -882,13 +882,13 @@ module Grammar
                         symbol = nil
                         case spec.type.name
                            when "string_spec"
-                              symbol = StringReference.new( create_name(referenced_name) )
+                              symbol = StringReference.new( create_name(node.name) )
                         
                            when "rule_spec"
-                              symbol = RuleReference.new( create_name(referenced_name) )
+                              symbol = RuleReference.new( create_name(node.name) )
                            
                            when "group_spec"
-                              symbol = GroupReference.new( @group_defs[referenced_name] )
+                              symbol = GroupReference.new( @group_defs[node.name.text] )
                            
                            else  
                               nyi( "error handling for invalid referenced name", referenced_name )
@@ -1084,9 +1084,14 @@ module Grammar
       # create_name()
       #  - returns a symbolic Name
       
-      def create_name( name )
-         name =  Name.new(name, @name)
-         yield( name )  if block_given?
+      def create_name( name, source_token = nil )
+         if name.is_a?(Token) then
+            source_token = name if source_token.nil?
+            name = name.text
+         end
+         
+         name =  Name.new(name, @name, source_token)
+         yield( name ) if block_given?
          return name
       end
       

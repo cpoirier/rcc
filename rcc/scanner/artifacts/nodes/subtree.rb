@@ -71,9 +71,6 @@ module Artifacts
          bug( "you must override last_token()" )
       end
       
-      def token_count()
-         bug( "you must override token_count()" )
-      end
 
 
 

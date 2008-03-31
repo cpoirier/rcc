@@ -45,10 +45,9 @@ module Interpreter
       def read( position, lexer_plan, estream = nil )
          position = @next_position if position.nil?
          
-         warn_nyi( "error handling in lexer" )
-
          if @source.at_eof?(position) then
-            return nil
+            token = Artifacts::Nodes::Token.end_of_file( position, @source.eof_line_number, @source.eof_column_number, @source )
+            estream.puts "\n===> DONE" if estream
          else
             @start_position = position 
             token           = nil
@@ -78,33 +77,19 @@ module Interpreter
                   end
                end
             end
-         
-            return token
+            
+            if token.nil? then
+               estream.puts "\n===> ERROR LEXING: #{@source.sample_line(position)[0]}; will PRODUCE one-character token of unknown type" if estream
+               
+               solution = Solution.new( @source[position], nil )
+               token    = solution.to_Token( position, line_number, column_number, @source )
+               @next_position = token.follow_position
+            else
+               estream.puts "\n===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}" if estream
+            end
          end
-
-         # if estream then
-         #    if token.nil? then
-         #       if input_remaining?() then
-         #          estream.puts "===> ERROR LEXING: #{prep(@pending_lines[0])}; will PRODUCE one-character token of unknown type"
-         #       else
-         #          estream.puts "===> DONE"
-         #       end
-         #    else
-         #       estream.puts "===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}"
-         #    end
-         # end
-         # 
-         # if token.nil? then
-         #    if input_remaining?() then
-         #       return locate_token( Artifacts::Token.new(consume()), false )
-         #    else
-         #       return Artifacts::Token.end_of_file( @position, @line_number, @column_number, @descriptor )
-         #    end
-         # else
-         #    return token
-         # end
          
-
+         return token
       end
       
       

@@ -29,7 +29,7 @@ module Plan
 
 
       def initialize( number, name, symbols, slots, associativity, priority, ast_class )
-         super( number, name, symbols, slots, associativity, priority, ast_class, false )
+         super( number, name, symbols, slots, associativity, priority, ast_class, false, nil )
       end
       
       def discard?()

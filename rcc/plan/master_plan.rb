@@ -52,7 +52,8 @@ module Plan
          # Produces a global set of Productions, in declaration order.  Note that Grammar.rules contains
          # more than just Rules.  We care only about the Rules.
          
-         productions = []
+         productions   = []
+         group_members = {}
          system_model.grammars.each do |grammar_model|
             grammar_name = grammar_model.name
             
@@ -89,13 +90,13 @@ module Plan
                names = set.sort.collect{|e| e.name}
                
                production_name   = Name.new( "_ignored_" + names.join("_"), grammar_name )
-               production_symbol = Symbol.new( production_name, false )
+               production_symbol = Symbol.new( production_name, :production )
                prefilter_names[names.join("|")] = production_name
 
                default_prefilter = production_symbol if default_prefilter.nil?
                
                set.each do |name|
-                  base_symbol = Symbol.new( name, true )
+                  base_symbol = Symbol.new( name, :token )
                   productions << Discarder.new( productions.length, production_name, [base_symbol], [], :left, 0, nil )
                end
             end
@@ -176,11 +177,11 @@ module Plan
 
                            case element
                               when Model::Markers::RuleReference
-                                 symbols << Symbol.new( element.symbol_name, false, prefilter )
+                                 symbols << Symbol.new( element.symbol_name, :production, prefilter )
                               when Model::Markers::StringReference
-                                 symbols << Symbol.new( element.symbol_name, true , prefilter )
+                                 symbols << Symbol.new( element.symbol_name, :token     , prefilter )
                               when Model::Markers::GroupReference
-                                 symbols << Symbol.new( element.symbol_name, false, prefilter )
+                                 symbols << Symbol.new( element.symbol_name, :group     , prefilter )
                               when Model::Markers::RecoveryCommit
                                  symbols[-1].recoverable = true unless symbols.empty?
                               else
@@ -189,8 +190,16 @@ module Plan
                         end
                      end
 
+                     postfilter = default_prefilter
+                     unless gateway_buffer.empty?
+                        postfilterable_names = gateway_buffer & ignore_symbols
+                        unless postfilterable_names.empty?
+                           postfilter = prefilter_names[postfilterable_names.sort.join("|")]
+                        end
+                     end
+                     
                      warn_nyi( "support for trailing gateway markers" )
-                     production = Production.new( productions.length, rule.name, symbols, slots, rule.associativity, rule.priority, ast_class, sequence.minimal? )
+                     production = Production.new( productions.length, rule.name, symbols, slots, rule.associativity, rule.priority, ast_class, sequence.minimal?, postfilter )
                      productions << production
                      
                      if debug_production_build then
@@ -216,9 +225,30 @@ module Plan
                   end
                end
             end
+            
+            
+            #
+            # Map Group names to Rule name.
+            
+            grammar_model.groups.each do |group|
+               members = []
+               group.member_references.each do |element|
+                  case element
+                     when Model::Markers::RuleReference
+                        members << Symbol.new( element.symbol_name, :production )
+                     when Model::Markers::StringReference
+                        members << Symbol.new( element.symbol_name, :token      )
+                     else
+                        nyi( "support for [#{element.class.name}]", element )
+                  end
+               end
+               
+               group_members[group.name] = members
+            end
+            
          end
          
-         return MasterPlan.new( productions, ast_plans, lexer_plans, explain )
+         return MasterPlan.new( productions, group_members, ast_plans, lexer_plans, explain )
       end
       
       
@@ -234,14 +264,15 @@ module Plan
 
       attr_accessor :produce_explanations
       attr_reader   :production_sets
+      attr_reader   :group_members
       attr_reader   :lexer_plans
       
-      def initialize( productions, ast_plans, lexer_plans, produce_explanations = true )
+      def initialize( productions, group_members, ast_plans, lexer_plans, produce_explanations = true )
          @productions          = productions
+         @group_members        = group_members
          @ast_plans            = ast_plans
          @lexer_plans          = lexer_plans                # grammar name => LexerPlan
          @produce_explanations = produce_explanations       # If true, we'll generate explanations
-         
          
          #
          # Associate our Productions with this MasterPlan.
@@ -258,6 +289,15 @@ module Plan
             @production_sets[production.name] << production
          end
          
+         @group_members.each do |name, members|
+            members.each do |member|
+               if member.refers_to_production? then
+                  @production_sets[member.name].productions.each do |production|
+                     @production_sets[name] << production
+                  end
+               end
+            end
+         end
       end
       
       

@@ -41,8 +41,9 @@ module Artifacts
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :descriptor    # Some object describing where our input comes from
-      attr_reader :length        # Character length of the text
+      attr_reader :descriptor       # Some object describing where our input comes from
+      attr_reader :length           # Character length of the text
+      attr_reader :eof_position     # Once EOF has been reached, this is the effective position of the EOF
       
       def initialize( stream, descriptor = nil )
          @stream        = stream
@@ -58,6 +59,8 @@ module Artifacts
          @commit_position                  = -1    # The position number last discarded
          @commit_eol_positions_discarded   = 0     # The number of @eol_positions already discarded
          @commit_first_line_start_position = 0     # The position corresponding to the first character of the first line in @eol_positions
+         
+         @eof_position = 0
       end
       
       
@@ -133,6 +136,29 @@ module Artifacts
             return position - @commit_first_line_start_position + 1
          else
             return position - @eol_positions[eol_index - 1] 
+         end
+      end
+
+
+      #
+      # eof_line_number()
+      
+      def eof_line_number()
+         if @eof_position > 0 then
+            return line_number(@eof_position - 1) + (self[@eof_position - 1] == 10 ? 1 : 0)
+         else
+            return 1
+         end
+      end
+      
+      #
+      # eof_column_number()
+      
+      def eof_column_number()
+         if @eof_position > 0 then
+            return (self[@eof_position - 1] == 10 ? 1 : column_number(@eof_position - 1) + 1)
+         else
+            return 1
          end
       end
       
@@ -457,8 +483,11 @@ module Artifacts
                            @pending = utf8.slice!(-1..-1) + @pending
                         end
                      end
-               
-                     @codes.concat( codes ) unless codes.empty?
+
+                     unless codes.empty?
+                        @codes.concat( codes ) 
+                        @eof_position = @codes.length + (@commit_position + 1)
+                     end
                   end
                end
             rescue EOFError

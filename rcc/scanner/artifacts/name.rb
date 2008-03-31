@@ -44,13 +44,15 @@ module Artifacts
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :grammar
-      attr_reader :name
-      attr_reader :signature
+      attr_reader   :grammar
+      attr_reader   :name
+      attr_reader   :signature
+      attr_accessor :source_token
       
-      def initialize( name, grammar = nil )
-         @grammar = grammar
-         @name    = name
+      def initialize( name, grammar = nil, source_token = nil )
+         @grammar      = grammar
+         @name         = name
+         @source_token = source_token
          
          case name
          when nil

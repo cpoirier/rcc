@@ -37,19 +37,25 @@ module Plan
       attr_reader :prefilter
       attr_writer :recoverable
       
-      def initialize( name, refers_to_token, prefilter = nil )
-         @name            = name
-         @refers_to_token = refers_to_token
-         @prefilter       = prefilter          # A Symbol that might be need to be Discarded before reading this one
-         @recoverable     = false
+      def initialize( name, type, prefilter = nil )
+         assert( type == :token || type == :production || type == :group, "type is invalid" )
+         
+         @name        = name
+         @type        = type
+         @prefilter   = prefilter       # A Symbol that might be need to be Discarded before reading this one
+         @recoverable = false
       end
       
       def refers_to_token?()
-         @refers_to_token
+         @type == :token
       end
       
       def refers_to_production?()
-         !@refers_to_token
+         @type == :production
+      end
+      
+      def refers_to_group?()
+         @type == :group
       end
       
       def recoverable?()

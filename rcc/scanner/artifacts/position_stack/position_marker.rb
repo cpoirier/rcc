@@ -583,8 +583,6 @@ module PositionStack
          stack_label       = "STACK"
          stack_bar         = "=" * (stack_description.length + stack_label.length + 3)
 
-         stream.puts ""
-         stream.puts ""
          stream.puts stack_bar
          # if corrected? or true then
          #    stream.puts "#{stack_label} #{stack_description} |      CORRECTED LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   quality #{quality()}"

@@ -243,7 +243,7 @@ module Interpreter
             $stderr.puts "outputting solutions with #{hard_correction_limit} correction cost or better"
          end
          
-         return Solution.new( complete_solutions, partial_solutions, @parser_plan.exemplars )
+         return Solution.new( complete_solutions, partial_solutions, nil ) # @parser_plan.exemplars )
       end
       
 
@@ -394,6 +394,7 @@ module Interpreter
                #
                # Get the lookahead.
          
+               estream.blank_lines(3)
                next_token = position.next_token( estream )
                position.display( estream ) if estream
 
@@ -474,7 +475,7 @@ module Interpreter
                   position = position.pop( production, top_position )
                end
                
-               warn_nyi( "not sure this changing stream_position thing is a good idea" )
+               warn( "not sure this changing stream_position thing is a good idea" )
                position.stream_position = top_position.stream_position
                next_position = position
                

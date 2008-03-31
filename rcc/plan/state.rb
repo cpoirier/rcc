@@ -41,7 +41,13 @@ module Plan
       def self.start_state( master_plan, context_grammar_name, start_set )
          state = new( master_plan, 0 )
          state.context_grammar_name = context_grammar_name
-         state.add_productions( start_set )
+
+         start_productions = ProductionSet.new()
+         start_set.productions.each do |production|
+            start_productions << production.start_version()
+         end
+
+         state.add_productions( start_productions )
          
          return state
       end
@@ -305,11 +311,15 @@ module Plan
                         
             if item.complete? then
                @reductions << item
+               
+               if item.production.postfilter then
+                  add_productions( @master_plan.production_sets[item.production.postfilter.name], item ) 
+               end
             else
-               if item.leader.refers_to_production? then
+               if item.leader.refers_to_production? or item.leader.refers_to_group? then
                   if @master_plan.production_sets.member?(item.leader.name) then
                      add_productions( @master_plan.production_sets[item.leader.name], item )
-                  else
+                  elsif item.leader.refers_to_production? then
                      nyi "error handling for missing reference name [#{item.leader.name}]" 
                   end
                end
@@ -386,16 +396,29 @@ module Plan
          
          enumeration = Util::OrderedHash.new()
          @items.each do |item|
-            unless item.complete?
+            filter = nil
+            
+            if item.complete? then
+               filter = item.production.postfilter
+            else
                symbol = item.leader
-               enumeration[symbol.name] = [] unless enumeration.member?(symbol.name)
-               enumeration[symbol.name] << item.shift
                
-               prefilter = symbol.prefilter
-               if prefilter then
-                  enumeration[prefilter.name] = [] unless enumeration.member?(prefilter.name)
-                  enumeration[prefilter.name] << item
+               if symbol.refers_to_group? then
+                  @master_plan.group_members[symbol.name].each do |member|
+                     enumeration[member.name] = [] unless enumeration.member?(member.name)
+                     enumeration[member.name] << item.shift
+                  end
+               else
+                  enumeration[symbol.name] = [] unless enumeration.member?(symbol.name)
+                  enumeration[symbol.name] << item.shift
                end
+               
+               filter = symbol.prefilter
+            end
+
+            if filter then
+               enumeration[filter.name] = [] unless enumeration.member?(filter.name)
+               enumeration[filter.name] << item
             end
          end
          
@@ -449,6 +472,23 @@ module Plan
             
             elsif !item.complete? and item.leader.refers_to_production? then
                @actions[item.leader.name] = Actions::Goto.new( @transitions[item.leader.name] )
+
+               
+            #
+            # If the Item leader is a Group, we've got work to do.  For Production members, we 
+            # produce a Goto action.  For Token members, we register the token as a determinant.
+            
+            elsif !item.complete? and item.leader.refers_to_group? then
+               @master_plan.group_members[item.leader.name].each do |member|
+                  if member.refers_to_production? then
+                     @actions[member.name] = Actions::Goto.new( @transitions[member.name] ) unless @actions.member?(member.name)
+                  else
+                     options[member.name] = [] unless options.member?(member.name)
+                     options[member.name] << item
+                     
+                     ignore << member.name if item.production.discard?
+                  end
+               end
                
             #
             # Otherwise, generate lists of options, grouped by la(1) symbol.
@@ -472,7 +512,6 @@ module Plan
          
          @lookahead = options.keys - ignore
 
-         
          #
          # Select an action for each lookahead terminal.
          

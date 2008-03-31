@@ -156,7 +156,6 @@ module Plan
       #
       # lookahead()
       #  - returns a set of all token Symbols that can start any of the sequences in this set
-      #  - you must pass in a hash of ProductionSets that covers the Symbol namespace
       
       def lookahead( master_plan, loop_detection=[] )
          return @lookahead unless @lookahead.nil? 
@@ -171,8 +170,14 @@ module Plan
                   set.lookahead(master_plan, loop_detection + [self.object_id]).each do |lookahead_symbol|
                      lookahead[lookahead_symbol.signature] = lookahead_symbol
                   end
-               else
-                  # BUG: Should we do anything if the symbol isn't defined?  Shouldn't this have been caught by now?
+               end
+               
+               if start_symbol.refers_to_group? then
+                  master_plan.group_members[start_symbol.name].each do |member_symbol|
+                     if member_symbol.refers_to_token? then
+                        lookahead[member_symbol.signature] = member_symbol
+                     end
+                  end
                end
             end
          end

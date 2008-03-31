@@ -23,11 +23,12 @@ module Plan
    class Production
       
       
-      def self.start_production( start_rule_name )
-         symbols = [Plan::Symbol.new(start_rule_name.intern, false), Plan::Symbol.end_of_input]
-         return new( 0, start_rule_name, start_rule_name, 0, symbols, "right", -1, nil )
+      def start_version()
+         symbols = @symbols + [Plan::Symbol.new(Scanner::Artifacts::Name.end_of_file_type, :token)]
+         slots   = @slots   + [nil]
+         
+         return self.class.new( @number, @name, symbols, slots, @associativity, @priority, @ast_class, @generate_error_recoveries, @postfilter )
       end
-      
       
       
       
@@ -45,10 +46,11 @@ module Plan
       attr_reader   :associativity          # nil, :left, :right, or :none
       attr_reader   :priority
       attr_reader   :ignore_symbols
+      attr_reader   :postfilter
       attr_accessor :ast_class
       attr_accessor :master_plan
 
-      def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries = true )
+      def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries, postfilter )
          type_check( name, Scanner::Artifacts::Name )
          
          @number           = number
@@ -58,6 +60,8 @@ module Plan
          @associativity    = associativity
          @priority         = priority
          @ast_class        = ast_class
+         @postfilter       = postfilter
+                  
          @generate_error_recoveries = generate_error_recoveries
       end
       
