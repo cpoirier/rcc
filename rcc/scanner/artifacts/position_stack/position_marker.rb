@@ -32,6 +32,7 @@ module PositionStack
       attr_reader   :node
       attr_reader   :state
       attr_reader   :stream_position
+      attr_reader   :original_position
       attr_accessor :alternate_recovery_positions
       attr_accessor :sequence_number
       attr_reader   :position_registry
@@ -46,10 +47,11 @@ module PositionStack
          #
          # Token management
 
-         @lexer            = lexer
-         @stream_position  = stream_position
-         @next_token       = next_token
-         @sequence_number  = (@context.nil? ? 0 : @context.sequence_number + 1)
+         @lexer             = lexer
+         @stream_position   = stream_position
+         @original_position = stream_position
+         @next_token        = next_token
+         @sequence_number   = (@context.nil? ? 0 : @context.sequence_number + 1)
          
          #
          # Register the Position with any recovery context.  This may raise Parser::PositionSeen.
@@ -309,7 +311,7 @@ module PositionStack
       #  - returns the new Position
       #  - raises Parser::PositionSeen if you attempt to push() to a Position we've already been
 
-      def push( node, state, reduce_position = nil )
+      def push( node, state, reduce_position = nil, restore_lookahead = false )
          next_position = nil
          
          #
@@ -337,6 +339,13 @@ module PositionStack
          
          next_position = PositionMarker.new( self, node, state, @lexer, node.follow_position, recovery_registry, next_token )
          next_position.adjust_sequence_number( reduce_position ) if reduce_position.exists?
+
+         #
+         # "Unread" any skipped data, if appropriate.
+         
+         if restore_lookahead and reduce_position.exists? and next_token.nil? then
+            next_position.stream_position = reduce_position.original_position 
+         end
          
          #
          # Return the new Position.

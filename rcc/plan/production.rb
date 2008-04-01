@@ -90,7 +90,7 @@ module Plan
       
       
       def to_s()
-         return "#{@rule_name} => #{@symbols.join(" ")}"
+         return "#{@name.description} => #{@symbols.join(" ")}"
       end
 
       def ==( rhs )

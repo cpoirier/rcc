@@ -391,54 +391,57 @@ module Interpreter
          while solution.nil?
             position.state.provide_context do |state|
 
-               #
-               # Get the lookahead.
-         
-               estream.blank_lines(3)
-               next_token = position.next_token( estream )
-               position.display( estream ) if estream
+               ContextStream.buffer_with(estream, true) do 
+                  
+                  #
+                  # Get the lookahead.
+               
+                  estream.blank_lines(3) if estream
+                  next_token = position.next_token( estream )
+                  position.display( estream ) if estream
 
                
-               #
-               # Select the next action.
+                  #
+                  # Select the next action.
          
-               action = state.actions[next_token.type]
-               if estream then
-                  if next_token.type.wildcard? then
-                     estream.puts "| Skipping lookahead, as it is irrelevant to this State"
-                  else
-                     estream.puts "| #{state.lookahead_explanations}"
-                     estream.puts "| Action analysis for lookahead #{next_token.description}"
-                  end
+                  action = state.actions[next_token.type]
+                  if estream then
+                     if next_token.type.wildcard? then
+                        estream.puts "| Skipping lookahead, as it is irrelevant to this State"
+                     else
+                        estream.puts "| #{state.lookahead_explanations}"
+                        estream.puts "| Action analysis for lookahead #{next_token.description}"
+                     end
 
-                  if state.explanations.nil? then
-                     bug( "no explanations found" )
-                  else
-                     state.explanations[next_token.type].each do |explanation|
-                        estream.indent( "|    " ) { estream.puts explanation }
+                     if state.explanations.nil? then
+                        bug( "no explanations found" )
+                     else
+                        state.explanations[next_token.type].each do |explanation|
+                           estream.indent( "|    " ) { estream.puts explanation }
+                        end
                      end
                   end
-               end
                
                         
-               #
-               # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
-               # perform_action() raises an AttemptsPending exception if it encounters a branch point -- we pass it
-               # through to our caller.
+                  #
+                  # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
+                  # perform_action() raises an AttemptsPending exception if it encounters a branch point -- we pass it
+                  # through to our caller.
 
-               if action.exists? then
-                  if action.is_a?(Plan::Actions::Accept) then
-                     solution = position
+                  if action.exists? then
+                     if action.is_a?(Plan::Actions::Accept) then
+                        solution = position
+                     else
+                        position = perform_action( position, action, next_token, estream )
+                     end
                   else
-                     position = perform_action( position, action, next_token, estream )
-                  end
-               else
-                  if estream then
-                     estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
-                     # BUG: how do we handle this with the ContextStream: explain_indent += "   "
-                  end
+                     if estream then
+                        estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
+                        # BUG: how do we handle this with the ContextStream: explain_indent += "   "
+                     end
 
-                  raise ParseError.new( position )
+                     raise ParseError.new( position )
+                  end
                end
             end
          end
@@ -461,6 +464,8 @@ module Interpreter
             when Plan::Actions::Shift
                estream.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if estream
                next_position = position.push( next_token, action.to_state )
+               estream.discard() if estream && estream[:hide_ignored] && action.to_state.items[0].complete? and action.to_state.items[0].production.name.name.slice(0..8) == "_ignored_"
+               
                
             when Plan::Actions::Discard
                production = action.by_production
@@ -475,9 +480,11 @@ module Interpreter
                   position = position.pop( production, top_position )
                end
                
-               warn( "not sure this changing stream_position thing is a good idea" )
+               warn_bug( "not sure this changing stream_position thing is a good idea" )
                position.stream_position = top_position.stream_position
                next_position = position
+               
+               estream.discard() if estream && estream[:hide_ignored]
                
                
             when Plan::Actions::Reduce
@@ -521,9 +528,18 @@ module Interpreter
                # Get the goto state from the now-top-of-stack State: it will be the next state.
                
                goto_state = position.state.transitions[production.name]
-               estream.puts "===> PUSH AND GOTO #{goto_state.number}" if estream
 
-               next_position = position.push( node, goto_state, top_position )
+               restore_lookahead = true
+               warn_bug( "we should be able to optimize restore_lookahead" )
+               
+               if estream then
+                  estream << "===> "
+                  estream << "RESTORE skipped lookahead; " if restore_lookahead
+                  estream << "PUSH AND GOTO #{goto_state.number}" 
+                  estream.end_line
+               end
+
+               next_position = position.push( node, goto_state, top_position, restore_lookahead )
 
             when Plan::Actions::Attempt
                

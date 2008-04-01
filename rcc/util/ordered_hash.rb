@@ -86,6 +86,15 @@ module Util
          
          return reversed
       end
+      
+      
+      #
+      # reverse!
+      #  - reverses our order
+      
+      def reverse!()
+         @order.reverse!
+      end
 
 
       #

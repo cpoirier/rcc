@@ -45,7 +45,8 @@ module Grammar
       def self.build_ast()
 
          #
-         # grammar RCC
+         # grammar RCC 
+         #    priority ascending
          # 
          #    start_rule system_spec
          #    ignore     whitespace
@@ -55,7 +56,8 @@ module Grammar
          
          @@ast = system_spec( 
          grammar_spec( 'RCC',
-
+            priority( "ascending" ),
+         
             start_rule( "system_spec" ),
             ignore_switch( "whitespace" ),
             ignore_switch( "comment"    ),
@@ -63,51 +65,51 @@ module Grammar
 
          #
          #    strings
-         #       eol               => '\n'
-         #       whitespace        => [ \t\r]+
-         #       comment           => '#' [{any_character}]-[\n]*
-         #
-         #       word              => word_first_char word_char*
-         #       general_text      => general_character+
-         #       property_text     => [{general_character}]-[}]+
-         #
-         #       unicode_sequence  => '\\' 'u' hex_digit hex_digit hex_digit hex_digit
-         #       escape_sequence   => '\\' [a-z\\\-\[\]\']
+         #       any_character     => [\u0000-\uFFFF]
+         #       digit             => [0-9]
+         #       hex_digit         => [{digit}a-fA-F]
          #       general_character => [{any_character}]-['\n\r\\]
          #
          #       word_first_char   => [a-zA-Z_]
          #       word_char         => [{word_first_char}{digit}]
+         #       word              => word_first_char word_char*
          #
-         #       any_character     => [\u0000-\uFFFF]
-         #       digit             => [0-9]
-         #       hex_digit         => [{digit}a-fA-F]
+         #       property_text     => [{general_character}]-[}]+
+         #       general_text      => general_character+
+         #       unicode_sequence  => '\\' 'u' hex_digit hex_digit hex_digit hex_digit
+         #       escape_sequence   => '\\' [a-z\\\-\[\]\']
+         #
+         #       whitespace        => [ \t\r]+
+         #       comment           => '#' [{any_character}]-[\n]*
+         #       eol               => '\n'
          #    end
          #
          
             strings_spec(
-               string_spec( 'eol'             , est('n')                                                 ),
-               string_spec( 'whitespace'      , sp_repeated('+', cs_characters(' ', est('t'), est('r'))) ),
-               string_spec( 'comment'         , '#', sp_repeated('*', cs_difference(cs_characters(cs_reference('any_character')), est('n'))) ),
-               
-               string_spec( 'word'            , sp_reference('word_first_char'), sp_repeated('*', sp_reference('word_char')) ),
-               string_spec( 'general_text'    , sp_repeated('+', sp_reference('general_character'))      ),
-               string_spec( 'property_text'   , sp_repeated('+', cs_difference(cs_characters(cs_reference('general_character')), cs_characters('}')))  ),
-               
-               string_spec( 'unicode_sequence', est('\\'), 'u', sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit') ),
-               string_spec( 'escape_sequence' , est('\\'), cs_characters(cs_range('a', 'z'), est('\\'), est('-'), est('['), est(']'), est("'")) ),
-               string_spec( 'general_character',
-                  cs_difference(
-                     cs_characters( cs_reference('any_character') ),
-                     cs_characters( "'", est('n'), est('r')       )
-                  )
-               ),
-               
-               string_spec( 'word_first_char'  , cs_characters(cs_range('a', 'z'), cs_range('A', 'Z'), '_')            ),
-               string_spec( 'word_char'        , cs_characters(cs_reference('word_first_char'), cs_reference('digit')) ),
                
                string_spec( 'any_character'    , cs_characters(cs_range(ust('0000'), ust('FFFF'))) ),
                string_spec( 'digit'            , cs_characters(cs_range('0'        , '9'        )) ),
-               string_spec( 'hex_digit'        , cs_characters(cs_reference('digit'), cs_range('a', 'f'), cs_range('A', 'F')) )               
+               string_spec( 'hex_digit'        , cs_characters(cs_reference('digit'), cs_range('a', 'f'), cs_range('A', 'F')) ),
+               
+               string_spec( 'general_character',
+                  cs_difference(
+                     cs_characters( cs_reference('any_character') ),
+                     cs_characters( "'", est('n'), est('r'), est("\\") )
+                  )
+               ),
+            
+               string_spec( 'word_first_char' , cs_characters(cs_range('a', 'z'), cs_range('A', 'Z'), '_')            ),
+               string_spec( 'word_char'       , cs_characters(cs_reference('word_first_char'), cs_reference('digit')) ),
+               string_spec( 'word'            , sp_reference('word_first_char'), sp_repeated('*', sp_reference('word_char')) ),
+               
+               string_spec( 'property_text'   , sp_repeated('+', cs_difference(cs_characters(cs_reference('general_character')), cs_characters('}')))  ),
+               string_spec( 'general_text'    , sp_repeated('+', sp_reference('general_character'))      ),
+               string_spec( 'unicode_sequence', est('\\'), 'u', sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit') ),
+               string_spec( 'escape_sequence' , est('\\'), cs_characters(cs_range('a', 'z'), est('\\'), est('-'), est('['), est(']'), est("'")) ),
+               
+               string_spec( 'whitespace'      , sp_repeated('+', cs_characters(' ', est('t'), est('r'))) ),
+               string_spec( 'comment'         , '#', sp_repeated('*', cs_difference(cs_characters(cs_reference('any_character')), est('n'))) ),
+               string_spec( 'eol'             , est('n')                                                 )
             ),
 
          #
@@ -131,19 +133,22 @@ module Grammar
          # 
          #    section grammar
          #       system_spec  => grammar_spec+
-         #       grammar_spec => block('grammar' word:name) [ option* specification* ]
+         #       grammar_spec => block('grammar' word:name) [ priority option* specification* ]
          # 
          
             section_spec( 'grammar',
-               rule_spec( 'system_spec', repeated_reference('+', 'grammar_spec') ),
+               rule_spec( 'system_spec', repeated_reference('*', 'eol', 'ignore'), repeated_reference('+', 'grammar_spec') ),
                rule_spec( 'grammar_spec', 
                   block_macro_call(
                      expression('grammar', reference_exp('word', 'name')), 
+                     reference_exp('priority'),
                      repeated_exp('*', reference_exp('option'       )),
                      repeated_exp('*', reference_exp('specification'))
                   )
                ),
          
+         #
+         #       priority => statement() [ 'priority' ('ascending'|'descending'):direction ]
          #
          #       group option
          #          start_rule          => statement() [ 'start_rule' word:rule_name        ]
@@ -151,8 +156,10 @@ module Grammar
          #          backtracking_switch => statement() [ 'enable'     'backtracking'        ]
          #          pluralization_guide => statement() [ 'pluralize'  word:name word:plural ]
          #       end
+         #
          # 
-         
+               rule_spec( 'priority', statement_macro_call(string_exp('priority'), group_exp(branch_exp(string('ascending'), string('descending')), 'direction')) ),
+               
                group_spec( 'option',
                   rule_spec( 'start_rule'         , statement_macro_call(string_exp('start_rule'), reference_exp('word', 'rule_name')) ),
                   rule_spec( 'ignore_switch'      , statement_macro_call(string_exp('ignore'    ), reference_exp('word', 'name'     )) ),
@@ -164,7 +171,7 @@ module Grammar
          #       group specification
          #          macros_spec     => block('macros')              [ macro_spec*           ]
          #          strings_spec    => block('strings')             [ string_spec*          ]
-         #          precedence_spec => block('precedence')          [ precedence_level*     ]
+         #          reorder_spec    => block('reorder')             [ reorder_level*        ]
          #          section_spec    => block('section' word:name)   [ specification*        ]
          #          group_spec      => block('group' word:name)     [ (rule_spec|group_spec|spec_reference):specification* ]
          #          rule_spec       => statement() [ word:name '=>' expression directive* ] transformation_spec*
@@ -172,9 +179,9 @@ module Grammar
          #
          
                group_spec( 'specification',
-                  rule_spec( 'macros_spec'    , block_macro_call('macros'    , repeated_reference('*', 'macro_spec'      )) ),
-                  rule_spec( 'strings_spec'   , block_macro_call('strings'   , repeated_reference('*', 'string_spec'     )) ),
-                  rule_spec( 'precedence_spec', block_macro_call('precedence', repeated_reference('*', 'precedence_level')) ),
+                  rule_spec( 'macros_spec' , block_macro_call('macros' , repeated_reference('*', 'macro_spec'   )) ),
+                  rule_spec( 'strings_spec', block_macro_call('strings', repeated_reference('*', 'string_spec'  )) ),
+                  rule_spec( 'reorder_spec', block_macro_call('reorder', repeated_reference('*', 'reorder_level')) ),
                   
                   rule_spec( 'section_spec', 
                      block_macro_call( expression('section', reference_exp('word', 'name')),
@@ -205,11 +212,11 @@ module Grammar
                ),
                
          #       
-         #       spec_reference   => statement() [ word:name ]
-         #       precedence_level => statement() [ word:reference+ ]
+         #       spec_reference => statement() [ word:name ]
+         #       reorder_level  => statement() [ word:reference+ ]
          #
-               rule_spec( 'spec_reference'  , statement_macro_call(reference_exp('word', 'name'))                ),
-               rule_spec( 'precedence_level', statement_macro_call(repeated_reference('+', 'word', 'reference')) )
+               rule_spec( 'spec_reference', statement_macro_call(reference_exp('word', 'name'))                ),
+               rule_spec( 'reorder_level' , statement_macro_call(repeated_reference('+', 'word', 'reference')) )
          
          #       
          #    end
@@ -219,16 +226,16 @@ module Grammar
                         
          #
          #    section strings_spec
-         #       string_spec      => statement() [ word:name '=>' string_descriptor:definition ]
+         #       string_spec => statement() [ word:name '=>' string_descriptor:definition ]
          # 
          #       group string_descriptor
+         #          character_set
+         #          string        => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
          #          sp_reference  => word:name
          #          sp_group      => '(' string_descriptor ')'
-         #          sp_branch     => string_descriptor '|' string_descriptor          @associativity=left
          #          sp_concat     => string_descriptor string_descriptor              @associativity=left
+         #          sp_branch     => string_descriptor '|' string_descriptor          @associativity=left
          #          sp_repeated   => string_descriptor ('*'|'+'|'?'):repeat_count
-         #          string        => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
-         #          character_set
          #       end
          # 
          #
@@ -238,19 +245,19 @@ module Grammar
                rule_spec( 'string_spec', statement_macro_call(reference_exp('word', 'name'), '=>', reference_exp('string_descriptor', 'definition')) ),
                
                group_spec( 'string_descriptor',
-                  rule_spec( 'sp_reference', reference_exp('word', 'name')                   ),
-                  rule_spec( 'sp_group'    , '(', reference_exp('string_descriptor'), ')'                                             ),
-                  rule_spec( 'sp_branch'   , reference_exp('string_descriptor'), '|', reference_exp('string_descriptor'), assoc('left')  ),
-                  rule_spec( 'sp_concat'   , reference_exp('string_descriptor'), reference_exp('string_descriptor'),      assoc('left')  ),
-                  rule_spec( 'sp_repeated' , reference_exp('string_descriptor'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') ),
-                  
+                  spec_reference( 'character_set' ),
                   rule_spec( 'string', 
                      est("'"), 
                      repeated_exp( '+', group_exp(branch_exp(reference_exp('unicode_sequence'), reference_exp('escape_sequence'), reference_exp('general_text')), 'element') ), 
                      est("'") 
                   ),
                
-                  spec_reference( 'character_set' )
+                  rule_spec( 'sp_reference', reference_exp('word', 'name')                   ),
+                  rule_spec( 'sp_group'    , '(', reference_exp('string_descriptor'), ')'                                             ),
+                  rule_spec( 'sp_concat'   , reference_exp('string_descriptor'), reference_exp('string_descriptor'),      assoc('left')  ),
+                  rule_spec( 'sp_branch'   , reference_exp('string_descriptor'), '|', reference_exp('string_descriptor'), assoc('left')  ),
+                  rule_spec( 'sp_repeated' , reference_exp('string_descriptor'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') )
+                  
                ),
             
          #    
@@ -260,15 +267,15 @@ module Grammar
          #       end
          #       
          #       group cs_element
-         #          cs_range      => character:from '-' character:to           @associativity=none
-         #          cs_reference  => '{' word:name '}'              
          #          character                              
+         #          cs_reference  => '{' word:name '}'              
+         #          cs_range      => character:from '-' character:to           @associativity=none
          #       end
          # 
          #       group character
+         #          general_character
          #          unicode_sequence
          #          escape_sequence
-         #          general_character
          #       end
          #    end
          #    
@@ -279,15 +286,15 @@ module Grammar
                ),
             
                group_spec( 'cs_element',
-                  rule_spec( 'cs_range'    , reference_exp('character', 'from'), '-', reference_exp('character', 'to'), assoc('none') ),
+                  spec_reference( 'character' ),
                   rule_spec( 'cs_reference', '{', reference_exp('word', 'name'), '}' ),
-                  spec_reference( 'character' )
+                  rule_spec( 'cs_range'    , reference_exp('character', 'from'), '-', reference_exp('character', 'to'), assoc('none') )
                ),
             
                group_spec( 'character',
+                  spec_reference( 'general_character' ),
                   spec_reference( 'unicode_sequence'  ),
-                  spec_reference( 'escape_sequence'   ),
-                  spec_reference( 'general_character' )
+                  spec_reference( 'escape_sequence'   )
                )
             ),
          
@@ -308,19 +315,19 @@ module Grammar
          #       
          #       group expression
          #          group general_exp
-         #             repeated_exp => repeatable_exp ('*'|'+'|'?'):repeat_count
-         #
          #             group repeatable_exp
          #                reference_exp => labelled() [ word:name            ]
          #                string_exp    => labelled() [ string               ]
          #                variable_exp  => labelled() [ '$' word:name        ]
          #                group_exp     => labelled() [ '(' general_exp:expression ')'   ]
-         #                              
-         #                branch_exp    => general_exp:tree '|' general_exp:leaf        @associativity=left
-         #                sequence_exp  => expression:tree expression:leaf              @associativity=left
+         #
          #                macro_call    => word:macro_name !whitespace '(' parameters? ')' ('[' expression:body? ']')?
          #                              ** @parameters = @parameters/(expression|parameter_tree/(@tree|@leaf)//)         
+         #                sequence_exp  => expression:tree expression:leaf              @associativity=left
+         #                branch_exp    => general_exp:tree '|' general_exp:leaf        @associativity=left
          #             end
+         #
+         #             repeated_exp => repeatable_exp ('*'|'+'|'?'):repeat_count
          #          end
          #
          #          gateway_exp     => '!' !whitespace word
@@ -331,15 +338,11 @@ module Grammar
             
                group_spec( 'expression',
                   group_spec( 'general_exp',
-                     rule_spec( 'repeated_exp'  , reference_exp('repeatable_exp'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') ),
                      group_spec( 'repeatable_exp',
                         rule_spec( 'reference_exp' , macro_call('labelled', [], reference_exp('word', 'name'))         ),
                         rule_spec( 'string_exp'    , macro_call('labelled', [], reference_exp('string'      ))         ),
                         rule_spec( 'variable_exp'  , macro_call('labelled', [], '$', reference_exp('word', 'name'))    ),
                         rule_spec( 'group_exp'     , macro_call('labelled', [], '(', reference_exp('expression'), ')') ),
-                     
-                        rule_spec( 'branch_exp'    , reference_exp('general_exp', 'tree'), '|', reference_exp('general_exp', 'leaf'), assoc('left') ),
-                        rule_spec( 'sequence_exp'  , reference_exp('expression', 'tree')      , reference_exp('expression', 'leaf'),  assoc('left') ),
                         
                         rule_spec( 'macro_call',
                            reference_exp('word', 'macro_name'), gateway_exp('whitespace'), '(', repeated_reference('?', 'parameters'), ')',
@@ -362,8 +365,13 @@ module Grammar
                                  )
                               )
                            )
-                        )
-                     )
+                        ),
+                        
+                        rule_spec( 'branch_exp'    , reference_exp('general_exp', 'tree'), '|', reference_exp('general_exp', 'leaf'), assoc('left') ),
+                        rule_spec( 'sequence_exp'  , reference_exp('expression', 'tree')      , reference_exp('expression', 'leaf'),  assoc('left') )                        
+                     ),
+                     
+                     rule_spec( 'repeated_exp'  , reference_exp('repeatable_exp'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') )
                   ),
                   
                   rule_spec( 'gateway_exp'     , '!', gateway_exp('whitespace'), reference_exp('word') ),
@@ -373,8 +381,8 @@ module Grammar
                
          # 
          #       group parameters
-         #          parameter_tree  => parameters:tree ',' parameters:leaf      @associativity=left
          #          expression
+         #          parameter_tree  => parameters:tree ',' parameters:leaf      @associativity=left
          #       end
          # 
          #       group directive
@@ -397,11 +405,6 @@ module Grammar
                      )
                   )
                )
-         
-         #
-         #    end
-         # 
-               
             ),
             
          #    
@@ -415,16 +418,11 @@ module Grammar
          #          npath_self_exp       => '.'
          #          npath_type_exp       => word:type_name
          #          npath_slot_exp       => '@' word:slot_name
-         #          npath_recurse_exp    => npath '//'
-         #          npath_path_exp       => npath:tree '/' npath:leaf   @associativity=left
          #          npath_branch_exp     => npath:tree '|' npath:leaf   @associativity=left
+         #          npath_path_exp       => npath:tree '/' npath:leaf   @associativity=left
+         #          npath_recurse_exp    => npath '//'
          #          npath_group_exp      => '(' npath ')'
          #                               ** . = @npath
-         #       end
-         # 
-         #       precedence
-         #          npath_path_exp
-         #          npath_branch_exp
          #       end
          #    end
          #    
@@ -439,17 +437,12 @@ module Grammar
                   rule_spec( 'npath_self_exp'   , '.'                                                                                ),
                   rule_spec( 'npath_type_exp'   , reference_exp('word', 'type_name')                                                 ),
                   rule_spec( 'npath_slot_exp'   , '@', reference_exp('word', 'slot_name')                                            ),
-                  rule_spec( 'npath_recurse_exp', reference_exp('npath'), '//'                                                       ),
-                  rule_spec( 'npath_path_exp'   , reference_exp('npath', 'tree'), '/', reference_exp('npath', 'leaf'), assoc('left') ),
                   rule_spec( 'npath_branch_exp' , reference_exp('npath', 'tree'), '|', reference_exp('npath', 'leaf'), assoc('left') ),
+                  rule_spec( 'npath_path_exp'   , reference_exp('npath', 'tree'), '/', reference_exp('npath', 'leaf'), assoc('left') ),
+                  rule_spec( 'npath_recurse_exp', reference_exp('npath'), '//'                                                       ),
                   rule_spec( 'npath_group_exp'  , '(', reference_exp('npath'), ')',
                      assignment_transform( npath_self_exp(), npath_slot_exp('npath') )
                   )
-               ),
-               
-               precedence_spec(
-                  precedence_level( 'npath_path_exp'   ),
-                  precedence_level( 'npath_branch_exp' )
                )
             ),
          
@@ -784,7 +777,7 @@ module Grammar
                return true if node.type == "section_spec"
                return true if node.type == "characters_spec"
                return true if node.type == "words_spec"
-               return true if node.type == "precedence_spec"
+               return true if node.type == "reorder_spec"
                return true if node.type == "group_spec"
                return true if node.type == "rule_spec"
             when "character_set"
@@ -867,20 +860,30 @@ module Grammar
       # ::grammar_spec()
    
       def self.grammar_spec( name, *clauses )
+         priority       = nil
          options        = []
          specifications = []
          
          clauses.each do |clause|
             if node_has_type?(clause, "option") then
                options << clause
+            elsif clause.type.name == "priority" then
+               priority = clause
             else
                specifications << clause
             end
          end
          
-         return node( "grammar_spec", :name => w(name), :options => options, :specifications => specifications )
+         return node( "grammar_spec", :name => w(name), :priority => priority, :options => options, :specifications => specifications )
       end
       
+
+      #
+      # ::priority()
+      
+      def self.priority( direction )
+         return node( "priority", :direction => t(direction) )
+      end
       
       #
       # ::start_rule()
@@ -926,10 +929,10 @@ module Grammar
       end
       
       #
-      # ::precedence_spec()
+      # ::reorder_spec()
       
-      def self.precedence_spec( *levels )
-         return node( "precedence_spec", :precedence_levels => levels )
+      def self.reorder_spec( *levels )
+         return node( "reorder_spec", :reorder_levels => levels )
       end
       
       #
@@ -974,10 +977,10 @@ module Grammar
       end
       
       #
-      # ::precedence_level()
+      # ::reorder_level()
       
-      def self.precedence_level( *references )
-         return node( "precedence_level", :references => references.collect{|r| w(r)} )
+      def self.reorder_level( *references )
+         return node( "reorder_level", :references => references.collect{|r| w(r)} )
       end
       
       

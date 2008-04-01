@@ -47,7 +47,7 @@ module Interpreter
          
          if @source.at_eof?(position) then
             token = Artifacts::Nodes::Token.end_of_file( position, @source.eof_line_number, @source.eof_column_number, @source )
-            estream.puts "\n===> DONE" if estream
+            estream.puts "\n===> DONE\n" if estream
          else
             @start_position = position 
             token           = nil
@@ -63,6 +63,8 @@ module Interpreter
             if solution then
                token = solution.to_Token( position, line_number, column_number, @source )
                @next_position = token.follow_position
+               
+               estream.puts "\n===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}\n" if estream
             else
             
                #
@@ -70,22 +72,20 @@ module Interpreter
             
                if lexer_plan.fallback_plan then
                   if lexer_plan.fallback_plan.nil? then
-                     estream.puts "there is no fallback plan for this lexer" if estream
+                     estream.puts "\n===> there is no fallback plan for this lexer\n" if estream
                   else
-                     estream.puts "attempting fallback plan" if estream
+                     estream.puts "\n===> attempting fallback plan\n" if estream
                      token = read( position, lexer_plan.fallback_plan, estream )
                   end
                end
             end
             
             if token.nil? then
-               estream.puts "\n===> ERROR LEXING: #{@source.sample_line(position)[0]}; will PRODUCE one-character token of unknown type" if estream
+               estream.puts "\n===> ERROR LEXING: #{@source.sample_line(position)[0]}; will PRODUCE one-character token of unknown type\n" if estream
                
                solution = Solution.new( @source[position], nil )
                token    = solution.to_Token( position, line_number, column_number, @source )
                @next_position = token.follow_position
-            else
-               estream.puts "\n===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}" if estream
             end
          end
          

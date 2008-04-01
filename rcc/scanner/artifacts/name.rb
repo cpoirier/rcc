@@ -96,9 +96,9 @@ module Artifacts
 
       
       def literal?
-         return @grammar.nil?
+         return (@grammar.nil? and !(@name == true))
       end
-
+      
 
       
       def ==( rhs )

@@ -131,6 +131,11 @@
             ruby_append( data )
          end
       end
+      
+      
+      def write( data )
+         ruby_append( data )
+      end
 
    end
    
@@ -317,10 +322,11 @@
       attr_reader :indent
       
       def initialize( stream, indent = "" )
-         @stream     = stream
-         @indent     = indent
-         @pending    = true
-         @properties = {}
+         @real_stream = stream
+         @stream      = stream
+         @indent      = indent
+         @pending     = true
+         @properties  = {}
       end
       
       
@@ -332,6 +338,17 @@
             stream.indent(additional) { yield(stream) }
          else
             yield(stream)
+         end
+      end
+      
+      #
+      # ::buffer_with()
+      
+      def self.buffer_with( stream, commit_if_not_discarded = true )
+         if stream then
+            stream.buffer(commit_if_not_discarded) { yield() }
+         else
+            yield()
          end
       end
       
@@ -422,6 +439,43 @@
          end_line()
          count.times { puts }
       end
+      
+      #
+      # buffer()
+      
+      def buffer( commit_if_not_discarded = true )
+         @stream = ""
+         
+         if block_given? then
+            begin
+               yield()
+            ensure
+               if commit_if_not_discarded then
+                  commit()
+               else
+                  discard()
+               end
+            end
+         end
+      end
+      
+      #
+      # commit()
+      
+      def commit()
+         if @stream.object_id != @real_stream.object_id then
+            @real_stream.write( @stream )
+            @stream = @real_stream
+         end
+      end
+      
+      #
+      # discard()
+       
+      def discard()
+         @stream = @real_stream
+      end
+      
       
       def method_missing( name, *args )
          @stream.send( name, *args )

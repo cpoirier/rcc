@@ -57,7 +57,7 @@ module Grammar
          @specifications      = Util::OrderedHash.new()       # name => spec, in declaration order
          @option_specs        = []
          @pluralization_specs = Util::OrderedHash.new()
-         @precedence_specs    = []
+         @reorder_specs       = []
          
          @string_defs         = Util::OrderedHash.new()       # name => ExpressionForm of SparseRange
          @group_defs          = Util::OrderedHash.new()       # name => Group
@@ -118,7 +118,7 @@ module Grammar
             # Create the rule.
             
             @naming_contexts[name] = NamingContext.new( self )
-            @element_defs[name]    = Rule.new( create_name(spec.name), process_rule_expression(spec.expression, @naming_contexts[name]) )
+            @element_defs[name]    = Rule.new( create_name(spec.name), process_rule_expression(spec.expression, @naming_contexts[name], name) )
       
             #
             # Process any directives.
@@ -151,7 +151,23 @@ module Grammar
       
             warn_nyi( "skipping transformations on rule" )
          end
+         
+         
+         #
+         # Apply the priority setting.
 
+         if @grammar_spec.priority.direction.text == "ascending" then
+            @string_defs.reverse!
+            @element_defs.reverse!
+            @group_defs.reverse!
+            @reorder_specs.reverse!
+            @reorder_specs.each do |spec|
+               spec.reorder_levels.reverse!
+            end
+         else
+            assert( @grammar_spec.priority.direction.text == "descending", "there's only two choices for this" )
+         end
+         
          
          #
          # Display the work, if appropriate.
@@ -171,6 +187,7 @@ module Grammar
                $stdout.puts ""
             end
          end
+         
          
          
          #
@@ -277,8 +294,8 @@ module Grammar
                when "spec_reference"
                   # no op -- this is just a side-effect of :group_spec processing
                   
-               when "precedence_spec"
-                  @precedence_specs << node
+               when "reorder_spec"
+                  @reorder_specs << node
 
                else
                   nyi( "support for node type [#{node.type}]", node )
@@ -289,21 +306,21 @@ module Grammar
       
       #
       # prioritize_rules()
-      #  - assigns a priority to each rule in this grammar, based on rule order and :precedence_specs
-      #  - earlier rules have higher priority than later rules, unless adjusted by a :precedence_spec
-      #  - note that :precedence_specs can only reference rules in this grammar!
+      #  - assigns a priority to each rule in this grammar, based on rule order and :reorder_specs
+      #  - earlier rules have higher priority than later rules, unless adjusted by a :reorder_spec
+      #  - note that :reorder_specs can only reference rules in this grammar!
       
       def prioritize_rules()
          
          #
-         # Process all :precedence_specs.  The top row of each table form roots of the DAG.
+         # Process all :reorder_specs.  The top row of each table form roots of the DAG.
          # We test for cycles as we go -- there can't be any.  
          
          root_sets = []
          hierarchy = Util::DirectedAcyclicGraph.new( false )
-         @precedence_specs.each do |spec|
+         @reorder_specs.each do |spec|
             previous_level = []
-            spec.precedence_levels.each do |level|
+            spec.reorder_levels.each do |level|
                
                #
                # Collect rule reference TO RULES IN THIS GRAMMAR ONLY.  Rule priority is about
@@ -314,16 +331,16 @@ module Grammar
                current_level = []
                level.references.each do |name_token|
                   name = name_token.text
-                  case element = @element_defs[name]
-                     when Rule
-                        current_level << name
-                     when Group
-                        element.each do |reference|
-                           name = reference.rule_name
-                           current_level << name.to_s unless (name.has_namespace? and name.namespace != @name)
+                  if @element_defs.member?(name) then
+                     current_level << name
+                  elsif @group_defs.member?(name) then
+                     @group_defs[name].member_references.each do |reference|
+                        if reference.is_a?(RuleReference) then
+                           unless (reference.symbol_name.grammar.exists? and reference.symbol_name.grammar != @name)
+                              current_level << reference.symbol_name.name
+                           end
                         end
-                     else
-                        # no op
+                     end
                   end
                end
                
@@ -493,7 +510,9 @@ module Grammar
                   @element_defs[name].priority = i
                end
             else
-               @element_defs[default_rules.shift].priority = i
+               default_rules.shift.each do |rule_name|
+                  @element_defs[rule_name].priority = i
+               end
             end
          end
       end
@@ -770,23 +789,23 @@ module Grammar
       #  - prepares for slot assignment by collecting naming information on every nameable element
       #     - at present, this includes symbolic elements and explicitly labelled constants
       
-      def process_rule_expression( node, naming_context )
+      def process_rule_expression( node, naming_context, rule_name )
          result = nil
          
          case node.type.name
             when "macro_call"
-               result = process_rule_expression( process_macro_call(node), naming_context )
+               result = process_rule_expression( process_macro_call(node), naming_context, rule_name )
       
             when "sequence_exp"
                result = create_sequence( 
-                  process_rule_expression( node.tree, naming_context ), 
-                  process_rule_expression( node.leaf, naming_context ) 
+                  process_rule_expression( node.tree, naming_context, rule_name ), 
+                  process_rule_expression( node.leaf, naming_context, rule_name ) 
                )
       
             when "repeated_exp"
                case node.repeat_count.text
                   when "?"
-                     element = process_rule_expression( node.expression, naming_context )
+                     element = process_rule_expression( node.expression, naming_context, rule_name )
                      result  = Util::ExpressionForms::Optional.new( element )
                      
                   when "*", "+"
@@ -797,7 +816,7 @@ module Grammar
                      # pluralized terms, first by processing them in a separate naming context.
                      
                      child_namer = NamingContext.new( self )
-                     child_form  = process_rule_expression( node.expression, child_namer )
+                     child_form  = process_rule_expression( node.expression, child_namer, rule_name )
                      
                      #
                      # Next, we try to get a nice name for the out-factored rule.  If we can get a single
@@ -813,6 +832,13 @@ module Grammar
                         else
                            child_name = plural_name
                         end
+                     elsif node.expression.slot_filled?(:label) then
+                        singular_name = node.expression.label.text
+                        plural_name   = rule_name + "_" + pluralize( singular_name )
+                        
+                        unless @specifications.member?(plural_name)
+                           child_name = plural_name
+                        end
                      end
                      
                      #
@@ -820,7 +846,7 @@ module Grammar
                      # that has already been handled.  We won't duplicate the Pluralization.  Otherwise,
                      # it's new, and we save it.
                      
-                     unless @element_defs.member?(child_name)
+                     unless @element_defs.member?(child_name) 
                         @element_defs[child_name]    = Pluralization.new( create_name(child_name), child_form )
                         @naming_contexts[child_name] = child_namer
                         
@@ -839,8 +865,8 @@ module Grammar
                   
             when "branch_exp"
                result = create_branch_point(
-                  process_rule_expression( node.tree, naming_context ),
-                  process_rule_expression( node.leaf, naming_context )
+                  process_rule_expression( node.tree, naming_context, rule_name ),
+                  process_rule_expression( node.leaf, naming_context, rule_name )
                )
                
             when "gateway_exp"
@@ -869,7 +895,7 @@ module Grammar
                      # name as implicit label.
                      
                      naming_context.apply_label(node.label.exists? ? node.label : node.name, node.label.exists?) do
-                        result = process_rule_expression( process_macro_call(node), naming_context )
+                        result = process_rule_expression( process_macro_call(node), naming_context, rule_name )
                      end
                      
                   else
@@ -905,7 +931,7 @@ module Grammar
             
             when "group_exp"
                naming_context.apply_label(node.label, true) do
-                  result = process_rule_expression( node.expression, naming_context )
+                  result = process_rule_expression( node.expression, naming_context, rule_name )
                end
                
             when "variable_exp"

@@ -245,7 +245,7 @@ module Nodes
          if @type.eof? then
             return "$"
          elsif @faked then
-            return "FAKE[" + @type.description + "]"
+            return "FAKE[" + (@type.literal? ? @type.name : "") + "]" + (@type.literal? ? "" : ":" + @type.description)
          else
             return "[#{@text.escape}]" + (@type.literal? ? "" : ":#{@type.description}" )
          end
