@@ -161,8 +161,11 @@ module Plan
                      
                      elements = sequence
                      sequence.each_element do |element|
-                        if element.is_a?(Model::Markers::GatewayMarker) then
+                        case element
+                        when Model::Markers::GatewayMarker
                            gateway_buffer << element.symbol_name
+                        when Model::Markers::RecoveryCommit
+                           symbols[-1].recoverable = true unless symbols.empty?
                         else
                            slots << element.slot_name
                            ast_class.define_slot( element.slot_name, false ) unless element.slot_name.nil? 
@@ -182,14 +185,12 @@ module Plan
                                  symbols << Symbol.new( element.symbol_name, :token     , prefilter )
                               when Model::Markers::GroupReference
                                  symbols << Symbol.new( element.symbol_name, :group     , prefilter )
-                              when Model::Markers::RecoveryCommit
-                                 symbols[-1].recoverable = true unless symbols.empty?
                               else
                                  nyi( "support for [#{element.class.name}]", element )
                            end
                         end
                      end
-
+                     
                      postfilter = default_prefilter
                      unless gateway_buffer.empty?
                         postfilterable_names = gateway_buffer & ignore_symbols

@@ -112,14 +112,25 @@ module Elements
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :context_rule
-      attr_reader :slot_name
+      def context_rule()
+         return @slot_proxy.context_rule if defined?(@slot_proxy)
+         return @context_rule
+      end
       
-
+      
+      def slot_name()
+         return @slot_proxy.slot_name if defined?(@slot_proxy)
+         return @slot_name
+      end
+      
+      
+      
       #
       # set_slot_name()
 
       def set_slot_name( context_rule, slot_name )
+         return @slot_proxy.set_slot_name(context_rule, slot_name) if defined?(@slot_proxy)
+         
          assert( @context_rule.nil? , "you cannot assign a second rule context to the same element" )
          assert( @slot_name.nil?    , "you cannot assign a second slot name to the same element"    )
          
@@ -134,6 +145,7 @@ module Elements
       # slot_info()
       
       def slot_info( prefix = " as ", postfix = "" )
+         return @slot_proxy.slot_info(prefix, postfix) if defined?(@slot_proxy)
          return @slot_name.exists? ? "#{prefix}#{@slot_name}#{postfix}" : ""
       end
       
@@ -142,19 +154,43 @@ module Elements
       # display_slot_info()
        
       def display_slot_info( stream = $stdout )
-         slot_info = slot_info("as ", ":")
-         if slot_info.exists? and !slot_info.empty? then
-            stream.end_line
-            stream.puts slot_info
-            stream.indent do
-               yield()
+         if defined?(@slot_proxy) then
+            if block_given? then
+               @slot_proxy.display_slot_info(stream) { yield() }
+            else
+               @slot_proxy.display_slot_info(stream)
             end
          else
-            yield()
+            slot_info = slot_info("as ", ":")
+            if slot_info.exists? and !slot_info.empty? then
+               stream.end_line
+               stream.puts slot_info
+               stream.indent do
+                  yield()
+               end
+            else
+               yield()
+            end
          end
       end
+
+
+      #
+      # proxy_slot()
+      #  - sets up the current object to forward slot requests to another object
+      
+      def proxy_slot( object )
+         @slot_proxy = object
+      end
+      
+
       
    end # SlotInfo
+
+
+ 
+
+
 
    
 

@@ -61,7 +61,7 @@ module Grammar
          
          @string_defs         = Util::OrderedHash.new()       # name => ExpressionForm of SparseRange
          @group_defs          = Util::OrderedHash.new()       # name => Group
-         @element_defs        = Util::OrderedHash.new()       # name => Rule or Group
+         @rule_defs           = Util::OrderedHash.new()       # name => Rule
          @naming_contexts     = Util::OrderedHash.new()       # name => naming context data
       end
 
@@ -118,7 +118,7 @@ module Grammar
             # Create the rule.
             
             @naming_contexts[name] = NamingContext.new( self )
-            @element_defs[name]    = Rule.new( create_name(spec.name), process_rule_expression(spec.expression, @naming_contexts[name], name) )
+            @rule_defs[name]       = Rule.new( create_name(spec.name), process_rule_expression(spec.expression, @naming_contexts[name], name) )
       
             #
             # Process any directives.
@@ -128,11 +128,11 @@ module Grammar
                   when "associativity_directive"
                      case directive.direction.text
                         when "left"
-                           @element_defs[name].associativity = :left
+                           @rule_defs[name].associativity = :left
                         when "right"
-                           @element_defs[name].associativity = :right
+                           @rule_defs[name].associativity = :right
                         when "none"
-                           @element_defs[name].associativity = :none
+                           @rule_defs[name].associativity = :none
                         else
                            nyi( "unsupported associativity [#{directive.direction.text}]", directive.direction )
                      end
@@ -144,7 +144,7 @@ module Grammar
             #
             # Commit the naming context into the Rule.
       
-            @naming_contexts[name].commit( @element_defs[name] )
+            @naming_contexts[name].commit( @rule_defs[name] )
 
             #
             # Deal with any transformations.
@@ -158,7 +158,7 @@ module Grammar
 
          if @grammar_spec.priority.direction.text == "ascending" then
             @string_defs.reverse!
-            @element_defs.reverse!
+            @rule_defs.reverse!
             @group_defs.reverse!
             @reorder_specs.reverse!
             @reorder_specs.each do |spec|
@@ -173,7 +173,7 @@ module Grammar
          # Display the work, if appropriate.
 
          if false then
-            @element_defs.each do |name, definition|
+            @rule_defs.each do |name, definition|
                definition.display( $stdout )
                $stdout.end_line
                $stdout.puts
@@ -189,7 +189,6 @@ module Grammar
          end
          
          
-         
          #
          # Assign rule priorities.
          
@@ -201,7 +200,7 @@ module Grammar
 
          grammar = RCC::Model::Grammar.new( @grammar_spec.name.text )
          @string_defs.each {|name, definition| grammar.add_string(definition.name, definition)}
-         @element_defs.each{|name, definition| grammar.add_element(definition)}
+         @rule_defs.each{|name, definition| grammar.add_element(definition)}
          @group_defs.each  {|name, definition| grammar.add_group(definition)}
 
 
@@ -212,7 +211,7 @@ module Grammar
             case option.type.name
                
                when "start_rule"
-                  if @element_defs[option.rule_name.text].is_a?(Rule) then
+                  if @rule_defs[option.rule_name.text].is_a?(Rule) then
                      grammar.start_rule_name = create_name(option.rule_name)
                   else
                      nyi( "error handling for bad start_rule [#{option.rule_name.text}]" )
@@ -331,7 +330,7 @@ module Grammar
                current_level = []
                level.references.each do |name_token|
                   name = name_token.text
-                  if @element_defs.member?(name) then
+                  if @rule_defs.member?(name) then
                      current_level << name
                   elsif @group_defs.member?(name) then
                      @group_defs[name].member_references.each do |reference|
@@ -427,7 +426,7 @@ module Grammar
          all_rules     = []
          default_rules = []
          
-         @element_defs.each do |name, element|
+         @rule_defs.each do |name, element|
             name = name.to_s
             
             if element.is_a?(Rule) then
@@ -507,11 +506,11 @@ module Grammar
          (default_rules.length + insertion_layers.length).times do |i|
             if insertion_points.member?(i) then
                insertion_layers[insertion_points.index(i)].each do |name|
-                  @element_defs[name].priority = i
+                  @rule_defs[name].priority = i
                end
             else
                default_rules.shift.each do |rule_name|
-                  @element_defs[rule_name].priority = i
+                  @rule_defs[rule_name].priority = i
                end
             end
          end
@@ -823,7 +822,7 @@ module Grammar
                      # term, and its plural form is not taken, we'll use that.  Otherwise, we'll generate
                      # a name.
                      
-                     child_name = "_plural_#{@element_defs.length}"
+                     child_name = "_plural_#{@rule_defs.length}"
                      if child_form.element_count == 1 and [StringReference, RuleReference, GroupReference].member?(child_form[0].class) then
                         singular_name = child_form[0].symbol_name
                         plural_name   = pluralize( singular_name )
@@ -842,19 +841,19 @@ module Grammar
                      end
                      
                      #
-                     # If the name is already in the @element_defs list, then this is a simple pluralization
+                     # If the name is already in the @rule_defs list, then this is a simple pluralization
                      # that has already been handled.  We won't duplicate the Pluralization.  Otherwise,
                      # it's new, and we save it.
                      
-                     unless @element_defs.member?(child_name) 
-                        @element_defs[child_name]    = Pluralization.new( create_name(child_name), child_form )
+                     unless @rule_defs.member?(child_name) 
+                        @rule_defs[child_name]    = Pluralization.new( create_name(child_name), child_form )
                         @naming_contexts[child_name] = child_namer
                         
-                        child_namer.commit( @element_defs[child_name] )
+                        child_namer.commit( @rule_defs[child_name] )
                      end
                      
-                     result = @element_defs[child_name].reference( node.repeat_count.text == "*" )
-                     if @element_defs[child_name].has_slots? then
+                     result = @rule_defs[child_name].reference( node.repeat_count.text == "*" )
+                     if @rule_defs[child_name].has_slots? then
                         naming_context.name( result, create_token("_tree_" + child_name) )
                         naming_context.import_pluralization( result, @naming_contexts[child_name] )
                      end

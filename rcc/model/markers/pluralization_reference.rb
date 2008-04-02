@@ -41,8 +41,10 @@ module Markers
       def initialize( pluralization, optional = false )
          @pluralization = pluralization
          @optional      = optional
-         @expression    = RuleReference.new(@pluralization.name)
-         @expression    = Optional.new( @expression ) if optional
+         @rule_ref      = RuleReference.new(@pluralization.name)
+         @expression    = optional ? Optional.new(@rule_ref) : @rule_ref
+         
+         proxy_slot(@rule_ref)
       end      
       
       
@@ -63,9 +65,7 @@ module Markers
       # display()
       
       def display( stream = $stdout )
-         display_slot_info(stream) do 
-            @expression.display( stream )
-         end
+         @expression.display( stream )
       end
       
       

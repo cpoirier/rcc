@@ -47,7 +47,7 @@ module Interpreter
          
          if @source.at_eof?(position) then
             token = Artifacts::Nodes::Token.end_of_file( position, @source.eof_line_number, @source.eof_column_number, @source )
-            estream.puts "\n===> DONE\n" if estream
+            estream.puts "\n===> EOF\n" if estream
          else
             @start_position = position 
             token           = nil

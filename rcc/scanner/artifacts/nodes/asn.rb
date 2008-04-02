@@ -27,7 +27,8 @@ module Nodes
       
       def self::map( production, component_nodes )
          slots = Util::OrderedHash.new()
-         production.slots.each do |index, slot|
+         production.slots.each_index do |index|
+            slot = production.slots[index] 
             slots[slot] = component_nodes[index] unless slot.nil?
          end
          
