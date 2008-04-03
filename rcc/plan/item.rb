@@ -33,7 +33,7 @@ module Plan
       attr_reader   :shifted_from_item
       
                                   
-      def initialize( production, at = 0, follow_contexts = [], production_sets = nil, shifted_from_item = nil )
+      def initialize( production, at = 0, follow_contexts = [], shifted_from_item = nil )
          @master_plan      = production.master_plan
          @production       = production
          @at               = at
@@ -43,7 +43,6 @@ module Plan
          @follow_sequences = nil
          @start_item       = false
          @signature        = self.to_s
-         @production_sets  = production_sets
          
          follow_contexts.each do |item|
             add_follow_context( item )
@@ -194,11 +193,8 @@ module Plan
       #  - this is a dynamic calculation, and should not be relied upon until the entire state table is built!
       #  - for now, this is k = 1
       
-      def followers( production_sets = nil, loop_detection = nil )
-         production_sets = @production_sets if production_sets.nil?
-         assert( !production_sets.nil?, "you must supply a hash of ProductionSets to followers() when it is calculated" )
-         
-         return sequences_after_leader( 1, production_sets ).lookahead(production_sets)
+      def followers( loop_detection = nil )
+         return sequences_after_leader( 1 ).lookahead(@master_plan)
       end
 
 
@@ -206,23 +202,20 @@ module Plan
       # production_la()
       #  - returns the terminals that can follow our Production, were it to be complete
       
-      def production_la( k = 1, production_sets = nil )
+      def production_la( k = 1 )
          assert( k == 1, "only k = 1 supported, presently" )
          return @production_la unless @production_la.nil?
 
-         production_sets = @production_sets if production_sets.nil?
-         assert( !production_sets.nil?, "you must supply a hash of ProductionSets to followers() when it is calculated" )
-         
          sequence_sets = @follow_contexts.collect do |context|
             if context.nil? then
                SequenceSet.end_of_input_set
             else
-               set = context.sequences_after_leader( k, production_sets )
+               set = context.sequences_after_leader( k )
             end
          end
          
          @production_la_sequences = SequenceSet.merge( sequence_sets )
-         @production_la = @production_la_sequences.lookahead( production_sets )
+         @production_la = @production_la_sequences.lookahead( @master_plan )
          
          return @production_la
       end

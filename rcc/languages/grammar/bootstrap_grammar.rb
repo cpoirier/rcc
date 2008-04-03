@@ -435,21 +435,21 @@ module Grammar
                
                group_spec( 'npath',
                   rule_spec( 'npath_self_exp'   , '.'                                                                                ),
+                  rule_spec( 'npath_group_exp'  , '(', reference_exp('npath'), ')',
+                     assignment_transform( npath_self_exp(), npath_slot_exp('npath') )
+                  ),
                   rule_spec( 'npath_type_exp'   , reference_exp('word', 'type_name')                                                 ),
                   rule_spec( 'npath_slot_exp'   , '@', reference_exp('word', 'slot_name')                                            ),
                   rule_spec( 'npath_branch_exp' , reference_exp('npath', 'tree'), '|', reference_exp('npath', 'leaf'), assoc('left') ),
                   rule_spec( 'npath_path_exp'   , reference_exp('npath', 'tree'), '/', reference_exp('npath', 'leaf'), assoc('left') ),
-                  rule_spec( 'npath_recurse_exp', reference_exp('npath'), '//'                                                       ),
-                  rule_spec( 'npath_group_exp'  , '(', reference_exp('npath'), ')',
-                     assignment_transform( npath_self_exp(), npath_slot_exp('npath') )
-                  )
+                  rule_spec( 'npath_recurse_exp', reference_exp('npath'), '//'                                                       )
                )
             ),
          
          #
          #    section macros_spec
          #       macro_spec => => statement() [ word:name (!whitespace '(' parameter_defs? ')')? '=>' expression ]
-         #                     ** @parameter_defs => @parameter_defs/(word|parameter_def_tree/(@tree|@leaf)//)
+         #                     ** @parameter_defs = @parameter_defs/(word|parameter_def_tree/(@tree|@leaf)//)
          #       
          #       group parameter_defs
          #          parameter_def_tree => parameter_defs:tree ',' parameter_defs:leaf   @associativity=left
