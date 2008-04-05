@@ -404,7 +404,11 @@
       
       
       def <<( text )
-         write( text )
+         if text.is_a?(String) then
+            write( text )
+         else
+            text.display( self )
+         end
          self
       end
 

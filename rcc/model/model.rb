@@ -23,4 +23,3 @@ require "#{$RCCLIB}/model/markers/group_reference.rb"
 require "#{$RCCLIB}/model/markers/pluralization_reference.rb"
 require "#{$RCCLIB}/model/markers/recovery_commit.rb"
 require "#{$RCCLIB}/model/markers/gateway_marker.rb"
-

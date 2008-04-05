@@ -10,6 +10,7 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/scanner/artifacts/name.rb"
+require "#{$RCCLIB}/languages/grammar/bootstrap_grammar.rb"
 require "#{$RCCLIB}/languages/grammar/naming_context.rb"
 require "#{$RCCLIB}/util/sparse_range.rb"
 require "#{$RCCLIB}/util/directed_acyclic_graph.rb"
@@ -39,7 +40,9 @@ module Grammar
       RuleReference          = RCC::Model::Markers::RuleReference
       GroupReference         = RCC::Model::Markers::GroupReference
       PluralizationReference = RCC::Model::Markers::PluralizationReference
-      RecoveryCommit         = RCC::Model::Markers::RecoveryCommit
+      RecoveryCommit         = RCC::Model::Markers::RecoveryCommit      
+      
+      
       
       
       
@@ -76,7 +79,10 @@ module Grammar
          #
          # Register the grammar specifications (only).  Only do this on the first call.
          
-         register_specs( @grammar_spec.specifications ) if @specifications.empty?
+         if @specifications.empty? then
+            register_specs( @grammar_spec.specifications ) 
+            integrate_transformations( @grammar_spec.transformations.transformation_sets ) if @grammar_spec.slot_filled?(:transformations)
+         end
          
 
          #
@@ -117,8 +123,10 @@ module Grammar
             #
             # Create the rule.
             
+            transformation_set     = []
+            @pending_transforms    = []
             @naming_contexts[name] = NamingContext.new( self )
-            @rule_defs[name]       = Rule.new( create_name(spec.name), process_rule_expression(spec.expression, @naming_contexts[name], name) )
+            @rule_defs[name]       = Rule.new( create_name(spec.name), process_rule_expression(spec.expression, @naming_contexts[name], transformation_set, name) )
       
             #
             # Process any directives.
@@ -147,9 +155,33 @@ module Grammar
             @naming_contexts[name].commit( @rule_defs[name] )
 
             #
-            # Deal with any transformations.
-      
-            warn_nyi( "skipping transformations on rule" )
+            # Process any implicit transformations.  At present, this means the collection of * and + 
+            # terms into a list.  We'll use a transformation in the form:
+            #    @plural_name = @tree_slot/{@_tree|@singular_name}[!pluralization_type]
+            # We can use this simplified npath expression because we always construct the Pluralization
+            # in the same way -- with one singular name mapping to one plural name, regardles of slot
+            # type.
+            
+            @rule_defs[name].each_plural_import do |tree_slot, pluralization, singular_name, plural_name, types|
+               
+               # node_search_inner = TransitiveClosure.new( create_branch_point(SlotSelector.new("_tree"), SlotSelector.new(singular_name)) )
+               # node_search_outer = create_sequence( SlotSelector.new(tree_slot), node_search_inner )
+               # node_search       = NegativePredicate.new( TypePredicate.new(pluralization.name) )
+               # 
+               # transformations << AssignmentTransform.new( SlotSelector.new(plural_name), node_search )
+            end
+
+            #
+            # Process any explicit transformations.
+
+            if spec.slot_filled?(:transformation_specs) then
+               spec.transformation_specs.each do |transformation_spec|
+                  transformation_set << process_transformation_spec( transformation_spec )
+               end
+               
+               @rule_defs[name].transformations = transformation_set
+            end
+            
          end
          
          
@@ -301,7 +333,26 @@ module Grammar
             end
          end
       end
-
+      
+      
+      #
+      # integrate_transformations()
+      #  - links supplementary transformation specs into the rule_specs
+      
+      def integrate_transformations( transformation_sets )
+         transformation_sets.each do |transformation_set|
+            rule_name = transformation_set.rule_name.text
+            
+            if @specifications.member?(rule_name) and @specifications[rule_name].type.name == "rule_spec" then
+               rule_spec = @specifications[rule_name]
+               rule_spec.transformation_specs = [] if rule_spec.transformation_specs.nil?
+               rule_spec.transformation_specs.concat( transformation_set.transformation_specs )
+            else
+               nyi( "error handling for missing transformation set target [#{rule_name}]" )
+            end
+         end
+      end
+         
       
       #
       # prioritize_rules()
@@ -788,23 +839,23 @@ module Grammar
       #  - prepares for slot assignment by collecting naming information on every nameable element
       #     - at present, this includes symbolic elements and explicitly labelled constants
       
-      def process_rule_expression( node, naming_context, rule_name )
+      def process_rule_expression( node, naming_context, transformation_set, rule_name )
          result = nil
          
          case node.type.name
             when "macro_call"
-               result = process_rule_expression( process_macro_call(node), naming_context, rule_name )
+               result = process_rule_expression( process_macro_call(node), naming_context, transformation_set, rule_name )
       
             when "sequence_exp"
                result = create_sequence( 
-                  process_rule_expression( node.tree, naming_context, rule_name ), 
-                  process_rule_expression( node.leaf, naming_context, rule_name ) 
+                  process_rule_expression( node.tree, naming_context, transformation_set, rule_name ), 
+                  process_rule_expression( node.leaf, naming_context, transformation_set, rule_name ) 
                )
       
             when "repeated_exp"
                case node.repeat_count.text
                   when "?"
-                     element = process_rule_expression( node.expression, naming_context, rule_name )
+                     element = process_rule_expression( node.expression, naming_context, transformation_set, rule_name )
                      result  = Util::ExpressionForms::Optional.new( element )
                      
                   when "*", "+"
@@ -815,7 +866,8 @@ module Grammar
                      # pluralized terms, first by processing them in a separate naming context.
                      
                      child_namer = NamingContext.new( self )
-                     child_form  = process_rule_expression( node.expression, child_namer, rule_name )
+                     child_set   = []
+                     child_form  = process_rule_expression( node.expression, child_namer, child_set, rule_name )
                      
                      #
                      # Next, we try to get a nice name for the out-factored rule.  If we can get a single
@@ -846,8 +898,9 @@ module Grammar
                      # it's new, and we save it.
                      
                      unless @rule_defs.member?(child_name) 
-                        @rule_defs[child_name]    = Pluralization.new( create_name(child_name), child_form )
+                        @rule_defs[child_name]       = Pluralization.new( create_name(child_name), child_form )
                         @naming_contexts[child_name] = child_namer
+                        warn_nyi( "transformations for pluralizations" )
                         
                         child_namer.commit( @rule_defs[child_name] )
                      end
@@ -864,8 +917,8 @@ module Grammar
                   
             when "branch_exp"
                result = create_branch_point(
-                  process_rule_expression( node.tree, naming_context, rule_name ),
-                  process_rule_expression( node.leaf, naming_context, rule_name )
+                  process_rule_expression( node.tree, naming_context, transformation_set, rule_name ),
+                  process_rule_expression( node.leaf, naming_context, transformation_set, rule_name )
                )
                
             when "gateway_exp"
@@ -894,7 +947,7 @@ module Grammar
                      # name as implicit label.
                      
                      naming_context.apply_label(node.label.exists? ? node.label : node.name, node.label.exists?) do
-                        result = process_rule_expression( process_macro_call(node), naming_context, rule_name )
+                        result = process_rule_expression( process_macro_call(node), naming_context, transformation_set, rule_name )
                      end
                      
                   else
@@ -930,7 +983,7 @@ module Grammar
             
             when "group_exp"
                naming_context.apply_label(node.label, true) do
-                  result = process_rule_expression( node.expression, naming_context, rule_name )
+                  result = process_rule_expression( node.expression, naming_context, transformation_set, rule_name )
                end
                
             when "variable_exp"

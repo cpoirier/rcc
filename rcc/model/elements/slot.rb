@@ -38,7 +38,7 @@ module Elements
          @sources = []
       end
       
-      
+
       def add_source( source )
          @sources << source unless @sources.member?(source)
       end
@@ -50,7 +50,32 @@ module Elements
          source = [pluralizer_reference, aggregated_slot_name]
          add_source( source )
       end
+
+
+      # #
+      # # each_source()
+      # #  - calls your block once for each source
+      # 
+      # def each_source()
+      #    @sources.each do |source|
+      #       if source.is_an?(Array) then
+      #    end
+      # end
       
+      
+      #
+      # each_pluralized_source()
+      #  - calls your block once for each pluralized source
+      #  - passes in the tree slot name, the Pluralization, and singular name of the source slot
+      
+      def each_pluralized_source()
+         @sources.each do |source|
+            if source.is_an?(Array) then
+               reference, singular_name = *source
+               yield( reference.slot_name, reference.pluralization, singular_name )
+            end
+         end
+      end
       
       
       def direct_sources_only?()

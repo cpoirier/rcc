@@ -133,7 +133,7 @@ module Grammar
          # 
          #    section grammar
          #       system_spec  => grammar_spec+
-         #       grammar_spec => block('grammar' word:name) [ priority option* specification* ]
+         #       grammar_spec => block('grammar' word:name) [ priority option* specification* transformations? ]
          # 
          
             section_spec( 'grammar',
@@ -142,8 +142,9 @@ module Grammar
                   block_macro_call(
                      expression('grammar', reference_exp('word', 'name')), 
                      reference_exp('priority'),
-                     repeated_exp('*', reference_exp('option'       )),
-                     repeated_exp('*', reference_exp('specification'))
+                     repeated_exp('*', reference_exp('option'         )),
+                     repeated_exp('*', reference_exp('specification'  )),
+                     repeated_exp('?', reference_exp('transformations'))
                   )
                ),
          
@@ -193,8 +194,7 @@ module Grammar
                      block_macro_call( expression('group', reference_exp('word', 'name')),
                         repeated_exp( '*', 
                            group_exp(
-                              branch_exp( reference_exp('rule_spec'), reference_exp('group_spec'), reference_exp('spec_reference') ),
-                              'specification'
+                              branch_exp( reference_exp('rule_spec'), reference_exp('group_spec'), reference_exp('spec_reference') ) # , 'specification'
                            )
                         )
                      )
@@ -238,7 +238,6 @@ module Grammar
          #          sp_repeated   => string_descriptor ('*'|'+'|'?'):repeat_count
          #       end
          # 
-         #
             
             section_spec( 'strings_spec',
             
@@ -322,7 +321,6 @@ module Grammar
          #                group_exp     => labelled() [ '(' general_exp:expression ')'   ]
          #
          #                macro_call    => word:macro_name !whitespace '(' parameters? ')' ('[' expression:body? ']')?
-         #                              ** @parameters = @parameters/(expression|parameter_tree/(@tree|@leaf)//)         
          #                sequence_exp  => expression:tree expression:leaf              @associativity=left
          #                branch_exp    => general_exp:tree '|' general_exp:leaf        @associativity=left
          #             end
@@ -346,25 +344,7 @@ module Grammar
                         
                         rule_spec( 'macro_call',
                            reference_exp('word', 'macro_name'), gateway_exp('whitespace'), '(', repeated_reference('?', 'parameters'), ')',
-                           repeated_exp( '?', group_exp(expression('[', repeated_reference('?', 'expression', 'body'), ']')) ),
-                           assignment_transform(
-                              npath_slot_exp( "parameters" ),
-                              npath_path_exp(
-                                 npath_slot_exp("parameters"),
-                                 npath_branch_exp(
-                                    npath_type_exp("expression"),
-                                    npath_recurse_exp(
-                                       npath_path_exp(
-                                          npath_type_exp("parameter_tree"),
-                                          npath_branch_exp(
-                                             npath_slot_exp("tree"),
-                                             npath_slot_exp("leaf")
-                                          )
-                                       )
-                                    )
-                                 )
-                              )
-                           )
+                           repeated_exp( '?', group_exp(expression('[', repeated_reference('?', 'expression', 'body'), ']')) )
                         ),
                         
                         rule_spec( 'branch_exp'    , reference_exp('general_exp', 'tree'), '|', reference_exp('general_exp', 'leaf'), assoc('left') ),
@@ -408,48 +388,70 @@ module Grammar
             ),
             
          #    
-         #    section transformations_spec
+         #    section transformations
+         #       transformations         => block('transformations') [ transformation_set* ]
+         #       transformation_set      => word:rule_name eol:ignore* transformation_spec+
+         #
          #       group transformation_spec
          #          assignment_transform => statement() ['**' npath:destination '='  npath:source ]
          #          append_transform     => statement() ['**' npath:destination '+=' npath:source ]
          #       end
          #
+         #       group npred
+         #          npred_type_exp       => word:type_name
+         #          npred_slot_exp       => '@' word:slot_name
+         #          npred_or_exp         => npred:tree '|' npred:leaf   @associativity=left
+         #          npred_and_exp        => npred:tree '&' npred:leaf   @associativity=left
+         #          npred_negation_exp   => '!' npred                   
+         #       end
+         #
          #       group npath
          #          npath_self_exp       => '.'
-         #          npath_type_exp       => word:type_name
          #          npath_slot_exp       => '@' word:slot_name
+         #          npath_tclose_exp     => '{' npath '}'
          #          npath_branch_exp     => npath:tree '|' npath:leaf   @associativity=left
+         #          npath_predicate_exp  => npath '[' npred ']'         @associativity=left
          #          npath_path_exp       => npath:tree '/' npath:leaf   @associativity=left
-         #          npath_recurse_exp    => npath '//'
          #          npath_group_exp      => '(' npath ')'
-         #                               ** . = @npath
          #       end
          #    end
          #    
          
-            section_spec( 'transformations_spec',
+            section_spec( 'transformations',
+               rule_spec( 'transformations'   , block_macro_call(expression('transformations'), repeated_reference('*', 'transformation_set')) ),
+               rule_spec( 'transformation_set', 
+                  reference_exp('word', 'rule_name'), 
+                  repeated_reference('*', 'eol', 'ignore'), 
+                  repeated_reference('+', 'transformation_spec') 
+               ),
+            
                group_spec( 'transformation_spec',
                   rule_spec( 'assignment_transform', statement_macro_call('**', reference_exp('npath', 'destination'), '=' , reference_exp('npath', 'source')) ),
                   rule_spec( 'append_transform'    , statement_macro_call('**', reference_exp('npath', 'destination'), '+=', reference_exp('npath', 'source')) )
                ),
                
+               group_spec( 'npred',
+                  rule_spec( 'npred_type_exp'    , reference_exp('word', 'type_name')                                  ),
+                  rule_spec( 'npred_slot_exp'    , '@', reference_exp('word', 'slot_name')                             ),
+                  rule_spec( 'npred_or_exp'      , reference_exp('npred', 'tree'), '|', reference_exp('npred', 'leaf') ),
+                  rule_spec( 'npred_and_exp'     , reference_exp('npred', 'tree'), '&', reference_exp('npred', 'leaf') ),
+                  rule_spec( 'npred_negation_exp', '!', reference_exp('npred')                                         )
+               ),
+               
                group_spec( 'npath',
-                  rule_spec( 'npath_self_exp'   , '.'                                                                                ),
-                  rule_spec( 'npath_group_exp'  , '(', reference_exp('npath'), ')',
-                     assignment_transform( npath_self_exp(), npath_slot_exp('npath') )
-                  ),
-                  rule_spec( 'npath_type_exp'   , reference_exp('word', 'type_name')                                                 ),
-                  rule_spec( 'npath_slot_exp'   , '@', reference_exp('word', 'slot_name')                                            ),
-                  rule_spec( 'npath_branch_exp' , reference_exp('npath', 'tree'), '|', reference_exp('npath', 'leaf'), assoc('left') ),
-                  rule_spec( 'npath_path_exp'   , reference_exp('npath', 'tree'), '/', reference_exp('npath', 'leaf'), assoc('left') ),
-                  rule_spec( 'npath_recurse_exp', reference_exp('npath'), '//'                                                       )
+                  rule_spec( 'npath_self_exp'     , '.'                                                                                ),
+                  rule_spec( 'npath_slot_exp'     , '@', reference_exp('word', 'slot_name')                                            ),
+                  rule_spec( 'npath_tclose_exp'   , '{', reference_exp('npath'), '}'                                                   ),
+                  rule_spec( 'npath_branch_exp'   , reference_exp('npath', 'tree'), '|', reference_exp('npath', 'leaf'), assoc('left') ),
+                  rule_spec( 'npath_predicate_exp', reference_exp('npath'), '[', reference_exp('npred'), ']'                           ),
+                  rule_spec( 'npath_path_exp'     , reference_exp('npath', 'tree'), '/', reference_exp('npath', 'leaf'), assoc('left') ),
+                  rule_spec( 'npath_group_exp'    , '(', reference_exp('npath'), ')'                                                   )
                )
             ),
          
          #
          #    section macros_spec
          #       macro_spec => => statement() [ word:name (!whitespace '(' parameter_defs? ')')? '=>' expression ]
-         #                     ** @parameter_defs = @parameter_defs/(word|parameter_def_tree/(@tree|@leaf)//)
          #       
          #       group parameter_defs
          #          parameter_def_tree => parameter_defs:tree ',' parameter_defs:leaf   @associativity=left
@@ -471,24 +473,6 @@ module Grammar
                      ),
                      '=>', 
                      reference_exp('expression') 
-                  ),
-                  assignment_transform(
-                     npath_slot_exp( "parameter_defs" ),
-                     npath_path_exp(
-                        npath_slot_exp("parameter_defs"),
-                        npath_branch_exp(
-                           npath_type_exp("word"),
-                           npath_recurse_exp(
-                              npath_path_exp(
-                                 npath_type_exp("parameter_def_tree"),
-                                 npath_branch_exp(
-                                    npath_slot_exp("tree"),
-                                    npath_slot_exp("leaf")
-                                 )
-                              )
-                           )
-                        )
-                     )
                   )
                ),
                
@@ -503,8 +487,69 @@ module Grammar
                   
                   spec_reference('word')
                )
-            )
+            ),
             
+         #
+         #    transformations
+         #       macro_call      ** @parameters = @parameters/{@tree|@leaf}[expression]
+         #       npred_or_exp    ** @elements = @tree[npred_or_exp]/@elements  | @tree[!npred_or_exp]  | @leaf
+         #       npred_and_exp   ** @elements = @tree[npred_and_exp]/@elements | @tree[!npred_and_exp] | @leaf
+         #       npath_group_exp ** . = @npath
+         #       macro_spec      ** @parameter_defs = @parameter_defs/{@tree|@leaf}[word]
+         #    end
+         
+            transformations(
+               transformation_set( "macro_call",
+                  assignment_transform(
+                     npath_slot_exp( "parameters" ),
+                     npath_predicate_exp(
+                        npath_path_exp( npath_slot_exp("parameters"), npath_tclose_exp(npath_branch_exp(npath_slot_exp("tree"),npath_slot_exp("leaf"))) ),
+                        npred_type_exp("expression")
+                     )
+                  )
+               ),
+            
+               transformation_set( "npred_or_exp",
+                  assignment_transform(
+                     npath_slot_exp( "elements" ),
+                     npath_branch_exp(
+                        npath_path_exp( npath_predicate_exp(npath_slot_exp("tree"), npred_type_exp("npred_or_exp")), npath_slot_exp("elements") ),
+                        npath_predicate_exp( npath_slot_exp("tree"), npred_negation_exp(npred_type_exp("npred_or_exp")) ),
+                        npath_slot_exp("leaf")
+                     )
+                  )
+               ),
+            
+               transformation_set( "npred_and_exp",
+                  assignment_transform(
+                     npath_slot_exp( "elements" ),
+                     npath_branch_exp(
+                        npath_path_exp( npath_predicate_exp(npath_slot_exp("tree"), npred_type_exp("npred_and_exp")), npath_slot_exp("elements") ),
+                        npath_predicate_exp( npath_slot_exp("tree"), npred_negation_exp(npred_type_exp("npred_and_exp")) ),
+                        npath_slot_exp("leaf")
+                     )
+                  )
+               ),
+            
+               transformation_set( "npath_group_exp",
+                  assignment_transform(
+                     npath_self_exp(),
+                     npath_slot_exp( "npath" )
+                  )
+               ),
+            
+               transformation_set( "macro_spec",
+                  assignment_transform(
+                     npath_slot_exp( "parameter_defs" ),
+                     npath_predicate_exp(
+                        npath_path_exp( npath_slot_exp("parameter_defs"), npath_tclose_exp(npath_branch_exp(npath_slot_exp("tree"), npath_slot_exp("leaf"))) ),
+                        npred_type_exp("word")
+                     )
+                  )
+               )
+            
+            )
+         
          #
          # end
          #
@@ -821,12 +866,18 @@ module Grammar
                return true if node.type == "append_transform"
             when "npath"
                return true if node.type == "npath_self_exp"
-               return true if node.type == "npath_type_exp"
                return true if node.type == "npath_slot_exp"
-               return true if node.type == "npath_recurse_exp"
-               return true if node.type == "npath_path_exp"
-               return true if node.type == "npath_branch_exp"
                return true if node.type == "npath_group_exp"
+               return true if node.type == "npath_tclose_exp"
+               return true if node.type == "npath_branch_exp"
+               return true if node.type == "npath_predicate_exp"
+               return true if node.type == "npath_path_exp"
+            when "npred"
+               return true if node.type == "npred_type_exp"
+               return true if node.type == "npred_slot_exp"
+               return true if node.type == "npred_or_exp"
+               return true if node.type == "npred_and_exp"
+               return true if node.type == "npred_negation_exp"
             when "macro_spec"
                return true if node.type == "simple_macro"
                return true if node.type == "parameterized_macro"
@@ -860,21 +911,24 @@ module Grammar
       # ::grammar_spec()
    
       def self.grammar_spec( name, *clauses )
-         priority       = nil
-         options        = []
-         specifications = []
+         priority        = nil
+         options         = []
+         specifications  = []
+         transformations = nil
          
          clauses.each do |clause|
             if node_has_type?(clause, "option") then
                options << clause
             elsif clause.type.name == "priority" then
                priority = clause
+            elsif clause.type.name == "transformations" then
+               transformations = clause
             else
                specifications << clause
             end
          end
          
-         return node( "grammar_spec", :name => w(name), :priority => priority, :options => options, :specifications => specifications )
+         return node( "grammar_spec", :name => w(name), :priority => priority, :options => options, :specifications => specifications, :transformations => transformations )
       end
       
 
@@ -1255,6 +1309,22 @@ module Grammar
       
       
       #
+      # ::transformations()
+   
+      def self.transformations( *sets )
+         return node( "transformations", :transformation_sets => sets )
+      end
+      
+      
+      #
+      # ::transformation_set()
+      
+      def self.transformation_set( rule_name, *specs )
+         return node( "transformation_set", :rule_name => w(rule_name), :transformation_specs => specs )
+      end
+      
+      
+      #
       # ::assignment_transform()
       
       def self.assignment_transform( destination, source )
@@ -1271,6 +1341,56 @@ module Grammar
       
       
       #
+      # ::npred_type_exp()
+      
+      def self.npred_type_exp( type_name )
+         return type_name if type_name.is_an?(ASN)
+         return node( "npred_type_exp", :type_name => w(type_name) )
+      end
+      
+      
+      #
+      # ::npred_slot_exp()
+      
+      def self.npred_slot_exp( slot_name )
+         return node( "npred_slot_exp", :slot_name => w(slot_name) )
+      end
+      
+      
+      #
+      # ::npred_or_exp()
+      
+      def self.npred_or_exp( tree, leaf, *more )
+         if more.empty? then
+            return node( "npred_or_exp", :tree => tree, :leaf => leaf )
+         else
+            return npred_or_exp( npred_or_exp(tree, leaf), *more )
+         end
+      end
+      
+      
+      #
+      # ::npred_and_exp()
+      
+      def self.npred_and_exp( tree, leaf, *more )
+         if more.empty? then
+            return node( "npred_and_exp", :tree => tree, :leaf => leaf )
+         else
+            return npred_and_exp( npred_and_exp(tree, leaf), *more )
+         end
+      end
+      
+      
+      #
+      # ::npred_negation_exp()
+      
+      def self.npred_negation_exp( npred )
+         return node( "npred_negation_exp", npred )
+      end
+      
+      
+      
+      #
       # ::npath_self_exp()
       
       def self.npath_self_exp()
@@ -1279,27 +1399,10 @@ module Grammar
       
       
       #
-      # ::npath_type_exp()
-      
-      def self.npath_type_exp( type_name )
-         return type_name if type_name.is_an?(ASN)
-         return node( "npath_type_exp", :type_name => w(type_name) )
-      end
-      
-      
-      #
       # ::npath_slot_exp()
       
       def self.npath_slot_exp( slot_name )
          return node( "npath_slot_exp", :slot_name => w(slot_name) )
-      end
-      
-      
-      #
-      # ::npath_recurse_exp()
-      
-      def self.npath_recurse_exp( npath )
-         return node( "npath_recurse_exp", :npath => npath )
       end
       
       
@@ -1335,6 +1438,21 @@ module Grammar
       end
 
 
+      #
+      # ::npath_tclose_exp()
+      
+      def self.npath_tclose_exp( npath )
+         return node( "npath_tclose_exp", :npath => npath )
+      end
+      
+      
+      #
+      # ::npath_predicate_exp()
+      
+      def self.npath_predicate_exp( npath, predicate )
+         return node( "npath_predicate_exp", :npath => npath, :npred => predicate )
+      end
+      
 
 
       
