@@ -9,51 +9,59 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/expression_forms/sequence.rb"
+
 
 module RCC
-module Plan
-
+module Plan 
+module Transformations
+ 
  
  #============================================================================================================================
- # class ASTClass
- #  - plan for an AST classes that can be built from our Rules and Forms
+ # class PredicateAnd
+ #  - a base class for things that select nodes from an ASN as part of a transformation
 
-   class ASTClass
+   class PredicateAnd < Util::ExpressionForms::Sequence
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :slots
-      attr_reader :transformations
+
+      #
+      # apply()
+      #  - for PredicateAnd, we take the intersection of all produced nodes
       
-      def initialize( name )
-         @name            = name
-         @slots           = []
-         @transformations = []
+      def apply( nodes )
+         self.each_element do |element|
+            nodes &= element.apply( nodes )
+         end
+         
+         return nodes
       end
       
-      def define_slot( name, bug_if_duplicate = true )
-         bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
-         @slots << name unless @slots.member?(name)
-      end
+      
+      
+      #
+      # display()
       
       def display( stream = $stdout )
-         stream.puts "#{@name} slots:"
-         stream.indent do
-            @slots.each do |slot|
-               stream.puts slot
-            end
+         show_separator = false
+         self.elements.each do |element|
+            stream << "&" if show_separator
+            stream << element
+            
+            show_separator = true
          end
       end
       
-   end # ASTClass
+      
+   end # PredicateAnd
    
 
 
-
-
-
-end  # module Plan 
+end  # module Transformations
+end  # module Plan
 end  # module RCC
+
+

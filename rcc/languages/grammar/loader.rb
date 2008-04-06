@@ -9,7 +9,7 @@
 #================================================================================================================================
 
 require "#{File.dirname(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/languages/grammar/bootstrap_grammar.rb"
+require "#{$RCCLIB}/languages/grammar/grammar.rb"
 require "#{$RCCLIB}/languages/grammar/model_builder.rb"
 require "#{$RCCLIB}/scanner/interpreter/factory.rb"
 
@@ -56,7 +56,7 @@ module Grammar
       #  - loads and initializes the bootstrap parser that will be used to load Grammars
       
       def self.initialize_bootstrap_parser( )
-         system_model = ModelBuilder.build( BootstrapGrammar.ast )
+         system_model = ModelBuilder.build( Grammar.ast )
          master_plan  = system_model.compile_master_plan()
          parser_plan  = master_plan.compile_parser_plan( system_model.start_rule ).compile_actions( true )
       

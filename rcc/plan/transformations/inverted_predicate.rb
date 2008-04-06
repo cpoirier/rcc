@@ -9,51 +9,53 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/transformations/predicate.rb"
 
 module RCC
 module Plan
-
+module Transformations
+ 
  
  #============================================================================================================================
- # class ASTClass
- #  - plan for an AST classes that can be built from our Rules and Forms
+ # class InvertedPredicate
+ #  - a predicate that picks data based on what another Predicate doesn't pick
 
-   class ASTClass
+   class InvertedPredicate < Predicate
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :slots
-      attr_reader :transformations
+      attr_reader :predicate
       
-      def initialize( name )
-         @name            = name
-         @slots           = []
-         @transformations = []
+      def initialize( predicate )
+         @predicate = predicate
       end
       
-      def define_slot( name, bug_if_duplicate = true )
-         bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
-         @slots << name unless @slots.member?(name)
+      
+      #
+      # apply()
+      
+      def apply( nodes )
+         return nodes - @predicate.apply(nodes)
       end
+      
+      
+      
+      #
+      # display()
       
       def display( stream = $stdout )
-         stream.puts "#{@name} slots:"
-         stream.indent do
-            @slots.each do |slot|
-               stream.puts slot
-            end
+         super(stream) do
+            stream << "!" << @predicate
          end
       end
       
-   end # ASTClass
+      
+   end # InvertedPredicate
    
 
 
-
-
-
-end  # module Plan 
+end  # module Transformations
+end  # module Plan
 end  # module RCC

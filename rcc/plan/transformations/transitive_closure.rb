@@ -9,51 +9,60 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/transformations/selector.rb"
 
 module RCC
 module Plan
-
+module Transformations
+ 
  
  #============================================================================================================================
- # class ASTClass
- #  - plan for an AST classes that can be built from our Rules and Forms
+ # class TransitiveClosure
+ #  - a selector that repeatedly applies another selector to a set of nodes, merging in the results, until all results are 
+ #    found
 
-   class ASTClass
+   class TransitiveClosure < Selector
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :slots
-      attr_reader :transformations
+      attr_reader :selector
       
-      def initialize( name )
-         @name            = name
-         @slots           = []
-         @transformations = []
+      def initialize( selector )
+         super( false )
+         @selector = selector
       end
       
-      def define_slot( name, bug_if_duplicate = true )
-         bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
-         @slots << name unless @slots.member?(name)
+      
+      #
+      # apply()
+      
+      def apply( nodes )
+         results    = nodes
+         difference = nodes
+         until difference.empty?
+            step_results = @selector.apply( difference )
+            difference   = step_results - results
+            results.concat( difference )
+         end
+         
+         return results
       end
+      
+      
+      #
+      # display()
       
       def display( stream = $stdout )
-         stream.puts "#{@name} slots:"
-         stream.indent do
-            @slots.each do |slot|
-               stream.puts slot
-            end
-         end
+         stream << "{" << @selector << "}"
       end
       
-   end # ASTClass
+      
+   end # TransitiveClosure
    
 
 
-
-
-
-end  # module Plan 
+end  # module Transformations
+end  # module Plan
 end  # module RCC

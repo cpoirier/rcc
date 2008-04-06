@@ -42,7 +42,7 @@ module Nodes
          @text = text
          locate( start_position, line_number, column_number, source, type, faked, follow_position )
          
-         @text.source = self
+         ignore_errors { @text.source = self }
       end
       
       

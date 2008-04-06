@@ -9,51 +9,61 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/transformations/selector.rb"
 
 module RCC
 module Plan
-
+module Transformations
+ 
  
  #============================================================================================================================
- # class ASTClass
- #  - plan for an AST classes that can be built from our Rules and Forms
+ # class Predicate
+ #  - a base class for things that eliminate nodes from Selector results set
 
-   class ASTClass
+   class Predicate < Selector
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :slots
-      attr_reader :transformations
-      
-      def initialize( name )
-         @name            = name
-         @slots           = []
-         @transformations = []
+      def initialize()
+         super( false )
       end
       
-      def define_slot( name, bug_if_duplicate = true )
-         bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
-         @slots << name unless @slots.member?(name)
+      
+      #
+      # apply()
+      
+      def apply( nodes )
+         bug( "you must override Predicate.apply()" )
       end
+      
+      
+      #
+      # display()
       
       def display( stream = $stdout )
-         stream.puts "#{@name} slots:"
-         stream.indent do
-            @slots.each do |slot|
-               stream.puts slot
-            end
+         @selector.display( stream )
+         if block_given? then
+            stream << "[" 
+            yield()
+            stream << "]"
          end
       end
       
-   end # ASTClass
+      
+   end # Predicate
    
 
 
-
-
-
-end  # module Plan 
+end  # module Transformations
+end  # module Plan
 end  # module RCC
+
+
+require "#{$RCCLIB}/plan/transformations/predicate_and.rb"
+require "#{$RCCLIB}/plan/transformations/predicate_or.rb"
+
+require "#{$RCCLIB}/plan/transformations/inverted_predicate.rb"
+require "#{$RCCLIB}/plan/transformations/type_predicate.rb"
+require "#{$RCCLIB}/plan/transformations/not_type_predicate.rb"

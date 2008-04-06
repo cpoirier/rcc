@@ -9,51 +9,59 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/util/expression_forms/sequence.rb"
+
 
 module RCC
-module Plan
-
+module Plan 
+module Transformations
+ 
  
  #============================================================================================================================
- # class ASTClass
- #  - plan for an AST classes that can be built from our Rules and Forms
+ # class SelectorBranch
+ #  - a base class for things that select nodes from an ASN as part of a transformation
 
-   class ASTClass
+   class SelectorBranch < Util::ExpressionForms::BranchPoint
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :slots
-      attr_reader :transformations
+
+      #
+      # apply()
+      #  - for a SelectorBranch, we collect all resulting nodes
       
-      def initialize( name )
-         @name            = name
-         @slots           = []
-         @transformations = []
+      def apply( nodes )
+         results = []
+         self.each_element do |element|
+            results |= element.apply( nodes )
+         end
+         
+         return results
       end
       
-      def define_slot( name, bug_if_duplicate = true )
-         bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
-         @slots << name unless @slots.member?(name)
-      end
+      
+      #
+      # display()
       
       def display( stream = $stdout )
-         stream.puts "#{@name} slots:"
-         stream.indent do
-            @slots.each do |slot|
-               stream.puts slot
-            end
+         show_separator = false
+         self.branches.each do |element|
+            stream << " or " if show_separator
+            stream << "(" << element << ")"
+            
+            show_separator = true
          end
       end
       
-   end # ASTClass
+      
+   end # SelectorBranch
    
 
 
-
-
-
-end  # module Plan 
+end  # module Transformations
+end  # module Plan
 end  # module RCC
+
+

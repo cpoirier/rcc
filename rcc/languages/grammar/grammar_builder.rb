@@ -10,7 +10,7 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/scanner/artifacts/name.rb"
-require "#{$RCCLIB}/languages/grammar/bootstrap_grammar.rb"
+require "#{$RCCLIB}/languages/grammar/grammar.rb"
 require "#{$RCCLIB}/languages/grammar/naming_context.rb"
 require "#{$RCCLIB}/util/sparse_range.rb"
 require "#{$RCCLIB}/util/directed_acyclic_graph.rb"
@@ -162,13 +162,19 @@ module Grammar
             # in the same way -- with one singular name mapping to one plural name, regardles of slot
             # type.
             
-            @rule_defs[name].each_plural_import do |tree_slot, pluralization, singular_name, plural_name, types|
-               
-               # node_search_inner = TransitiveClosure.new( create_branch_point(SlotSelector.new("_tree"), SlotSelector.new(singular_name)) )
-               # node_search_outer = create_sequence( SlotSelector.new(tree_slot), node_search_inner )
-               # node_search       = NegativePredicate.new( TypePredicate.new(pluralization.name) )
-               # 
-               # transformations << AssignmentTransform.new( SlotSelector.new(plural_name), node_search )
+            @rule_defs[name].each_plural_import do |tree_slot, pluralization, singular_name, plural_name|
+               @rule_defs[name].transformations << validate_transform( name,
+                  Grammar.assignment_transform(
+                     Grammar.npath_slot_exp(plural_name),
+                     Grammar.npath_predicate_exp(
+                        Grammar.npath_path_exp( 
+                           Grammar.npath_slot_exp(tree_slot), 
+                           Grammar.npath_tclose_exp( Grammar.npath_branch_exp(Grammar.npath_slot_exp("_tree"), Grammar.npath_slot_exp(singular_name)) )
+                        ),
+                        Grammar.npred_negation_exp( Grammar.npred_type_exp(pluralization.name.name) )
+                     )
+                  )
+               )
             end
 
             #
@@ -176,10 +182,8 @@ module Grammar
 
             if spec.slot_filled?(:transformation_specs) then
                spec.transformation_specs.each do |transformation_spec|
-                  transformation_set << process_transformation_spec( transformation_spec )
+                  @rule_defs[name].transformations << validate_transform( name, transformation_spec )
                end
-               
-               @rule_defs[name].transformations = transformation_set
             end
             
          end
@@ -1060,6 +1064,51 @@ module Grammar
                   node
             end
          end
+      end
+      
+      
+
+      #
+      # validate_transform()
+      #  - validates a single transformation_spec ASN for use with a Rule
+      #  - adds _type_name with a Name to appropriate nodes
+      
+      def validate_transform( rule, spec )
+         warn_nyi( "transformation validations" )
+         
+         case spec.type.name
+            
+         when "assignment_transform", "append_transform"
+            warn_nyi( "destination cardinality validation" )
+            validate_transform( rule, spec.source )
+            
+            
+         when "npath_predicate_exp"
+            validate_transform( rule, spec.npath )
+            validate_transform( rule, spec.npred )
+         when "npath_path_exp", "npath_branch_exp"
+            validate_transform( rule, spec.tree )
+            validate_transform( rule, spec.leaf )
+         when "npath_tclose_exp"
+            validate_transform( rule, spec.npath )
+         when "npath_slot_exp"
+            # no op, for now
+            
+            
+         when "npred_type_exp"
+            spec.define_slot( :_type_name, create_name(spec.type_name) )
+         when "npred_slot_exp"
+            # no op, for now
+         when "npred_negation_exp"
+            validate_transform( rule, spec.npred )
+         when "npred_or_exp", "npred_and_exp"
+            validate_transform( rule, spec.tree )
+            validate_transform( rule, spec.leaf )
+         else
+            nyi( "support for transform element [#{spec.type.name}]", spec )
+         end
+         
+         return spec
       end
       
       

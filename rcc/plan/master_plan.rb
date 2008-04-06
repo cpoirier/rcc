@@ -18,6 +18,7 @@ require "#{$RCCLIB}/plan/ast_class.rb"
 require "#{$RCCLIB}/plan/lexer_plan.rb"
 require "#{$RCCLIB}/plan/state.rb"
 require "#{$RCCLIB}/plan/parser_plan.rb"
+require "#{$RCCLIB}/plan/transformations/selector.rb"
 
 
 module RCC
@@ -103,7 +104,7 @@ module Plan
             
 
             #
-            # Process each Rule in the Gramar to produce Productions and ASTClasses.
+            # Process each Rule in the Grammar to produce Productions and ASTClasses.
             
             grammar_model.rules.each do |rule|
                next unless rule.is_a?(Model::Elements::Rule)
@@ -167,6 +168,7 @@ module Plan
                         when Model::Markers::RecoveryCommit
                            symbols[-1].recoverable = true unless symbols.empty?
                         else
+
                            slots << element.slot_name
                            ast_class.define_slot( element.slot_name, false ) unless element.slot_name.nil? 
                            
@@ -216,6 +218,38 @@ module Plan
                   end
                end
                
+               
+               #
+               # Build plans for the transformations for this Rule and add them to the ASTClass.
+
+               $stdout.with( :boolean_notation => true ) do 
+                  $stdout.puts "transformations for [#{rule.name}]:"
+                  $stdout.indent do
+                     rule.transformations.each do |spec|
+                        case spec.type.name
+                        when "assignment_transform"
+                           lhs_selector = build_transformation_selector( spec.destination, true )
+                           rhs_selector = build_transformation_selector( spec.source            )
+
+                           $stdout.puts( "target:" )
+                           $stdout.indent{ lhs_selector.display($stdout) }
+                           $stdout.end_line
+                           
+                           $stdout.puts( "source:" )
+                           $stdout.indent{ rhs_selector.display($stdout) }
+                           $stdout.end_line
+                           
+                           warn_nyi( "transformation plan" )
+                           ast_class.transformations << nil
+                        end
+                     end
+                  end
+               end
+               
+               
+               #
+               # Optionally display the build results.
+               
                if debug_production_build then
                   $stderr.indent do
                      $stderr.indent do
@@ -248,6 +282,8 @@ module Plan
             end
             
          end
+         
+         nyi()
          
          return MasterPlan.new( productions, group_members, ast_plans, lexer_plans, explain )
       end
@@ -400,6 +436,71 @@ module Plan
          return ParserPlan.new( self, name.grammar, state_table, true )
       end
       
+      
+
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Build support
+    #---------------------------------------------------------------------------------------------------------------------
+
+    private
+    
+    
+      #
+      # build_transformation_selector()
+      
+      def self.build_transformation_selector( spec, potential_target = false )
+         selector = nil
+         
+         case spec.type.name
+         when "npath_predicate_exp"
+            selector = Transformations::SelectorSequence.new( build_transformation_selector(spec.npath, potential_target), build_transformation_predicate(spec.npred) )
+         when "npath_path_exp"
+            selector = Transformations::SelectorSequence.new( build_transformation_selector(spec.tree), build_transformation_selector(spec.leaf, potential_target) )
+         when "npath_slot_exp"
+            selector = Transformations::SelectorSequence.new( Transformations::SlotSelector.new(spec.slot_name.text, potential_target) )
+         when "npath_tclose_exp"
+            selector = Transformations::SelectorSequence.new( Transformations::TransitiveClosure.new(build_transformation_selector(spec.npath, potential_target)) )
+         when "npath_branch_exp"            
+            selector = Transformations::SelectorBranch.new( build_transformation_selector(spec.tree), build_transformation_selector(spec.leaf, potential_target) )
+         when "npath_self_exp"
+            selector = Transformations::SelectorSequence.new( Transformations::SelfSelector.new(potential_target) )
+         else
+            nyi( "support for [#{spec.type.name}]", spec )
+         end
+         
+         return selector
+      end
+      
+
+      #
+      # build_transformation_predicate()
+      
+      def self.build_transformation_predicate( spec )
+         predicate = nil
+         
+         case spec.type.name
+         when "npred_type_exp"
+            predicate = Transformations::PredicateAnd.new( Transformations::TypePredicate.new(spec._type_name) )
+         when "npred_negation_exp"
+            case spec.npred.type.name
+            when "npred_type_exp"
+               predicate = Transformations::PredicateAnd.new( Transformations::NotTypePredicate.new(spec.npred._type_name) )
+            else
+               predicate = Transformations::PredicateAnd.new( Transformations::InvertedPredicate.new(build_transformation_predicate(spec.npred)) )
+            end         
+         when "npred_or_exp"
+            predicate = Transformations::PredicateOr.new( build_transformation_predicate(spec.tree), build_transformation_predicate(spec.leaf) )
+         when "npred_and_exp"
+            predicate = Transformations::PredicateAnd.new( build_transformation_predicate(spec.tree), build_transformation_predicate(spec.leaf) )
+         else 
+            nyi( "support for [#{spec.type.name}]", spec )
+         end   
+                     
+         return predicate
+      end
       
       
 

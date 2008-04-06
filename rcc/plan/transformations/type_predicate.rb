@@ -9,51 +9,52 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/transformations/predicate.rb"
 
 module RCC
 module Plan
-
+module Transformations
+ 
  
  #============================================================================================================================
- # class ASTClass
- #  - plan for an AST classes that can be built from our Rules and Forms
+ # class TypePredicate
+ #  - a predicate that picks data from a set based on Type
 
-   class ASTClass
+   class TypePredicate < Predicate
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :slots
-      attr_reader :transformations
+      attr_reader :type_name
       
-      def initialize( name )
-         @name            = name
-         @slots           = []
-         @transformations = []
+      def initialize( type_name )
+         @type_name = type_name
       end
       
-      def define_slot( name, bug_if_duplicate = true )
-         bug( "you cannot redefine slot [#{name}]" ) if bug_if_duplicate and @slots.member?(name)
-         @slots << name unless @slots.member?(name)
+      
+      #
+      # apply()
+      
+      def apply( nodes )
+         return nodes.select {|node| node.type == @type_name }
       end
+      
+      
+      #
+      # display()
       
       def display( stream = $stdout )
-         stream.puts "#{@name} slots:"
-         stream.indent do
-            @slots.each do |slot|
-               stream.puts slot
-            end
+         super(stream) do
+            stream << @type_name
          end
       end
       
-   end # ASTClass
+      
+   end # TypePredicate
    
 
 
-
-
-
-end  # module Plan 
+end  # module Transformations
+end  # module Plan
 end  # module RCC
