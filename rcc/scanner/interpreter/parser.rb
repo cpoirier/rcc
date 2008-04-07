@@ -166,6 +166,8 @@ module Interpreter
                hard_correction_limit = min( hard_correction_limit, solution.corrections_cost )
                soft_correction_limit = min( hard_correction_limit, soft_correction_limit     )
                
+               solution.node.commit()
+               
             rescue ParseError => e
                position = e.position
                position.state.provide_context do 

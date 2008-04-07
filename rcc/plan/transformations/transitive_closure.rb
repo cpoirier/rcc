@@ -37,8 +37,11 @@ module Transformations
       
       #
       # apply()
+      #  - transitive closure always results in plural results
+      #  - we assume most trees are left-associative, and so reverse the results order
       
       def apply( nodes )
+         nodes      = nodes.to_a
          results    = nodes
          difference = nodes
          until difference.empty?
@@ -47,7 +50,7 @@ module Transformations
             results.concat( difference )
          end
          
-         return results
+         return results.reverse
       end
       
       

@@ -28,19 +28,94 @@ module Transformations
     #---------------------------------------------------------------------------------------------------------------------
 
 
+      def <<( element )
+         if defined?(@lhs_predicate) and @lhs_predicate.exists? then
+            @predicate << element
+         else
+            super
+         
+            last_element = self.elements[-1]
+            if last_element.is_a?(Selector) and last_element.target? then
+               @predicate = SelectorSequence.new()
+            end
+         end
+      end
+
 
       #
       # apply()
       #  - for a SelectorSequence, we chain through our selectors and return only the last produced set of nodes
       
       def apply( nodes )
-         self.each_element do |element|
-            nodes = element.apply( nodes )
-         end
-         
-         return nodes
+         traverse(nodes){|element, nodes| element.apply(nodes)}
       end
       
+      
+      
+      #
+      # assign()
+      #  - assigns the results of an RHS selector to that denoted by this one
+      
+      def assign( search_nodes, result_nodes )
+         traverse(search_nodes) do |element, nodes|
+            element.assign( nodes, result_nodes )
+            break if element.target?
+         end
+         
+         warn_nyi( "what should assign() return?  should results of a sequence be usable in a branch that isn't otherwise finished?" )
+      end
+
+
+      #
+      # append()
+      
+      def append( search_nodes, result_nodes )
+         traverse(search_nodes) do |element, nodes|
+            element.append( nodes, results_nodes )
+            break if element.target?
+         end
+         
+         return nil
+      end
+      
+      
+      #
+      # targets()
+      #  - returns any target? elements
+      
+      def targets()
+         targets = []
+         
+         each_element() do |element|
+            if targets = element.targets then
+               break
+            end
+         end
+         
+         return targets
+      end
+      
+      
+      #
+      # traverse()
+      #  - internal routine that drives the processing of this sequence
+      #  - supply a block to do the particular element work
+      
+      def traverse( nodes )
+         scalar = !nodes.is_an?(Array)
+         
+         self.each_element do |element|
+            results = yield( element, nodes )
+            scalar  = false if results.is_an?(Array)
+            nodes   = results
+         end
+         
+         if scalar && nodes.length <= 1 then
+            return nodes.empty? ? nil : nodes[0]
+         else
+            return nodes
+         end
+      end
       
       
       #

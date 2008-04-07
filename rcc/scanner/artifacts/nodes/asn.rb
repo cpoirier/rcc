@@ -51,24 +51,164 @@ module Nodes
          @slots       = slots
          @first_token = component_nodes[0].first_token
          @last_token  = component_nodes[-1].last_token
+         @committed   = false
       end
       
       def ast_class_name()
          return @ast_class.name
       end
       
-      def display( stream = $stdout ) 
-         stream << "#{@ast_class.name} =>" << "\n"
+      
+      def []( slot_name )
+         if @slots.member?(slot_name) then
+            return @slots[slot_name]
+         else
+            return nil
+         end
+      end
+      
+      
+      def []=(slot_name, value)
+         @slots[slot_name] = value
+      end
+      
+      
+      def slot_defined?( slot )
+         return @slots.member?(slot)
+      end
+      
+      def slot_filled?( slot )
+         return false unless @slots.member?(slot)
+         return !@slots[slot].empty? if @slots[slot].is_an?(Array)
+         return !@slots[slot].nil?
+      end
+      
+      def define_slot( slot, value )
+         @slots[slot] = value
+      end
 
+      def method_missing( id, *args )
+         name, set = id.to_s.split("=")
+         slot      = name
+         
+         assert( set == "" || set.nil?, "unknown method [#{id.to_s}]"        )
+         assert( @slots.member?(slot) , "unknown property or slot [#{name}]" )
+         
+         if set == "" then
+            assert( args.length == 1, "expected 1 value to set into slot [#{name}]")
+            @slots[slot] = args[0]
+         else
+            assert( args.length == 0, "expected 0 values when getting from slot" )
+            return @slots[slot]
+         end
+      end
+      
+      
+      
+      # def display( stream = $stdout ) 
+      #    stream << "#{@ast_class.name} =>" << "\n"
+      # 
+      #    stream.indent do
+      #       @slots.each do |slot_name, symbol|
+      #          stream << slot_name << ":\n"
+      #          stream.indent do
+      #             symbol.display( stream )
+      #          end
+      #       end
+      #    end
+      # end
+      # 
+
+      def display( stream = $stdout )
+         stream.puts @type
          stream.indent do
-            @slots.each do |slot_name, symbol|
+            @slots.each do |slot_name, value|
+               next if stream[:skip_generated] && slot_name.slice(0..0) == "_"
                stream << slot_name << ":\n"
                stream.indent do
-                  symbol.display( stream )
+                  self.class.display_node( value, stream )
                end
             end
          end
       end
+      
+      def self.display_node( node, stream = $stdout )
+         case node
+         when NilClass
+            stream << "<nil>\n"
+         when Array
+            index = 0
+            node.each do |child_node|
+               stream << "[#{index}]:\n"
+               stream.indent do 
+                  display_node( child_node, stream )
+               end
+               index += 1
+            end
+         when ASN
+            node.display( stream )
+         when Token
+            node.display( stream )
+         when String
+            stream.puts( node )
+         else
+            stream.puts( node.class.name )
+         end
+      end
+
+      
+      
+      #
+      # commit()
+      #  - applies Transformations to this node and its descendents, following REDUCE order
+
+      def commit( recurse = true )
+         return true if @committed
+         
+         #
+         # We want to commit in REDUCE order, but we don't want to risk a stack overflow by
+         # recursing.  So, we'll build a work queue.  @committed will keep everything straight.
+
+         if recurse then
+            expanded   = {}
+            work_queue = @slots.values.reverse
+            until work_queue.empty?
+               asn = work_queue.shift
+               next if asn.committed?
+            
+               if expanded.member?(asn) then
+                  asn.commit(false)
+               else
+                  work_queue.unshift(asn)
+                  expanded[asn] = true
+                  asn.slots.values.reverse.each do |child_asn| 
+                     work_queue.unshift child_asn unless child_asn.token?
+                  end
+               end
+            end
+            
+            # @slots.each do |name, asn|
+            #    asn.commit( true )
+            # end
+         end
+         
+         
+         #
+         # Apply our own Transformations.
+         
+         @ast_class.transformations.each do |transform|
+            transform.apply( self )
+         end
+         
+         @committed = true
+         return true
+      end
+      
+      
+      def committed?()
+         return @committed
+      end
+      
       
       
       def format( top = true )

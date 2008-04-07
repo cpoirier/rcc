@@ -9,53 +9,37 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/util/expression_forms/sequence.rb"
-
+require "#{$RCCLIB}/plan/transformations/predicate.rb"
 
 module RCC
-module Plan 
+module Plan
 module Transformations
  
  
  #============================================================================================================================
- # class PredicateAnd
- #  - a base class for things that select nodes from an ASN as part of a transformation
+ # class ExistsPredicate
+ #  - a predicate that picks data based on the existence of results from a selector run against the nodes
 
-   class PredicateAnd < Util::ExpressionForms::Sequence
+   class ExistsPredicate < Predicate
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-
+      attr_reader :selector
+      
+      def initialize( selector )
+         @selector = selector
+      end
+      
+      
       #
       # apply()
-      #  - for PredicateAnd, we take the intersection of all produced nodes
       
       def apply( nodes )
          Predicate.apply(nodes) do |nodes|
-            results = []
-            self.each_element do |element|
-               nodes &= element.apply( nodes )
-            end
-            results
+            return nodes.select{|node| !@selector.apply([node]).empty? }
          end
-      end
-      
-      
-      #
-      # assign()
-      
-      def assign( search_nodes, result_nodes )
-         return self.apply( search_nodes )
-      end
-      
-      
-      #
-      # append()
-      
-      def append( search_nodes, results_nodes )
-         return self.apply( search_nodes )
       end
       
       
@@ -64,22 +48,16 @@ module Transformations
       # display()
       
       def display( stream = $stdout )
-         show_separator = false
-         self.elements.each do |element|
-            stream << "&" if show_separator
-            stream << element
-            
-            show_separator = true
+         super(stream) do
+            stream << "!" << @predicate
          end
       end
       
       
-   end # PredicateAnd
+   end # ExistsPredicate
    
 
 
 end  # module Transformations
 end  # module Plan
 end  # module RCC
-
-

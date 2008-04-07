@@ -9,53 +9,37 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/plan/transformations/predicate.rb"
+require "#{$RCCLIB}/plan/transformations/transform.rb"
 
 module RCC
-module Plan
+module Plan 
 module Transformations
  
  
  #============================================================================================================================
- # class TypePredicate
- #  - a predicate that picks data from a set based on Type
+ # class AssignmentTransform
 
-   class TypePredicate < Predicate
+   class AssignmentTransform < Transform
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :type_name
-      
-      def initialize( type_name )
-         @type_name = type_name
+      def initialize( lhs_selector, rhs_selector )
+         super( lhs_selector, rhs_selector )
       end
       
       
       #
       # apply()
+      #  - performs the transform
       
-      def apply( nodes )
-         if nodes.is_an?(Array) then
-            return nodes.select {|node| node.type == @type_name }
-         else
-            return nodes.type == @type_name ? nodes : nil
-         end
+      def apply( node )
+         @lhs_selector.assign( node, @rhs_selector.apply(node) )
       end
       
       
-      #
-      # display()
-      
-      def display( stream = $stdout )
-         super(stream) do
-            stream << @type_name
-         end
-      end
-      
-      
-   end # TypePredicate
+   end # AssignmentTransform
    
 
 

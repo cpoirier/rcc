@@ -36,6 +36,10 @@ module Grammar
          @label_is_explicit = false
       end
       
+      def explicit_label_pending?()
+         return @label_is_explicit
+      end
+      
       
       #
       # apply_label()

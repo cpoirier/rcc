@@ -81,7 +81,7 @@ module Grammar
          
          if @specifications.empty? then
             register_specs( @grammar_spec.specifications ) 
-            integrate_transformations( @grammar_spec.transformations.transformation_sets ) if @grammar_spec.slot_filled?(:transformations)
+            integrate_transformations( @grammar_spec.transformations.transformation_sets ) if @grammar_spec.slot_filled?("transformations")
          end
          
 
@@ -180,7 +180,7 @@ module Grammar
             #
             # Process any explicit transformations.
 
-            if spec.slot_filled?(:transformation_specs) then
+            if spec.slot_filled?("transformation_specs") then
                spec.transformation_specs.each do |transformation_spec|
                   @rule_defs[name].transformations << validate_transform( name, transformation_spec )
                end
@@ -308,9 +308,9 @@ module Grammar
                   end
 
                when "strings_spec"
-                  work_queue = node.string_specs + work_queue if node.slot_filled?(:string_specs)
+                  work_queue = node.string_specs + work_queue if node.slot_filled?("string_specs")
                when "macros_spec"
-                  work_queue = node.macro_specs + work_queue if node.slot_filled?(:macro_specs)
+                  work_queue = node.macro_specs + work_queue if node.slot_filled?("macro_specs")
                   warn_nyi "ModelBuilder: macro_specs are not being validated, currently"
                   
                when "string_spec", "macro_spec", "rule_spec", "group_spec"
@@ -887,7 +887,7 @@ module Grammar
                         else
                            child_name = plural_name
                         end
-                     elsif node.expression.slot_filled?(:label) then
+                     elsif node.expression.slot_filled?("label") then
                         singular_name = node.expression.label.text
                         plural_name   = rule_name + "_" + pluralize( singular_name )
                         
@@ -937,7 +937,7 @@ module Grammar
                symbol = StringReference.new( word_name )
                result = create_sequence( symbol )
                
-               naming_context.name( symbol, node.label, true ) if node.label.exists?
+               naming_context.name( symbol, node.label, true ) if (node.label.exists? or naming_context.explicit_label_pending?)
             
             when "reference_exp"
                referenced_name = node.name.text
@@ -1020,7 +1020,7 @@ module Grammar
             when "macro_call"
                macro_name = call_exp.macro_name.text
                parameters = call_exp.parameters 
-               body       = call_exp.body if call_exp.slot_filled?(:body)
+               body       = call_exp.body if call_exp.slot_filled?("body")
             else
                bug( "why are you passing me a [#{call_exp.type}]?" )
          end
@@ -1079,8 +1079,8 @@ module Grammar
          case spec.type.name
             
          when "assignment_transform", "append_transform"
-            warn_nyi( "destination cardinality validation" )
             validate_transform( rule, spec.source )
+            validate_transform( rule, spec.destination )
             
             
          when "npath_predicate_exp"
@@ -1091,12 +1091,12 @@ module Grammar
             validate_transform( rule, spec.leaf )
          when "npath_tclose_exp"
             validate_transform( rule, spec.npath )
-         when "npath_slot_exp"
+         when "npath_slot_exp", "npath_self_exp"
             # no op, for now
             
             
          when "npred_type_exp"
-            spec.define_slot( :_type_name, create_name(spec.type_name) )
+            spec.define_slot( "_type_name", create_name(spec.type_name) )
          when "npred_slot_exp"
             # no op, for now
          when "npred_negation_exp"

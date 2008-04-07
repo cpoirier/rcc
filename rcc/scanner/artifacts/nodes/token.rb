@@ -156,10 +156,10 @@ module Nodes
 
 
       #
-      # terminal?
-      #  - returns true if this Node is represents a grammar terminal (as opposed to a non-terminal)
+      # token?
+      #  - returns true if this Node is a Token
       
-      def terminal?()
+      def token?()
          return true
       end
 

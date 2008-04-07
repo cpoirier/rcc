@@ -30,19 +30,35 @@ module Transformations
       
       #
       # apply()
-      #  - for PredicateOr, we take the union of all produced nodes
+      #  - for PredicateOr, we take the union of all produced node(s)
       
       def apply( nodes )
-         results = []
-         self.each_element do |element|
-            results |= element.apply( nodes )
+         Predicate.apply(nodes) do |nodes|
+            results = []
+            self.each_element do |element|
+               results |= element.apply(nodes)
+            end
+            results
          end
-         
-         return results
       end
       
       
+      #
+      # assign()
       
+      def assign( search_nodes, result_nodes )
+         return self.apply( search_nodes )
+      end
+      
+      
+      #
+      # append()
+      
+      def append( search_nodes, results_nodes )
+         return self.apply( search_nodes )
+      end
+      
+            
       #
       # display()
       

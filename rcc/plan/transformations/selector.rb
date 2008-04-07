@@ -25,6 +25,7 @@ module Transformations
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      attr_accessor :target_predicate
       
       def initialize( target )
          @target = target
@@ -34,21 +35,49 @@ module Transformations
          return @target
       end
       
+      def has_target_predicate?()
+         return (defined?(@target_predicate) and @target_predicate.exists?)
+      end
+      
       
       #
       # apply()
+      #  - applies this selector to a node set, returning the resulting node(s)
+      #  - always returns a list in a plural context 
       
-      def apply( nodes )
+      def apply( node )
          bug( "you must override Selector.apply()" )
       end
       
       
       #
-      # collect()
-      #  - applies this Selector to a set of nodes and returns the results
+      # assign()
+      #  - most selectors can't be assigned to, but can form the path to the target
       
-      def collect()
-         bug( "you must override Selector.process()" )
+      def assign( search_nodes, result_nodes )
+         return apply(search_nodes)
+      end
+      
+      
+      #
+      # append()
+      #  - most selectors can't be append to, but can form the path to the target
+      
+      def append( search_nodes, result_nodes )
+         return apply(search_nodes)
+      end
+
+      
+      #
+      # targets()
+      #  - used to collect targets for LHS selectors
+      
+      def targets()
+         if @target then
+            return [self]
+         else
+            return []
+         end
       end
       
       
@@ -56,7 +85,10 @@ module Transformations
       # display()
       
       def display( stream = $stdout )
-         stream << " (target)" if @target
+         if target? then
+            stream << " (target)"
+            stream << " if " << @target_predicate if has_target_predicate?
+         end
       end
       
       
@@ -74,5 +106,6 @@ require "#{$RCCLIB}/plan/transformations/selector_branch.rb"
 
 require "#{$RCCLIB}/plan/transformations/self_selector.rb"
 require "#{$RCCLIB}/plan/transformations/slot_selector.rb"
+require "#{$RCCLIB}/plan/transformations/reverse_selector.rb"
 require "#{$RCCLIB}/plan/transformations/transitive_closure.rb"
 require "#{$RCCLIB}/plan/transformations/predicate.rb"

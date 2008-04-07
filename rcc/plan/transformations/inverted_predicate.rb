@@ -37,7 +37,9 @@ module Transformations
       # apply()
       
       def apply( nodes )
-         return nodes - @predicate.apply(nodes)
+         Predicate.apply(nodes) do |nodes|
+            return nodes - @predicate.apply(nodes)
+         end
       end
       
       

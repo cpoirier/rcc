@@ -9,77 +9,54 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/util/expression_forms/sequence.rb"
-
+require "#{$RCCLIB}/plan/transformations/selector.rb"
 
 module RCC
-module Plan 
+module Plan
 module Transformations
  
  
  #============================================================================================================================
- # class PredicateAnd
- #  - a base class for things that select nodes from an ASN as part of a transformation
+ # class ReverseSelector
+ #  - a selector that reverse whatever is passed to it
 
-   class PredicateAnd < Util::ExpressionForms::Sequence
+   class ReverseSelector < Selector
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-
+      def initialize( target )
+         super( target )
+      end
+      
+      
       #
       # apply()
-      #  - for PredicateAnd, we take the intersection of all produced nodes
+      #  - applies this selector to a node set, returning the resulting node(s)
       
       def apply( nodes )
-         Predicate.apply(nodes) do |nodes|
-            results = []
-            self.each_element do |element|
-               nodes &= element.apply( nodes )
-            end
-            results
+         if node.is_an?(Array) then
+            return nodes.reverse
+         else
+            return node
          end
       end
-      
-      
-      #
-      # assign()
-      
-      def assign( search_nodes, result_nodes )
-         return self.apply( search_nodes )
-      end
-      
-      
-      #
-      # append()
-      
-      def append( search_nodes, results_nodes )
-         return self.apply( search_nodes )
-      end
-      
       
       
       #
       # display()
       
       def display( stream = $stdout )
-         show_separator = false
-         self.elements.each do |element|
-            stream << "&" if show_separator
-            stream << element
-            
-            show_separator = true
-         end
+         stream << " - "
+         super
       end
       
       
-   end # PredicateAnd
+   end # ReverseSelector
    
 
 
 end  # module Transformations
 end  # module Plan
 end  # module RCC
-
-

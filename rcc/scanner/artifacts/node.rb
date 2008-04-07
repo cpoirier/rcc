@@ -44,10 +44,10 @@ module Artifacts
          return last_token().follow_position()
       end
       
-      def terminal?()
+      def token?()
          return false
-      end      
-            
+      end   
+      
       def first_token()
          bug( "you must override first_token()" )
       end
@@ -71,6 +71,25 @@ module Artifacts
          bug( "you must override duplicate()" )
       end
 
+
+      #
+      # commit()
+      #  - called to indicate this Node is finished, happy, and will never be used again in error recovery
+      #  - for ASNs, this is where Transformations are applied
+      
+      def commit( recurse = true )
+         return true
+      end
+
+
+      #
+      # committed?()
+      #  - if known, indicates if commit() has been called
+      #  - not all node types remember!
+      
+      def committed?()
+         return nil
+      end
 
 
 

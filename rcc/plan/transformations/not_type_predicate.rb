@@ -37,7 +37,11 @@ module Transformations
       # apply()
       
       def apply( nodes )
-         return nodes.select {|node| node.type != @type_name }
+         if nodes.is_an?(Array) then
+            return nodes.select {|node| node.type != @type_name }
+         else
+            return nodes.type != @type_name ? nodes : nil
+         end
       end
       
       

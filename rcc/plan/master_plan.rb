@@ -18,7 +18,7 @@ require "#{$RCCLIB}/plan/ast_class.rb"
 require "#{$RCCLIB}/plan/lexer_plan.rb"
 require "#{$RCCLIB}/plan/state.rb"
 require "#{$RCCLIB}/plan/parser_plan.rb"
-require "#{$RCCLIB}/plan/transformations/selector.rb"
+require "#{$RCCLIB}/plan/transformations/transform.rb"
 
 
 module RCC
@@ -222,27 +222,28 @@ module Plan
                #
                # Build plans for the transformations for this Rule and add them to the ASTClass.
 
-               $stdout.with( :boolean_notation => true ) do 
-                  $stdout.puts "transformations for [#{rule.name}]:"
-                  $stdout.indent do
-                     rule.transformations.each do |spec|
-                        case spec.type.name
-                        when "assignment_transform"
-                           lhs_selector = build_transformation_selector( spec.destination, true )
-                           rhs_selector = build_transformation_selector( spec.source            )
+               rule.transformations.each do |spec|
+                  case spec.type.name
+                  when "assignment_transform"
+                     lhs_selector = build_transformation_selector( spec.destination, true )
+                     rhs_selector = build_transformation_selector( spec.source            )
 
-                           $stdout.puts( "target:" )
-                           $stdout.indent{ lhs_selector.display($stdout) }
-                           $stdout.end_line
-                           
-                           $stdout.puts( "source:" )
-                           $stdout.indent{ rhs_selector.display($stdout) }
-                           $stdout.end_line
-                           
-                           warn_nyi( "transformation plan" )
-                           ast_class.transformations << nil
-                        end
-                     end
+                     ast_class.transformations << Transformations::AssignmentTransform.new( lhs_selector, rhs_selector )
+                     # $stdout.puts( "target:" )
+                     # $stdout.indent{ lhs_selector.display($stdout) }
+                     # $stdout.end_line
+                     # 
+                     # $stdout.puts( "source:" )
+                     # $stdout.indent{ rhs_selector.display($stdout) }
+                     # $stdout.end_line
+                     # 
+                     # warn_nyi( "transformation plan" )
+                     # ast_class.transformations << nil
+                  when "append_transform"
+                     lhs_selector = build_transformation_selector( spec.destination, true )
+                     rhs_selector = build_transformation_selector( spec.source            )
+
+                     ast_class.transformations << Transformations::AppendTransform.new( lhs_selector, rhs_selector )
                   end
                end
                
@@ -282,8 +283,6 @@ module Plan
             end
             
          end
-         
-         nyi()
          
          return MasterPlan.new( productions, group_members, ast_plans, lexer_plans, explain )
       end
@@ -450,13 +449,27 @@ module Plan
     
       #
       # build_transformation_selector()
+      #  - for LHS selectors, set potential_target on the outermost call
       
       def self.build_transformation_selector( spec, potential_target = false )
          selector = nil
          
          case spec.type.name
          when "npath_predicate_exp"
-            selector = Transformations::SelectorSequence.new( build_transformation_selector(spec.npath, potential_target), build_transformation_predicate(spec.npred) )
+            body      = build_transformation_selector( spec.npath, potential_target )
+            predicate = build_transformation_predicate( spec.npred )
+            
+            #
+            # The only thing valid after an LHS target element is a predicate, which may eliminate the 
+            # target.  For such handling, we assign the predicate directly to the target element, so it
+            # can evaluate it before doing the assignment.
+            
+            if potential_target and targets = body.targets then
+               targets.each{ |target| target.target_predicate = predicate }
+               selector = body
+            else
+               selector = Transformations::SelectorSequence.new( body, predicate )
+            end
          when "npath_path_exp"
             selector = Transformations::SelectorSequence.new( build_transformation_selector(spec.tree), build_transformation_selector(spec.leaf, potential_target) )
          when "npath_slot_exp"
@@ -464,9 +477,11 @@ module Plan
          when "npath_tclose_exp"
             selector = Transformations::SelectorSequence.new( Transformations::TransitiveClosure.new(build_transformation_selector(spec.npath, potential_target)) )
          when "npath_branch_exp"            
-            selector = Transformations::SelectorBranch.new( build_transformation_selector(spec.tree), build_transformation_selector(spec.leaf, potential_target) )
+            selector = Transformations::SelectorBranch.new( build_transformation_selector(spec.tree, potential_target), build_transformation_selector(spec.leaf, potential_target) )
          when "npath_self_exp"
             selector = Transformations::SelectorSequence.new( Transformations::SelfSelector.new(potential_target) )
+         when "npath_reverse_exp"
+            selector = Transformations::SelectorSequence.new( Transformations::ReverseSelector.new(build_transformation_selector(spec.npath, potential_target)) )
          else
             nyi( "support for [#{spec.type.name}]", spec )
          end
@@ -495,8 +510,8 @@ module Plan
             predicate = Transformations::PredicateOr.new( build_transformation_predicate(spec.tree), build_transformation_predicate(spec.leaf) )
          when "npred_and_exp"
             predicate = Transformations::PredicateAnd.new( build_transformation_predicate(spec.tree), build_transformation_predicate(spec.leaf) )
-         else 
-            nyi( "support for [#{spec.type.name}]", spec )
+         else
+            predicate = Transformations::ExistsPredicate.new( build_transformation_selector(spec) )
          end   
                      
          return predicate

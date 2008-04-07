@@ -35,7 +35,18 @@ module Transformations
       # apply()
       
       def apply( nodes )
-         bug( "you must override Predicate.apply()" )
+         bug( "you must override Predicate.apply(), probably using Predicate::apply()" )
+      end
+      
+      def self.apply( nodes )
+         scalar   = !nodes.is_an?(Array)
+         matching = yield(nodes.to_a)
+         
+         if scalar then
+            return (matching.empty? ? nil : nodes)
+         else
+            return matching
+         end
       end
       
       
@@ -64,6 +75,7 @@ end  # module RCC
 require "#{$RCCLIB}/plan/transformations/predicate_and.rb"
 require "#{$RCCLIB}/plan/transformations/predicate_or.rb"
 
+require "#{$RCCLIB}/plan/transformations/exists_predicate.rb"
 require "#{$RCCLIB}/plan/transformations/inverted_predicate.rb"
 require "#{$RCCLIB}/plan/transformations/type_predicate.rb"
 require "#{$RCCLIB}/plan/transformations/not_type_predicate.rb"

@@ -33,10 +33,28 @@ module Transformations
       
       #
       # apply()
-      #  - applies this selector to a node set, returning the resulting nodes
+      #  - applies this selector to a node set, returning the resulting node(s)
       
-      def apply( nodes )
-         return nodes
+      def apply( node )
+         return node
+      end
+      
+      
+      #
+      # assign()
+      
+      def assign( search_nodes, result_nodes )
+         return super unless target?
+         nyi( nil, "how do we do self-assignment if not done during parse?" )
+      end
+      
+      
+      #
+      # append()
+      
+      def assign( search_nodes, result_nodes )
+         return super unless target?
+         nyi( nil, "what does self-append even mean?" )
       end
       
       

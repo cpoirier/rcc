@@ -152,7 +152,7 @@ module Grammar
       #       end
       #
       # 
-            rule_spec( 'priority', statement_macro_call(string_exp('priority'), group_exp(branch_exp(string('ascending'), string('descending')), 'direction')) ),
+            rule_spec( 'priority', statement_macro_call(string_exp('priority'), group_exp(branch_exp(string_exp('ascending'), string_exp('descending')), 'direction')) ),
             
             group_spec( 'option',
                rule_spec( 'start_rule'         , statement_macro_call(string_exp('start_rule'), reference_exp('word', 'rule_name')) ),
@@ -187,7 +187,8 @@ module Grammar
                   block_macro_call( expression('group', reference_exp('word', 'name')),
                      repeated_exp( '*', 
                         group_exp(
-                           branch_exp( reference_exp('rule_spec'), reference_exp('group_spec'), reference_exp('spec_reference') ) # , 'specification'
+                           branch_exp( reference_exp('rule_spec'), reference_exp('group_spec'), reference_exp('spec_reference') ), 
+                           'specification'
                         )
                      )
                   )
@@ -390,22 +391,28 @@ module Grammar
       #          append_transform     => statement() ['**' npath:destination '+=' npath:source ]
       #       end
       #
-      #       group npred
-      #          npred_type_exp       => word:type_name
-      #          npred_slot_exp       => '@' word:slot_name
-      #          npred_or_exp         => npred:tree '|' npred:leaf   @associativity=left
-      #          npred_and_exp        => npred:tree '&' npred:leaf   @associativity=left
-      #          npred_negation_exp   => '!' npred                   
-      #       end
-      #
       #       group npath
       #          npath_self_exp       => '.'
       #          npath_slot_exp       => '@' word:slot_name
       #          npath_tclose_exp     => '{' npath '}'
       #          npath_branch_exp     => npath:tree '|' npath:leaf   @associativity=left
+      #          npath_reverse_exp    => '-' npath 
       #          npath_predicate_exp  => npath '[' npred ']'         @associativity=left
       #          npath_path_exp       => npath:tree '/' npath:leaf   @associativity=left
       #          npath_group_exp      => '(' npath ')'
+      #       end
+      #
+      #       group npred
+      #          npred_type_exp       => word:type_name
+      #          npath
+      #          npred_or_exp         => npred:tree '|' npred:leaf   @associativity=left
+      #          npred_and_exp        => npred:tree '&' npred:leaf   @associativity=left
+      #          npred_negation_exp   => '!' npred
+      #       end
+      #
+      #       reorder
+      #          npred_type_exp
+      #          npath_slot_exp
       #       end
       #    end
       #    
@@ -423,23 +430,30 @@ module Grammar
                rule_spec( 'append_transform'    , statement_macro_call('**', reference_exp('npath', 'destination'), '+=', reference_exp('npath', 'source')) )
             ),
             
-            group_spec( 'npred',
-               rule_spec( 'npred_type_exp'    , reference_exp('word', 'type_name')                                  ),
-               rule_spec( 'npred_slot_exp'    , '@', reference_exp('word', 'slot_name')                             ),
-               rule_spec( 'npred_or_exp'      , reference_exp('npred', 'tree'), '|', reference_exp('npred', 'leaf') ),
-               rule_spec( 'npred_and_exp'     , reference_exp('npred', 'tree'), '&', reference_exp('npred', 'leaf') ),
-               rule_spec( 'npred_negation_exp', '!', reference_exp('npred')                                         )
-            ),
-            
             group_spec( 'npath',
                rule_spec( 'npath_self_exp'     , '.'                                                                                ),
                rule_spec( 'npath_slot_exp'     , '@', reference_exp('word', 'slot_name')                                            ),
                rule_spec( 'npath_tclose_exp'   , '{', reference_exp('npath'), '}'                                                   ),
                rule_spec( 'npath_branch_exp'   , reference_exp('npath', 'tree'), '|', reference_exp('npath', 'leaf'), assoc('left') ),
+               rule_spec( 'npath_reverse_exp'  , '-', reference_exp('npath')                                                        ),
                rule_spec( 'npath_predicate_exp', reference_exp('npath'), '[', reference_exp('npred'), ']'                           ),
                rule_spec( 'npath_path_exp'     , reference_exp('npath', 'tree'), '/', reference_exp('npath', 'leaf'), assoc('left') ),
                rule_spec( 'npath_group_exp'    , '(', reference_exp('npath'), ')'                                                   )
+            ),
+
+            group_spec( 'npred',
+               rule_spec( 'npred_type_exp'    , reference_exp('word', 'type_name')                                  ),
+               spec_reference( 'npath' ),
+               rule_spec( 'npred_or_exp'      , reference_exp('npred', 'tree'), '|', reference_exp('npred', 'leaf') ),
+               rule_spec( 'npred_and_exp'     , reference_exp('npred', 'tree'), '&', reference_exp('npred', 'leaf') ),
+               rule_spec( 'npred_negation_exp', '!', reference_exp('npred')                                         )
+            ),
+            
+            reorder_spec(
+               reorder_level('npred_type_exp'),
+               reorder_level('npath_slot_exp')
             )
+            
          ),
       
       #
@@ -581,7 +595,7 @@ module Grammar
       def description() ; return "#{@ast_class_name} (#{@type})" ; end
 
       def follow_position() ; return nil   ; end
-      def terminal?()       ; return false ; end      
+      def token?()          ; return false ; end      
       def first_token()     ; return nil   ; end
       def last_token()      ; return nil   ; end
       def token_count()     ; return 0     ; end
@@ -644,7 +658,7 @@ module Grammar
    
       def method_missing( id, *args )
          name, set = id.to_s.split("=")
-         slot      = name.intern
+         slot      = name
          
          assert( set == "" || set.nil?, "unknown method [#{id.to_s}]"        )
          assert( @slots.member?(slot) , "unknown property or slot [#{name}]" )
@@ -896,7 +910,7 @@ module Grammar
    # ::system_spec()
    
    def self.system_spec( *clauses )
-      return node( "system_spec", :grammar_specs => clauses )
+      return node( "system_spec", "grammar_specs" => clauses )
    end
    
    
@@ -921,7 +935,7 @@ module Grammar
          end
       end
       
-      return node( "grammar_spec", :name => w(name), :priority => priority, :options => options, :specifications => specifications, :transformations => transformations )
+      return node( "grammar_spec", "name" => w(name), "priority" => priority, "options" => options, "specifications" => specifications, "transformations" => transformations )
    end
    
 
@@ -929,21 +943,21 @@ module Grammar
    # ::priority()
    
    def self.priority( direction )
-      return node( "priority", :direction => t(direction) )
+      return node( "priority", "direction" => t(direction) )
    end
    
    #
    # ::start_rule()
    
    def self.start_rule( name )
-      return node( "start_rule", :rule_name => w(name) )
+      return node( "start_rule", "rule_name" => w(name) )
    end
    
    #
    # ::ignore_switch()
    
    def self.ignore_switch( name )
-      return node( "ignore_switch", :name => w(name) )
+      return node( "ignore_switch", "name" => w(name) )
    end
    
    #
@@ -958,40 +972,35 @@ module Grammar
    # ::macros_spec()
    
    def self.macros_spec( *specs )
-      return node( "macros_spec", :macro_specs => specs )
+      return node( "macros_spec", "macro_specs" => specs )
    end
          
    #
    # ::section_spec()
    
    def self.section_spec( name, *specs )
-      return node( "section_spec", :name => w(name), :specifications => specs )
+      return node( "section_spec", "name" => w(name), "specifications" => specs )
    end
    
    #
    # ::strings_spec()
    
    def self.strings_spec( *specs )
-      return node( "strings_spec", :string_specs => specs )
+      return node( "strings_spec", "string_specs" => specs )
    end
    
    #
    # ::reorder_spec()
    
    def self.reorder_spec( *levels )
-      return node( "reorder_spec", :reorder_levels => levels )
+      return node( "reorder_spec", "reorder_levels" => levels )
    end
    
    #
    # ::group_spec()
    
    def self.group_spec( name, *specs )
-      name = w(name)
-      specs.each do |spec|
-         spec.categories << name
-      end
-      
-      return node( "group_spec", :name => name, :specifications => specs, :categories => [name] )
+      return node( "group_spec", "name" => w(name), "specifications" => specs )
    end
    
    #
@@ -1012,7 +1021,7 @@ module Grammar
          end
       end
       
-      return node( "rule_spec", :name => w(name), :expression => expression(*expressions), :directives => directives, :transformation_specs => transformations, :categories => [] )
+      return node( "rule_spec", "name" => w(name), "expression" => expression(*expressions), "directives" => directives, "transformation_specs" => transformations )
    end
    
    
@@ -1020,14 +1029,14 @@ module Grammar
    # ::spec_reference()
    
    def self.spec_reference( name )
-      return node( "spec_reference", :name => w(name), :categories => [] )
+      return node( "spec_reference", "name" => w(name) )
    end
    
    #
    # ::reorder_level()
    
    def self.reorder_level( *references )
-      return node( "reorder_level", :references => references.collect{|r| w(r)} )
+      return node( "reorder_level", "references" => references.collect{|r| w(r)} )
    end
    
    
@@ -1042,7 +1051,7 @@ module Grammar
    
    def self.string_spec( name, *terms )
       terms.unshift sp_concat( terms.shift, terms.shift ) until terms.length < 2
-      return node( "string_spec", :name => w(name), :definition => string_descriptor(terms[0]) )
+      return node( "string_spec", "name" => w(name), "definition" => string_descriptor(terms[0]) )
    end
    
 
@@ -1050,7 +1059,7 @@ module Grammar
    # ::cs_characters()
    
    def self.cs_characters( *cs_elements )
-      return node( "cs_characters", :cs_elements => cs_elements.collect{|c| character(c)} )
+      return node( "cs_characters", "cs_elements" => cs_elements.collect{|c| character(c)} )
    end
    
    
@@ -1058,7 +1067,7 @@ module Grammar
    # ::cs_difference()
    
    def self.cs_difference( lhs, rhs )
-      return node( "cs_difference", :lhs => lhs, :rhs => rhs )
+      return node( "cs_difference", "lhs" => lhs, "rhs" => rhs )
    end
 
 
@@ -1066,7 +1075,7 @@ module Grammar
    # ::cs_range()
    
    def self.cs_range( from, to )
-      return node( "cs_range", :from => character(from), :to => character(to) )
+      return node( "cs_range", "from" => character(from), "to" => character(to) )
    end
    
    
@@ -1074,7 +1083,7 @@ module Grammar
    # ::cs_reference()
    
    def self.cs_reference( name )
-      return node( "cs_reference", :name => w(name) )
+      return node( "cs_reference", "name" => w(name) )
    end
    
    
@@ -1110,7 +1119,7 @@ module Grammar
    # ::sp_reference()
    
    def self.sp_reference( name )
-      return node( "sp_reference", :name => w(name) )
+      return node( "sp_reference", "name" => w(name) )
    end
    
    
@@ -1118,7 +1127,7 @@ module Grammar
    # ::sp_group()
    
    def self.sp_group( string_descriptor )
-      return node( "sp_group", :string_descriptor => string_descriptor(string_descriptor) )
+      return node( "sp_group", "string_descriptor" => string_descriptor(string_descriptor) )
    end
    
    
@@ -1126,7 +1135,7 @@ module Grammar
    # ::sp_concat()
    
    def self.sp_concat( lhs, rhs )
-      return node( "sp_concat", :lhs => string_descriptor(lhs), :rhs => string_descriptor(rhs) )
+      return node( "sp_concat", "lhs" => string_descriptor(lhs), "rhs" => string_descriptor(rhs) )
    end
    
    
@@ -1134,7 +1143,7 @@ module Grammar
    # ::sp_repeated()
    
    def self.sp_repeated( count, string_descriptor )
-      return node( "sp_repeated", :key => "value", :repeat_count => t(count), :string_descriptor => string_descriptor(string_descriptor) )
+      return node( "sp_repeated", "key" => "value", "repeat_count" => t(count), "string_descriptor" => string_descriptor(string_descriptor) )
    end
    
    
@@ -1142,7 +1151,7 @@ module Grammar
    # ::string()
    
    def self.string( *elements )
-      return node( "string", :string_elements => elements.collect{|e| gtt(e)} )
+      return node( "string", "string_elements" => elements.collect{|e| gtt(e)} )
    end
    
 
@@ -1162,7 +1171,7 @@ module Grammar
    # ::reference_exp()
    
    def self.reference_exp( name, label = nil )
-      return node( "reference_exp", :name => w(name), :label => label.nil? ? nil : w(label) )
+      return node( "reference_exp", "name" => w(name), "label" => label.nil? ? nil : w(label) )
    end
       
       
@@ -1171,7 +1180,7 @@ module Grammar
    
    def self.string_exp( string, label = nil )
       return string if node_has_type?(string, "expression")
-      return node( "string_exp", :string => string(string), :label => label.nil? ? nil : w(label) )
+      return node( "string_exp", "string" => string(string), "label" => label.nil? ? nil : w(label) )
    end
    
    
@@ -1179,7 +1188,7 @@ module Grammar
    # ::group_exp()
    
    def self.group_exp( expression, label = nil )
-      return node( "group_exp", :expression => expression, :label => label.nil? ? nil : w(label) )
+      return node( "group_exp", "expression" => expression, "label" => label.nil? ? nil : w(label) )
    end
    
    
@@ -1187,7 +1196,7 @@ module Grammar
    # ::variable_exp()
    
    def self.variable_exp( name, label = nil )
-      return node( "variable_exp", :name => w(name), :label => label.nil? ? nil : w(label) )
+      return node( "variable_exp", "name" => w(name), "label" => label.nil? ? nil : w(label) )
    end
    
    
@@ -1195,7 +1204,7 @@ module Grammar
    # ::sequence_exp()
    
    def self.sequence_exp( tree, leaf )
-      return node( "sequence_exp", :tree => string_exp(tree), :leaf => string_exp(leaf) )
+      return node( "sequence_exp", "tree" => string_exp(tree), "leaf" => string_exp(leaf) )
    end
    
    
@@ -1204,7 +1213,7 @@ module Grammar
    
    def self.branch_exp( tree, leaf, *more )
       if more.empty? then
-         return node( "branch_exp", :tree => expression(tree), :leaf => expression(leaf) )
+         return node( "branch_exp", "tree" => expression(tree), "leaf" => expression(leaf) )
       else
          return branch_exp( branch_exp(tree, leaf), *more )
       end
@@ -1215,7 +1224,7 @@ module Grammar
    # ::repeated_exp()
 
    def self.repeated_exp( count, expression )
-      return node( "repeated_exp", :repeat_count => t(count), :expression => expression )
+      return node( "repeated_exp", "repeat_count" => t(count), "expression" => expression )
    end
    
    
@@ -1231,7 +1240,7 @@ module Grammar
    # ::gateway_exp()
    
    def self.gateway_exp( word )
-      return node( "gateway_exp", :word => w(word) )
+      return node( "gateway_exp", "word" => w(word) )
    end
    
    
@@ -1256,9 +1265,9 @@ module Grammar
    
    def self.macro_call( name, parameters, *data )
       return node( "macro_call", 
-         :macro_name => w(name), 
-         :parameters => parameters.collect{|p| expression(p)},
-         :body       => expression( *data )
+         "macro_name" => w(name), 
+         "parameters" => parameters.collect{|p| expression(p)},
+         "body"       => expression( *data )
       )
    end
 
@@ -1291,7 +1300,7 @@ module Grammar
    # ::associativity_directive()
    
    def self.associativity_directive( direction )
-      return node( "associativity_directive", :direction => w(direction) )
+      return node( "associativity_directive", "direction" => w(direction) )
    end
    
    def self.assoc( direction )
@@ -1305,7 +1314,7 @@ module Grammar
    # ::transformations()
 
    def self.transformations( *sets )
-      return node( "transformations", :transformation_sets => sets )
+      return node( "transformations", "transformation_sets" => sets )
    end
    
    
@@ -1313,7 +1322,7 @@ module Grammar
    # ::transformation_set()
    
    def self.transformation_set( rule_name, *specs )
-      return node( "transformation_set", :rule_name => w(rule_name), :transformation_specs => specs )
+      return node( "transformation_set", "rule_name" => w(rule_name), "transformation_specs" => specs )
    end
    
    
@@ -1321,7 +1330,7 @@ module Grammar
    # ::assignment_transform()
    
    def self.assignment_transform( destination, source )
-      return node( "assignment_transform", :destination => destination, :source => source )
+      return node( "assignment_transform", "destination" => destination, "source" => source )
    end
    
    
@@ -1329,7 +1338,7 @@ module Grammar
    # ::append_transform()
    
    def self.append_transform( destination, source )
-      return node( "append_transform", :destination => destination, :source => source )
+      return node( "append_transform", "destination" => destination, "source" => source )
    end
    
    
@@ -1338,7 +1347,7 @@ module Grammar
    
    def self.npred_type_exp( type_name )
       return type_name if type_name.is_an?(ASN)
-      return node( "npred_type_exp", :type_name => w(type_name) )
+      return node( "npred_type_exp", "type_name" => w(type_name) )
    end
    
    
@@ -1346,7 +1355,7 @@ module Grammar
    # ::npred_slot_exp()
    
    def self.npred_slot_exp( slot_name )
-      return node( "npred_slot_exp", :slot_name => w(slot_name) )
+      return node( "npred_slot_exp", "slot_name" => w(slot_name) )
    end
    
    
@@ -1355,7 +1364,7 @@ module Grammar
    
    def self.npred_or_exp( tree, leaf, *more )
       if more.empty? then
-         return node( "npred_or_exp", :tree => tree, :leaf => leaf )
+         return node( "npred_or_exp", "tree" => tree, "leaf" => leaf )
       else
          return npred_or_exp( npred_or_exp(tree, leaf), *more )
       end
@@ -1367,7 +1376,7 @@ module Grammar
    
    def self.npred_and_exp( tree, leaf, *more )
       if more.empty? then
-         return node( "npred_and_exp", :tree => tree, :leaf => leaf )
+         return node( "npred_and_exp", "tree" => tree, "leaf" => leaf )
       else
          return npred_and_exp( npred_and_exp(tree, leaf), *more )
       end
@@ -1378,7 +1387,7 @@ module Grammar
    # ::npred_negation_exp()
    
    def self.npred_negation_exp( npred )
-      return node( "npred_negation_exp", :npred => npred )
+      return node( "npred_negation_exp", "npred" => npred )
    end
    
    
@@ -1395,7 +1404,7 @@ module Grammar
    # ::npath_slot_exp()
    
    def self.npath_slot_exp( slot_name )
-      return node( "npath_slot_exp", :slot_name => w(slot_name) )
+      return node( "npath_slot_exp", "slot_name" => w(slot_name) )
    end
    
    
@@ -1404,7 +1413,7 @@ module Grammar
    
    def self.npath_path_exp( tree, leaf, *more )
       if more.empty? then
-         return node( "npath_path_exp", :tree => tree, :leaf => leaf )
+         return node( "npath_path_exp", "tree" => tree, "leaf" => leaf )
       else
          return npath_path_exp( npath_path_exp(tree, leaf), *more )
       end
@@ -1416,7 +1425,7 @@ module Grammar
    
    def self.npath_branch_exp( tree, leaf, *more )
       if more.empty? then
-         return node( "npath_branch_exp", :tree => tree, :leaf => leaf )
+         return node( "npath_branch_exp", "tree" => tree, "leaf" => leaf )
       else
          return npath_branch_exp( npath_branch_exp(tree, leaf), *more )
       end
@@ -1435,7 +1444,7 @@ module Grammar
    # ::npath_tclose_exp()
    
    def self.npath_tclose_exp( npath )
-      return node( "npath_tclose_exp", :npath => npath )
+      return node( "npath_tclose_exp", "npath" => npath )
    end
    
    
@@ -1443,7 +1452,7 @@ module Grammar
    # ::npath_predicate_exp()
    
    def self.npath_predicate_exp( npath, predicate )
-      return node( "npath_predicate_exp", :npath => npath, :npred => predicate )
+      return node( "npath_predicate_exp", "npath" => npath, "npred" => predicate )
    end
    
 
@@ -1453,7 +1462,7 @@ module Grammar
    # ::simple_macro()
    
    def self.simple_macro( name, *terms )
-      return node( "macro_spec", :name => w(name), :parameter_definitions => [], :expression => expression(*terms) )
+      return node( "macro_spec", "name" => w(name), "parameter_definitions" => [], "expression" => expression(*terms) )
    end
    
          
@@ -1461,7 +1470,7 @@ module Grammar
    # ::parameterized_macro()
    
    def self.parameterized_macro( name, parameters, *terms )
-      return node( "macro_spec", :name => w(name), :parameter_definitions => parameters.collect{|p| w(p)}, :expression => expression(*terms) )
+      return node( "macro_spec", "name" => w(name), "parameter_definitions" => parameters.collect{|p| w(p)}, "expression" => expression(*terms) )
    end
 
 

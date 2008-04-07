@@ -36,18 +36,70 @@ module Transformations
       
       #
       # apply()
-      #  - applies this selector to a node set, returning the resulting nodes
+      #  - applies this selector to a node or set of nodes
       
       def apply( nodes )
-         results = []
+         results = nil
+         if nodes.is_an?(Array) then
+            results  = []
          
-         nodes.each do |node|
-            if node.slot_filled?(@slot_name) then
-               results.concat( [node[@slot_name]].flatten )
+            nodes.each do |node|
+               next if node.token?
+               if node.slot_filled?(@slot_name) then
+                  results.concat node[@slot_name].to_a
+               end
             end
+            
+            results.uniq!
+         else
+            results = nodes[@slot_name] if (!nodes.token? and nodes.slot_filled?(@slot_name))
          end
          
-         return results.uniq
+         return results
+      end
+      
+      
+      #
+      # assign()
+      
+      def assign( search_nodes, result_nodes )
+         return super unless target?
+         
+         if has_target_predicate? then
+            search_nodes.each do |node|
+               if node.slot_filled?(@slot_name) then
+                  unless @target_predicate.apply(node[@slot_name].to_a).empty?
+                     node.define_slot( @slot_name, result_nodes )
+                  end 
+               end
+            end
+         else
+            search_nodes.each do |node|
+               node.define_slot( @slot_name, result_nodes )
+            end
+         end
+      end
+      
+      
+      #
+      # append()
+      
+      def append( search_nodes, results_nodes )
+         return super unless target?
+         
+         if has_target_predicate? then
+            search_nodes.each do |node|
+               if node.slot_filled?(@slot_name) then
+                  unless @target_predicate.apply(node[@slot_name].to_a).empty?
+                     node.define_slot( @slot_name, node[@slot_name].to_a + result_nodes )
+                  end 
+               end
+            end
+         else
+            search_nodes.each do |node|
+               node.define_slot( @slot_name, node[@slot_name].to_a + result_nodes )
+            end
+         end
       end
       
       
