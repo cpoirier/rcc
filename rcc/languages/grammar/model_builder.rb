@@ -54,6 +54,7 @@ module Grammar
       #  - given a AST of a grammar source file, returns a Model::Grammar or an error report
       
       def build_model( system_spec )
+         p system_spec.type
          assert( system_spec.type == "RCC.system_spec", "Um, perhaps you meant to pass a system_spec AST?" )
          
          #

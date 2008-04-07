@@ -23,6 +23,14 @@ module Plan
    class Production
       
       
+      def self.start_production( start_rule_name )
+         symbols = [Plan::Symbol.new(start_rule_name, :production), Plan::Symbol.new(Scanner::Artifacts::Name.end_of_file_type, :token)]
+         slots   = [nil, nil]
+         
+         return self.new( 0, Scanner::Artifacts::Name.any_type, symbols, slots, :right, 0, nil, false, nil )
+      end
+      
+      
       def start_version()
          symbols = @symbols + [Plan::Symbol.new(Scanner::Artifacts::Name.end_of_file_type, :token)]
          slots   = @slots   + [nil]

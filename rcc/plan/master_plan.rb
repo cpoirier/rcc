@@ -368,8 +368,7 @@ module Plan
          end
 
          assert( @production_sets.member?(name), "not a valid start rule name" )
-         warn_nyi( "source trailing ignore support" )
-         start_state = State.start_state( self, name.grammar, self.production_sets[name] )
+         start_state = State.start_state( self, name )
          start_state.close()
          
          

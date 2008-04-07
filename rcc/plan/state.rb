@@ -38,15 +38,13 @@ module Plan
       end
       
       
-      def self.start_state( master_plan, context_grammar_name, start_set )
+      def self.start_state( master_plan, start_rule_name )
          state = new( master_plan, 0 )
-         state.context_grammar_name = context_grammar_name
-
+         state.context_grammar_name = start_rule_name.grammar 
+         
          start_productions = ProductionSet.new()
-         start_set.productions.each do |production|
-            start_productions << production.start_version()
-         end
-
+         start_productions << Production.start_production( start_rule_name )
+         
          state.add_productions( start_productions )
          
          return state
