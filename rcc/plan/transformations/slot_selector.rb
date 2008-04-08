@@ -64,19 +64,9 @@ module Transformations
       
       def assign( search_nodes, result_nodes )
          return super unless target?
-         
-         if has_target_predicate? then
-            search_nodes.each do |node|
-               if node.slot_filled?(@slot_name) then
-                  unless @target_predicate.apply(node[@slot_name].to_a).empty?
-                     node.define_slot( @slot_name, result_nodes )
-                  end 
-               end
-            end
-         else
-            search_nodes.each do |node|
-               node.define_slot( @slot_name, result_nodes )
-            end
+
+         update(search_nodes) do |node|
+            node.define_slot( @slot_name, result_nodes )
          end
       end
       
@@ -84,21 +74,11 @@ module Transformations
       #
       # append()
       
-      def append( search_nodes, results_nodes )
+      def append( search_nodes, result_nodes )
          return super unless target?
          
-         if has_target_predicate? then
-            search_nodes.each do |node|
-               if node.slot_filled?(@slot_name) then
-                  unless @target_predicate.apply(node[@slot_name].to_a).empty?
-                     node.define_slot( @slot_name, node[@slot_name].to_a + result_nodes )
-                  end 
-               end
-            end
-         else
-            search_nodes.each do |node|
-               node.define_slot( @slot_name, node[@slot_name].to_a + result_nodes )
-            end
+         update( search_nodes ) do |node|
+            node.define_slot( @slot_name, node[@slot_name].to_a + result_nodes )
          end
       end
       
@@ -111,6 +91,28 @@ module Transformations
          super
       end
       
+
+
+      #
+      # update()
+      #  - an internal routine that encapsulates the common functionality needed to
+      #    use this Selector for update work
+      
+      def update( search_nodes )
+         if has_target_predicate? then
+            search_nodes.each do |node|
+               if node.slot_filled?(@slot_name) then
+                  unless @target_predicate.apply(node[@slot_name].to_a).empty?
+                     yield( node )
+                  end 
+               end
+            end
+         else
+            search_nodes.each do |node|
+               yield( node )
+            end
+         end
+      end
       
    end # SlotSelector
    

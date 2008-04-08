@@ -40,10 +40,11 @@ module Nodes
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :slots          # The named Symbols that comprise it
-      attr_reader :ast_class 
-      attr_reader :first_token
-      attr_reader :last_token
+      attr_reader   :slots         # The named Symbols that comprise it
+      attr_reader   :ast_class 
+      attr_reader   :first_token
+      attr_reader   :last_token
+      attr_accessor :usurper       # Another Node that should replace this one on commit()
       
       def initialize( type, component_nodes, slots, ast_class = nil )
          super( type, component_nodes )
@@ -56,6 +57,10 @@ module Nodes
       
       def ast_class_name()
          return @ast_class.name
+      end
+      
+      def usurped?
+         return (defined?(@usurper) and @usurper.exists?)
       end
       
       
@@ -190,6 +195,17 @@ module Nodes
             # @slots.each do |name, asn|
             #    asn.commit( true )
             # end
+         end
+
+         
+         #
+         # Apply usurpers (the results of self-assignment during child ASN transformations).
+         
+         @slots.each do |name, asn|
+            while asn.usurped?
+               @slots[name] = asn.usurper
+               asn = asn.usurper
+            end
          end
          
          

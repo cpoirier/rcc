@@ -42,10 +42,16 @@ module Transformations
       
       #
       # assign()
+      #  - for self assignment, we need help; because nodes don't know their parent, we
+      #    can't actually affect the change directly; instead, we set the ASN usurper, and
+      #    leave ASN.commit() to do the patch up
       
       def assign( search_nodes, result_nodes )
          return super unless target?
-         nyi( nil, "how do we do self-assignment if not done during parse?" )
+         
+         update(search_nodes) do |node|
+            node.usurper = result_nodes
+         end
       end
       
       
@@ -65,6 +71,30 @@ module Transformations
          stream << "."
          super
       end
+      
+      
+      #
+      # update()
+      #  - an internal routine that encapsulates the common functionality needed to
+      #    use this Selector for update work
+      
+      def update( search_nodes )
+         if has_target_predicate? then
+            search_nodes.each do |node|
+               if node.slot_filled?(@slot_name) then
+                  unless @target_predicate.apply(node[@slot_name].to_a).empty?
+                     yield( node )
+                  end 
+               end
+            end
+         else
+            search_nodes.each do |node|
+               yield( node )
+            end
+         end
+      end
+      
+      
       
       
    end # SlotSelector

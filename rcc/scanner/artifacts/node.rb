@@ -59,6 +59,10 @@ module Artifacts
       def token_count()
          bug( "you must override token_count()" )
       end
+      
+      def usurped?()
+         return false
+      end
 
       
       #

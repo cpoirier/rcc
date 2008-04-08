@@ -585,7 +585,10 @@ module Grammar
          
          case node.type.name
             when "sp_concat"
-               result = create_sequence( process_string_data(node.lhs, loop_detection), process_string_data(node.rhs, loop_detection) )
+               result = create_sequence( process_string_data(node.tree, loop_detection), process_string_data(node.leaf, loop_detection) )
+
+            when "sp_branch"
+               result = create_branch_point( process_string_data(node.tree, loop_detection), process_string_data(node.leaf, loop_detection) )
 
             when "sp_reference"
                if resolution = resolve_string_reference(node.name, loop_detection) then
@@ -619,7 +622,7 @@ module Grammar
 
             when "string"
                result = create_sequence()
-               node.string_elements.each do |string_element|
+               node.elements.each do |string_element|
                   result << process_string_data( string_element, loop_detection )
                end
 
@@ -704,7 +707,7 @@ module Grammar
                if resolution = resolve_character_reference(node.name, loop_detection) then
                   result = resolution
                else
-                  nyi( "error handling for missing character_definition [node.name.text]" )
+                  nyi( "error handling for missing character_definition [#{node.name.text}]" )
                end
       
             when "general_character"
@@ -937,7 +940,7 @@ module Grammar
                symbol = StringReference.new( word_name )
                result = create_sequence( symbol )
                
-               naming_context.name( symbol, node.label, true ) if (node.label.exists? or naming_context.explicit_label_pending?)
+               naming_context.name( symbol, node["label"], true ) if (node.slot_filled?("label") or naming_context.explicit_label_pending?)
             
             when "reference_exp"
                referenced_name = node.name.text
@@ -959,8 +962,8 @@ module Grammar
                      #
                      # All references qualify for slots.  If no explicit label is supplied, we go with the source
                      # name (not anything it might have resolved to).
-                     
-                     naming_context.apply_label(node.label, true) do
+
+                     naming_context.apply_label(node["label"], true) do
                         symbol = nil
                         case spec.type.name
                            when "string_spec"

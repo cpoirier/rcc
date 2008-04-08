@@ -227,8 +227,8 @@ module Grammar
       #          string        => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
       #          sp_reference  => word:name
       #          sp_group      => '(' string_descriptor ')'
-      #          sp_concat     => string_descriptor string_descriptor              @associativity=left
-      #          sp_branch     => string_descriptor '|' string_descriptor          @associativity=left
+      #          sp_concat     => string_descriptor:tree string_descriptor:leaf              @associativity=left
+      #          sp_branch     => string_descriptor:tree '|' string_descriptor:leaf          @associativity=left
       #          sp_repeated   => string_descriptor ('*'|'+'|'?'):repeat_count
       #       end
       # 
@@ -245,10 +245,10 @@ module Grammar
                   est("'") 
                ),
             
-               rule_spec( 'sp_reference', reference_exp('word', 'name')                   ),
-               rule_spec( 'sp_group'    , '(', reference_exp('string_descriptor'), ')'                                             ),
-               rule_spec( 'sp_concat'   , reference_exp('string_descriptor'), reference_exp('string_descriptor'),      assoc('left')  ),
-               rule_spec( 'sp_branch'   , reference_exp('string_descriptor'), '|', reference_exp('string_descriptor'), assoc('left')  ),
+               rule_spec( 'sp_reference', reference_exp('word', 'name')                ),
+               rule_spec( 'sp_group'    , '(', reference_exp('string_descriptor'), ')' ),
+               rule_spec( 'sp_concat'   , reference_exp('string_descriptor', "tree"), reference_exp('string_descriptor', "leaf"),      assoc('left')  ),
+               rule_spec( 'sp_branch'   , reference_exp('string_descriptor', "tree"), '|', reference_exp('string_descriptor', "leaf"), assoc('left')  ),
                rule_spec( 'sp_repeated' , reference_exp('string_descriptor'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') )
                
             ),
@@ -319,7 +319,7 @@ module Grammar
       #                branch_exp    => general_exp:tree '|' general_exp:leaf        @associativity=left
       #             end
       #
-      #             repeated_exp => repeatable_exp ('*'|'+'|'?'):repeat_count
+      #             repeated_exp => repeatable_exp:expression ('*'|'+'|'?'):repeat_count
       #          end
       #
       #          gateway_exp     => '!' !whitespace word
@@ -345,7 +345,7 @@ module Grammar
                      rule_spec( 'sequence_exp'  , reference_exp('expression', 'tree')      , reference_exp('expression', 'leaf'),  assoc('left') )                        
                   ),
                   
-                  rule_spec( 'repeated_exp'  , reference_exp('repeatable_exp'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') )
+                  rule_spec( 'repeated_exp'  , reference_exp('repeatable_exp', 'expression'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') )
                ),
                
                rule_spec( 'gateway_exp'     , '!', gateway_exp('whitespace'), reference_exp('word') ),
@@ -591,6 +591,15 @@ module Grammar
          super( type )
          @slots = slots
       end
+      
+      def []( name )
+         return @slots[name]
+      end
+      
+      def []=( name, value )
+         @slots[name] = value
+      end
+      
     
       def description() ; return "#{@ast_class_name} (#{@type})" ; end
 
@@ -1134,8 +1143,16 @@ module Grammar
    #
    # ::sp_concat()
    
-   def self.sp_concat( lhs, rhs )
-      return node( "sp_concat", "lhs" => string_descriptor(lhs), "rhs" => string_descriptor(rhs) )
+   def self.sp_concat( tree, leaf )
+      return node( "sp_concat", "tree" => string_descriptor(tree), "leaf" => string_descriptor(leaf) )
+   end
+   
+   
+   #
+   # ::sp_branch()
+   
+   def self.sp_branch( tree, leaf )
+      return node( "sp_branch", "tree" => string_descriptor(tree), "leaf" => string_descriptor(leaf) )
    end
    
    
@@ -1151,7 +1168,7 @@ module Grammar
    # ::string()
    
    def self.string( *elements )
-      return node( "string", "string_elements" => elements.collect{|e| gtt(e)} )
+      return node( "string", "elements" => elements.collect{|e| gtt(e)} )
    end
    
 
