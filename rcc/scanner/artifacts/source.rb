@@ -271,7 +271,7 @@ module Artifacts
          if position < @commit_first_line_start_position then
             # no op -- there's nothing to sample
          elsif @eol_positions.empty? or position <= @eol_positions[0] then
-            sample = @codes.slice( 0..(@eol_positions.empty? ? -1 : code_index(@eol_positions[0])) )
+            sample = @codes.slice( 0..(@eol_positions.empty? ? -1 : code_index(@eol_positions[0]) - 1) )
             column = code_index(position) + 1
          else
             eol_index = eol_index( position )
@@ -281,13 +281,17 @@ module Artifacts
                column = code_index(position) - first + 1
             else
                first  = code_index(@eol_positions[eol_index-1] + 1)
-               sample = @codes.slice( first..code_index(@eol_positions[eol_index]) )
+               sample = @codes.slice( first..(code_index(@eol_positions[eol_index]) - 1) )
                column = code_index(position) - first + 1
             end
          end
          
          if one_piece then
-            return [(as_string ? sample.pack("U*") : sample), column]
+            if sample then
+               return [(as_string ? sample.pack("U*") : sample), column]
+            else
+               return [nil, -1]
+            end
          else
             if sample then
                before = column == 1 ? [] : sample.slice(0..(column - 2))

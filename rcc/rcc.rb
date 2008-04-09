@@ -319,7 +319,7 @@ module RCC
     protected
 
       def self.t( text, type = nil )
-         return Scanner::Artifacts::Nodes::Token.new( text, 0, 0, 0, nil, type, false, nil )
+         return Scanner::Artifacts::Nodes::Token.new( text, type, 0, 0, 0, nil )
       end
       
       def self.i( text )

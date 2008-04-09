@@ -246,6 +246,40 @@
       def rest()
          return self[1..-1]
       end
+      
+      
+      #
+      # all?()
+      #  - returns true if your block returns true for all of the elements
+      
+      def if_all?()
+         matches = true
+         each do |element|
+            unless yield(element)
+               matches = false
+               break
+            end
+         end
+         
+         return matches
+      end
+      
+      
+      #
+      # any?()
+      #  - returns true if your block returns true for any of the elements
+      
+      def any?()
+         matches = false
+         each do |element|
+            if yield(element) then
+               matches = true
+               break
+            end
+         end
+         
+         return matches
+      end
 
 
       #

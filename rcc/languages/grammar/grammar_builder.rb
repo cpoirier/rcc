@@ -1206,7 +1206,7 @@ module Grammar
       #  - returns a Token for internal use
       
       def create_token( text )
-         return Scanner::Artifacts::Nodes::Token.new( text, nil, 0, 0, 0, 0 )
+         return Scanner::Artifacts::Nodes::Token.new( text, nil, 0, 0, 0, nil )
       end
 
 

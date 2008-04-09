@@ -748,7 +748,7 @@ module Grammar
    
    def self.t( text, type = nil )
       return text if text.is_a?(Node)
-      return Token.new( text, type.nil? ? type_name(text, nil) : type, 0, 0, 0, nil, false, nil )
+      return Token.new( text, type, 0, 0, 0, nil )
    end
 
    #

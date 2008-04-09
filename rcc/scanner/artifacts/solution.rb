@@ -29,6 +29,8 @@ module Artifacts
 
       attr_reader :error_map
       attr_reader :error_list
+      attr_reader :complete_solutions
+      attr_reader :partial_solutions
       
       def initialize( complete_solutions, partial_solutions, exemplars )
          @complete_solutions = complete_solutions
@@ -51,11 +53,20 @@ module Artifacts
       
       
       #
+      # complete?
+      #  - returns true if the parse produced any complete solutions (possibly by error recovery)
+      
+      def complete?
+         return !@complete_solutions.empty?
+      end
+      
+      
+      #
       # ast()
       #  - returns the AST, if valid
       
       def ast()
-         return nil unless valid?
+         return nil unless complete?
          return @complete_solutions[0].node
       end
       
@@ -76,26 +87,28 @@ module Artifacts
       def report_errors( stream, degrade_factor = 1.0, explain_indent = nil )
          
          @error_list.each do |error|
-            reliability = (error.reliability(degrade_factor) * 100).to_i
-            chance      = reliability == 100 ? "" : " (#{reliability}% chance)"
-            token       = error.error_token
-            token_text  = '"' + token.to_s.gsub('"', '\\"') + '"'
-            sample      = token.sample
+            reliability    = (error.reliability(degrade_factor) * 100).to_i
+            chance         = reliability == 100 ? "" : " (#{reliability}% chance)"
+            token          = error.error_token
+            token_text     = '"' + token.to_s.gsub('"', '\\"') + '"'
+            sample         = token.sample()
             
             #
             # Output the error header.
             
-            if token.type == token then
-               stream.puts "Error#{chance}: unexpected #{token_text} at #{error.location}"
+            if token.type.literal? then
+               stream.puts "Error#{chance}: unexpected [#{token_text}] at #{error.location}"
             else
-               stream.puts "Error#{chance}: unexpected #{token.type} #{token_text} at #{error.location}"
+               stream.puts "Error#{chance}: unexpected [#{token_text}]:#{token.type.signature} at #{error.location}"
             end
             
             #
             # Output a marked sample from the source error.
             
-            stream.puts "   source: #{sample}"
-            stream.puts "           " + (" " * (token.column_number - 1)) + ("^" * token.to_s.length)
+            stream.indent do 
+               stream.puts "source: #{sample}"
+               stream.puts "        " + (" " * (token.column_number - 1)) + ("^" * token.length)
+            end
             
             #
             # Output the recoveries.
@@ -136,11 +149,7 @@ module Artifacts
                   if correction.inserts_token? then
                      slice_from    = correction.inserted_token.column_number - 1 if slice_from.nil?
                      inserted_type = correction.inserted_token.type
-                     if @exemplars.member?(inserted_type) then
-                        text = @exemplars[inserted_type]
-                     else
-                        text = inserted_type.to_s
-                     end
+                     text = inserted_type.name
                   end
                   
                   if text.length > 0 and text !~ /\s/ then
@@ -249,7 +258,7 @@ module Artifacts
          end
          
          def location()
-            return "#{@error_token.source_descriptor.descriptor} line #{@error_token.line_number}"
+            return "#{@error_token.source.descriptor} line #{@error_token.line_number}"
          end
          
          def add_recovery( corrections, next_error )

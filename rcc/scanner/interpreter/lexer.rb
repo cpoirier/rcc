@@ -30,9 +30,10 @@ module Interpreter
       attr_reader :next_position
       
       def initialize( source )
-         @source         = source       # The Source from where we will draw our input
-         @start_position = 0            # The position at which we started the current read()
-         @next_position  = 0            # The position following the previous read()
+         @source          = source       # The Source from where we will draw our input
+         @start_position  = 0            # The position at which we started the current read()
+         @next_position   = 0            # The position following the previous read()
+         @rewind_position = nil          # Any specified rewind position, if the produced Token is to have a larger-than-default footprint
       end
       
       
@@ -42,9 +43,11 @@ module Interpreter
       #    the supplied LexerPlan
       #  - returns Token::end_of_file on the end of input
       
-      def read( position, lexer_plan, estream = nil )
+      def read( position, lexer_plan, rewind_position, estream = nil )
          position = @next_position if position.nil?
-         
+         @rewind_position = rewind_position
+
+         token = nil
          if @source.at_eof?(position) then
             token = Artifacts::Nodes::Token.end_of_file( position, @source.eof_line_number, @source.eof_column_number, @source )
             estream.puts "\n===> EOF\n" if estream
@@ -61,7 +64,7 @@ module Interpreter
             end
          
             if solution then
-               token = solution.to_Token( position, line_number, column_number, @source )
+               token = solution.to_Token( position, line_number, column_number, @source, @rewind_position )
                @next_position = token.follow_position
                
                estream.puts "\n===> PRODUCING #{token.description} at #{token.line_number}:#{token.column_number}, position #{token.start_position}\n" if estream
@@ -75,7 +78,7 @@ module Interpreter
                      estream.puts "\n===> there is no fallback plan for this lexer\n" if estream
                   else
                      estream.puts "\n===> attempting fallback plan\n" if estream
-                     token = read( position, lexer_plan.fallback_plan, estream )
+                     token = read( position, lexer_plan.fallback_plan, rewind_position, estream )
                   end
                end
             end
@@ -84,7 +87,7 @@ module Interpreter
                estream.puts "\n===> ERROR LEXING: #{@source.sample_line(position)[0]}; will PRODUCE one-character token of unknown type\n" if estream
                
                solution = Solution.new( @source[position], nil )
-               token    = solution.to_Token( position, line_number, column_number, @source )
+               token    = solution.to_Token( position, line_number, column_number, @source, @rewind_position )
                @next_position = token.follow_position
             end
          end
@@ -92,6 +95,24 @@ module Interpreter
          return token
       end
       
+      
+
+      #
+      # fake()
+      #  - produces a fake token as if read from the specified position
+      
+      def fake( position, type, footprint, estream = nil )
+         position = @next_position if position.nil?
+         token    = nil
+         
+         if @source.at_eof?(position) then
+            token = Artifacts::Nodes::Token.fake( type, position, @source.eof_line_number, @source.eof_column_number, @source, footprint )
+         else
+            token = Artifacts::Nodes::Token.fake( type, position, @source.line_number(position), @source.column_number(position), @source, footprint )
+         end
+         
+         return token
+      end
       
       
       
@@ -109,7 +130,7 @@ module Interpreter
       #  - processes a LexerState against the current lookahead
       #  - returns a Solution if the lookahead matches the state, or nil
       
-      def read_via_lexer_state( position, state, estream = nil )
+      def read_via_lexer_state( position, state, estream )
          solution = nil
          note     = nil
          
@@ -297,8 +318,11 @@ module Interpreter
             return @character_string.pack("U*")
          end
                   
-         def to_Token( start_position, line_number, column_number, source )
-            return Artifacts::Nodes::Token.new( self.to_s, @name, start_position, line_number, column_number, source, false, start_position + @character_string.length )
+         def to_Token( start_position, line_number, column_number, source, rewind_position = nil )
+            footprint = nil
+            footprint = rewind_position..(start_position + @character_string.length - 1) unless rewind_position.nil?
+            
+            return Artifacts::Nodes::Token.new( @character_string, @name, start_position, line_number, column_number, source )
          end
       end
 

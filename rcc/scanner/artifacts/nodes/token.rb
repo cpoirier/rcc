@@ -23,13 +23,50 @@ module Nodes
  #  - a Token produced at runtime from a source file
 
    class Token < Node
+
+
+      #
+      # ::fake()
+      #  - builds a fake Token of the specified type
+      
+      def self.fake( type, start_position = nil, line_number = nil, column_number = nil, source = nil, footprint = nil )
+         return new( "", type, start_position, line_number, column_number, source, footprint, true )
+      end
+      
+      
+      #
+      # ::end_of_file
+      #  - builds an "end of file" Token
+      
+      def self.end_of_file( start_position, line_number, column_number, source )
+         return new( "", Name.end_of_file_type, start_position, line_number, column_number, source )
+      end
+
+
+
+      #
+      # ::hypothetical()
+      #  - returns a hypothetical token useful as a placeholder
+      
+      def self.hypothetical()
+         return @@hypothetical_token
+      end
+      
+
+
+
+    #---------------------------------------------------------------------------------------------------------------------
+    # Initialization and data
+    #---------------------------------------------------------------------------------------------------------------------
+    
       
       attr_reader   :text
+      attr_reader   :characters           # The Unicode character codes in the Token text
       attr_reader   :line_number          # The line number within the source this token came from
       attr_reader   :column_number        # The column on which this token starts (if known)
       attr_reader   :source               # Some string that describes the source of this token
-      attr_accessor :rewind_position
       attr_reader   :start_position
+      attr_reader   :footprint
       attr_writer   :faked
       
       
@@ -37,37 +74,36 @@ module Nodes
       # initialize()
       #  - fill a new Token with data
 
-      def initialize( text, type, start_position, line_number, column_number, source, faked = false, follow_position = nil )
+      def initialize( characters, type, start_position, line_number, column_number, source, footprint = nil, faked = false )
+         case characters
+         when Array
+            @characters = characters
+            @text       = characters.pack("U*")
+         when String
+            @characters = characters.unpack("U*")
+            @text       = characters
+         else
+            bug( "unsupported token data type [#{characters.class.name}]" )
+         end
+
          super( type.nil? ? Name.new(text) : type )
-         @text = text
-         locate( start_position, line_number, column_number, source, type, faked, follow_position )
+         
+         @start_position = start_position
+         @line_number    = line_number
+         @column_number  = column_number
+         @source         = source
+         @faked          = faked if faked
+         @footprint      = footprint.nil? ? start_position..(start_position + @characters.length - 1) : footprint
          
          ignore_errors { @text.source = self }
       end
-      
-      
-      #
-      # locate()
-      #  - updates/sets the position an type information for this Token
-      
-      def locate( start_position, line_number, column_number, source, type = nil, faked = false, follow_position = nil )
-         @rewind_position   = start_position
-         @start_position    = start_position
-         @line_number       = line_number
-         @column_number     = column_number
-         @source            = source
-         @type              = type.nil? ? @type : type
-         @faked             = faked unless faked.nil?
-         @follow_position   = follow_position unless follow_position.nil?
+
+      def length()
+         return @characters.length
       end
-      
-      
-      #
-      # type()
-      #  - returns the type of this Token (a Symbol, String, or nil)
-      
-      def type()
-         return (@type.nil? && @text.length > 0 ? @text : @type)
+
+      def rewind_position()
+         return @footprint.begin
       end
       
       
@@ -87,27 +123,7 @@ module Nodes
          return @text
       end
 
-
-      #
-      # characters()
-      #  - returns a list of Unicode character codes in our text
       
-      def characters()
-         if @characters.nil? then
-            @characters = @text.unpack("U*")
-         end
-         
-         return @characters
-      end
-
-
-      #
-      # length()
-      
-      def length()
-         return self.characters.length
-      end
-
 
 
 
@@ -147,11 +163,16 @@ module Nodes
       #  - returns the start position of the next Token to be produced from the source stream
 
       def follow_position()
-         if defined?(@follow_position) then
-            return @follow_position
-         else
-            return @start_position + length()         
-         end
+         return @footprint.end + 1
+      end
+
+
+      #
+      # commit()
+      #  - cleans up after a parse is committed (won't require error recovery)
+      
+      def commit()
+         @footprint = nil
       end
 
 
@@ -185,15 +206,6 @@ module Nodes
     #---------------------------------------------------------------------------------------------------------------------
 
     
-      # #
-      # # matches_terminal?()
-      # #  - returns true if this Token matches the specified Terminal
-      # 
-      # def matches_terminal?( terminal )
-      #    return (@type == terminal.type and @text == terminal.text)
-      # end
-      # 
-      
       #
       # similar_to?()
       #  - returns true if this Token could reasonably by replaced by one the specified type
@@ -204,10 +216,10 @@ module Nodes
       def similar_to?( type )
          return @type == type unless type.literal?
 
-         examplar = type.name
-         return false unless (@text.length - examplar.length).abs < 3
-         return false if @text =~ /^\w+$/ and examplar !~ /^\w+$/
-         return false if exemplar =~ /^\w+$/ and self !~ /^\w+$/
+         exemplar = type.name
+         return false unless (@text.length - exemplar.length).abs < 3
+         return false if @text =~ /^\w+$/ and exemplar !~ /^\w+$/
+         return false if exemplar =~ /^\w+$/ and @text !~ /^\w+$/
          
          #
          # We've establish that both operands are of similar length.  Next we'll get 
@@ -229,10 +241,19 @@ module Nodes
       #  - returns a sample of the source data from around this Token
       
       def sample()
-         nyi()
-         
-         return nil unless @source.is_a?(Source)
-         return @source.line(@start_position)
+         if @source.nil?
+            return nil
+         else
+            return @source.sample_line( @start_position )[0]
+         end
+      end
+            
+      def sample_and_mark( spacer = "-", marker = "^" )
+         if @source.nil?
+            return nil
+         else
+            return @source.sample_line_and_mark_position( spacer, marker, @start_position )
+         end
       end
 
 
@@ -275,45 +296,6 @@ module Nodes
       end
       
       
-      
-
-
-
-    #---------------------------------------------------------------------------------------------------------------------
-    # Factories
-    #---------------------------------------------------------------------------------------------------------------------
-    
-      
-      #
-      # ::fake()
-      #  - builds a fake Token of the specified type
-      
-      def self.fake( type, follow_position = nil, start_position = nil, line_number = nil, column_number = nil, source_descriptor = nil )
-         return new( "", type, start_position, line_number, column_number, source_descriptor, true, follow_position )
-      end
-      
-      
-      #
-      # ::end_of_file
-      #  - builds an "end of file" Token
-      
-      def self.end_of_file( start_position, line_number, column_number, source_descriptor )
-         return new( "", Name.end_of_file_type, start_position, line_number, column_number, source_descriptor, false, start_position )
-      end
-
-
-
-      #
-      # ::hypothetical()
-      #  - returns a hypothetical token useful as a placeholder
-      
-      def self.hypothetical()
-         return @@hypothetical_token
-      end
-      
-      @@hypothetical_token = new( "", Name.any_type, -1, 0, 0, nil, true, -1 )
-
-
 
 
 
@@ -339,6 +321,37 @@ module Nodes
          end
       end
       
+      
+      #
+      # untaint()
+      
+      def untaint()
+         @untainted = true
+      end
+      
+      
+      #
+      # tainted?
+      #  - returns true if this CSN carries Correction taint
+      
+      def tainted?()
+         return (corrected? and !untainted?())
+      end
+      
+      
+      #
+      # untainted?
+      
+      def untainted?()
+         return (defined?(@untainted) and @untainted)
+      end
+      
+
+
+
+
+      @@hypothetical_token = new( "", Name.any_type, -1, 0, 0, nil, nil, true )
+
       
    end # Token
    

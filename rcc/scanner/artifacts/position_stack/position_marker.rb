@@ -32,11 +32,11 @@ module PositionStack
       attr_reader   :node
       attr_reader   :state
       attr_reader   :stream_position
-      attr_reader   :original_position
+      attr_accessor :rewind_position
       attr_accessor :alternate_recovery_positions
       attr_accessor :sequence_number
       attr_reader   :position_registry
-
+      
       def initialize( context, node, state, lexer, stream_position, recovery_registry = nil, next_token = nil )
          @context         = context
          @node            = node
@@ -49,7 +49,7 @@ module PositionStack
 
          @lexer             = lexer
          @stream_position   = stream_position
-         @original_position = stream_position
+         @rewind_position   = stream_position
          @next_token        = next_token
          @sequence_number   = (@context.nil? ? 0 : @context.sequence_number + 1)
          
@@ -94,8 +94,9 @@ module PositionStack
                estream.puts "=" * lexer_explanation.length
             end
          
-            token = ContextStream.indent_with(estream, "|   ") { @lexer.read( position.nil? ? @stream_position : position, @state.lexer_plan, estream ) }            
-            token.rewind_position = stream_position
+            token = ContextStream.indent_with(estream, "|   ") do
+               @lexer.read( (position.nil? ? @stream_position : position), @state.lexer_plan, @rewind_position, estream ) 
+            end
          
             if position.nil? then 
                @next_token = token
@@ -230,7 +231,7 @@ module PositionStack
             return true  if position.node.nil?
             return true  if position.node.recoverable?
             return false if position.node.tainted?
-            return false if position.node.terminal? and position.node.start_position <= error_position
+            return false if position.node.token? and position.node.start_position <= error_position
          end
 
          bug( "should this ever happen?" )
@@ -344,7 +345,7 @@ module PositionStack
          # "Unread" any skipped data, if appropriate.
          
          if restore_lookahead and reduce_position.exists? and next_token.nil? then
-            next_position.stream_position = reduce_position.original_position 
+            next_position.stream_position = reduce_position.rewind_position 
          end
          
          #
@@ -385,10 +386,11 @@ module PositionStack
          #
          # Create the token to insert.
          
-         @lexer.set_position( @stream_position )
-         token = @lexer.locate_token( Artifacts::Token.fake(type, @stream_position) )
-         token.rewind_position = @stream_position
-         token.taint( Artifacts::Insertion.new(token, @stream_position, recovery_context) )
+         token = @lexer.fake( @stream_position, type, @rewind_position..(@stream_position-1) )
+         token.taint( Artifacts::Corrections::Insertion.new(token, @stream_position, recovery_context) )
+
+         # token = @lexer.fake( @stream_position, type )
+         # token.rewind_position = @stream_position
                   
          #
          # Create the correction and a new Position to replace this one.  
@@ -411,10 +413,8 @@ module PositionStack
          # Grab the copy of the token we are replacing and create the token to insert.
          
          replaced_token = next_token()
-         @lexer.set_position( @stream_position )
-         token = @lexer.locate_token( Artifacts::Token.fake(type, replaced_token.follow_position) )
-         token.rewind_position = @stream_position
-         token.taint( Artifacts::Replacement.new(token, replaced_token, @stream_position, recovery_context) )
+         token = @lexer.fake( @stream_position, type, @rewind_position..replaced_token.footprint.end )
+         token.taint( Artifacts::Corrections::Replacement.new(token, replaced_token, @stream_position, recovery_context) )
 
          #
          # Create the correction and a new Position to replace this one.  
@@ -439,7 +439,7 @@ module PositionStack
          
          deleted_token = next_token( estream )
          token = next_token( estream, deleted_token.follow_position )
-         token.taint( Artifacts::Deletion.new(deleted_token, deleted_token.follow_position, recovery_context) )
+         token.taint( Artifacts::Corrections::Deletion.new(deleted_token, deleted_token.follow_position, recovery_context) )
          token.untaint()
 
          #
@@ -532,7 +532,7 @@ module PositionStack
          if anchor_signature then
             return @recovery_signature
          else
-            return "#{@recovery_signature}|#{Parser.describe_type(next_token().type)}"
+            return "#{@recovery_signature}|#{next_token().type.signature}"
          end
       end
 

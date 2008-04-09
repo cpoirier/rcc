@@ -56,7 +56,7 @@ module Corrections
       # signature()
       
       def signature()
-         return "#{@inserted_token.rewind_position}:#{@inserted_token.follow_position}::#{Parser.describe_type(@inserted_token.type)}"
+         return "#{@inserted_token.rewind_position}:#{@inserted_token.follow_position}::#{@inserted_token.type.signature}"
       end
       
       

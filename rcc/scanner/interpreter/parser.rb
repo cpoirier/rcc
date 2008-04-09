@@ -764,7 +764,7 @@ module Interpreter
                   # pass.
 
                   recovery_position.state.recovery_predicates.each do |leader_type, predicate|
-                     estream.puts "APPLYING PREDICATE FOR CORRECTION #{Parser.describe_type(leader_type)}" if estream
+                     estream.puts "APPLYING PREDICATE FOR CORRECTION #{leader_type.signature}" if estream
                      next if leader_type.nil? or leader_type == lookahead_type
 
                      #

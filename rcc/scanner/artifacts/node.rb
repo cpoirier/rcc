@@ -117,6 +117,16 @@ module Artifacts
       #  - clears the taint from this Node (any Correction is still linked)
       
       def untaint()
+         #
+         # untaint()
+         #  - clears the taint from this Node (any Correction is still linked)
+
+         def untaint()
+            @tainted = false
+         end
+
+
+         
          bug( "you must override untaint()" )
       end
       

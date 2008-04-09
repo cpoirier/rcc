@@ -58,6 +58,22 @@ module Plan
          @type == :group
       end
       
+      def token_names( master_plan )
+         case @type
+         when :token
+            return [@name]
+         when :production
+            return []
+         when :group
+            names = []
+            master_plan.group_members[self].each do |member|
+               names << member.name if member.refers_to_token?
+            end
+            
+            return names
+         end
+      end
+      
       def recoverable?()
          @recoverable
       end

@@ -113,6 +113,7 @@ require "#{File.dirname(File.expand_path(__FILE__))}/token.rb"
       
       def make_token( string, type = nil )
          return Token.new( string, type, @position, @line_number, @column_number, @descriptor )
+         
       end
       
       
