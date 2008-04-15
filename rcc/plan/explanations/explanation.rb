@@ -49,12 +49,10 @@ end  # module RCC
 
 
 
-require "#{$RCCLIB}/plan/explanations/selected_action.rb"
-require "#{$RCCLIB}/plan/explanations/only_one_choice.rb"
-require "#{$RCCLIB}/plan/explanations/reductions_sorted.rb"
-require "#{$RCCLIB}/plan/explanations/shift_trumps_reduce.rb"
-require "#{$RCCLIB}/plan/explanations/reduce_trumps_shift.rb"
-require "#{$RCCLIB}/plan/explanations/initial_options.rb"
-require "#{$RCCLIB}/plan/explanations/favourite_chosen.rb"
 require "#{$RCCLIB}/plan/explanations/backtracking_activated.rb"
+require "#{$RCCLIB}/plan/explanations/initial_options.rb"
+require "#{$RCCLIB}/plan/explanations/items_do_not_meet_threshold.rb"
+require "#{$RCCLIB}/plan/explanations/only_one_choice.rb"
+require "#{$RCCLIB}/plan/explanations/left_assoc_reduce_eliminates_shift.rb"
+require "#{$RCCLIB}/plan/explanations/right_assoc_reduce_eliminated.rb"
 

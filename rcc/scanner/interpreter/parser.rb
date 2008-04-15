@@ -38,7 +38,7 @@ module Interpreter
       ASN             = Artifacts::Nodes::ASN
       PositionMarker  = Artifacts::PositionStack::PositionMarker
       StartPosition   = Artifacts::PositionStack::StartPosition
-      AttemptPosition = Artifacts::PositionStack::AttemptPosition
+      BranchInfo      = Artifacts::PositionStack::BranchInfo
    
       
       
@@ -305,21 +305,21 @@ module Interpreter
             # for details.  Note that we shoud never get a FlowControl exception from our launch action, as the
             # thing that created the AttemptPosition already verified the lookahead.
             
-            if position.is_a?(AttemptPosition) then
-               attempt_depth = position.attempt_depth
-               next_position = perform_action( position, position.launch_action, position.next_token, estream )
-               
-               #
-               # Shift actions will make a new position with the old position as context.  Reduce actions will
-               # make a new position without the old position as context.  In the latter case, we need to transfer
-               # our recovery suspicions to the new position, so they don't immediately fall off the stack.
-               
-               if next_position.context.object_id != position.object_id then
-                  next_position.alternate_recovery_positions.concat( position.alternate_recovery_positions )
-               end
-               
-               position = next_position
-            end
+            # if position.is_a?(AttemptPosition) then
+            #    attempt_depth = position.attempt_depth
+            #    next_position = perform_action( position, position.launch_action, position.next_token, estream )
+            #    
+            #    #
+            #    # Shift actions will make a new position with the old position as context.  Reduce actions will
+            #    # make a new position without the old position as context.  In the latter case, we need to transfer
+            #    # our recovery suspicions to the new position, so they don't immediately fall off the stack.
+            #    
+            #    if next_position.context.object_id != position.object_id then
+            #       next_position.alternate_recovery_positions.concat( position.alternate_recovery_positions )
+            #    end
+            #    
+            #    position = next_position
+            # end
             
 
             #
@@ -461,7 +461,7 @@ module Interpreter
       #  - raises AttemptsPendings if the parse hit a branch point
       #  - raises PositionSeen if the action has a recovery context and would duplicate a position already seen
       
-      def perform_action( position, action, next_token, estream )
+      def perform_action( position, action, next_token, estream, new_branch_info = nil )
          next_position = nil
          
          case action
@@ -469,6 +469,22 @@ module Interpreter
                estream.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if estream
                next_position = position.push( next_token, action.to_state )
                estream.discard() if estream && estream[:hide_ignored] && action.to_state.items[0].complete? and action.to_state.items[0].production.name.name.slice(0..8) == "_ignored_"
+
+               #
+               # With the next_position chosen, we need to chain forward the branch information.
+               # If one is supplied, we use it.  Otherwise, we copy forward one from the previous
+               # position: either the context info if this action disambiguates the parse, or
+               # the existing one otherwise.
+               
+               if new_branch_info.exists? then
+                  next_position.branch_info = new_branch_info
+               elsif position.branch_info.exists? then
+                  if action.disambiguates_parse? then
+                     next_position.branch_info = position.branch_info.context_info
+                  else
+                     next_position.branch_info = position.branch_info
+                  end
+               end
                
                
             when Plan::Actions::Discard
@@ -490,6 +506,10 @@ module Interpreter
                
                estream.discard() if estream && estream[:hide_ignored]
                
+               #
+               # Note that with discard, we have nothing to do with branch info, as we are
+               # returning to a position already on the stack and linked into a branch.
+               
                
             when Plan::Actions::Reduce
                production = action.by_production
@@ -503,7 +523,26 @@ module Interpreter
                top_position = position
                production.symbols.length.times do |i|
                   nodes.unshift position.node
-                  position  = position.pop( production, top_position )
+                  last_position = position
+                  position      = position.pop( production, top_position )
+                  
+                  #
+                  # If the popped node is a root position for a branch, we need to verify
+                  # that it produced a relevant production.  If not, it is time to reset for the
+                  # next branch.
+                  
+                  if last_position.branch_root?(position) then
+                     estream.puts "HMMMM" if estream
+                     unless last_position.branch_info.valid_production?(production)
+                        estream.puts "it's valid" if estream
+                        restart_info = last_position.branch_info.next_branch()
+                        if restart_info then
+                           return perform_action( restart_info.root_position, restart_info.action, nil, estream, restart_info )
+                        else
+                           nyi( "error trigger for out of options" )
+                        end
+                     end
+                  end
                end
                
                node = @build_ast ? ASN.map(production, nodes) : CSN.new(production.name, nodes)
@@ -544,22 +583,23 @@ module Interpreter
                end
 
                next_position = position.push( node, goto_state, top_position, restore_lookahead )
-
-            when Plan::Actions::Attempt
                
                #
-               # position.fork() for each of our options and feed in the selected first action.  We can rely on this
-               # never being another Attempt action.  Once all are set up, raise an AttemptsPending exception to 
-               # pass the list back to somebody who can do something about it.  Doing things this way helps us prevent
-               # stack overflow from deep recursion.
+               # All reduced positions are part of the same branch as the top position in the 
+               # reduce.  The branch doesn't commit until a disambiguating shift.
                
-               attempts = action.actions.collect do |attempt_action|
-                  valid_productions = attempt_action.is_a?(Plan::Actions::Shift) ? attempt_action.valid_productions : nil
-                  position.fork( attempt_action, valid_productions )
-               end
+               next_position.branch_info = top_position.branch_info
+
+
+            when Plan::Actions::Attempt
+
+               #
+               # For Attempt, our only function is to pick the first action and set it running with 
+               # a new BranchInfo context.  Other parts of the parser deal with moving to subsequent
+               # branches when it is appropriate to do so (when the current branch fails).
                
-               raise AttemptsPending.new( attempts )
-            
+               next_position = perform_action( position, action.actions[0], next_token, estream, BranchInfo.new(position, action, 0) )
+               
             else
                nyi "support for #{action.class.name}"
          end

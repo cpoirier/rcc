@@ -17,27 +17,25 @@ module Explanations
 
  
  #============================================================================================================================
- # class SelectedAction
- #  - explanation showing the final disposition for a lookahead symbol
+ # class ItemsDoNotMeetThreshold
+ #  - an explanation indicating those items that fell below the priority threshold for the set
 
-   class SelectedAction < Explanation
+   class ItemsDoNotMeetThreshold < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( action )
-         @action = action
+      def initialize( items )
+         @items = items
       end
-      
       
       def to_s()
-         return "Selected action: #{@action.to_s}"
+         return "Items that do not meet the priority threshold for this state: #{@items.collect{|item| item.to_s()}.join("; ")}"
       end
       
       
-      
-   end # OnlyOneChoice
+   end # ItemsDoNotMeetThreshold
    
 
 
@@ -45,4 +43,3 @@ module Explanations
 end  # module Explanations
 end  # module Plan
 end  # module RCC
-

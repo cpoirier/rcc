@@ -91,7 +91,7 @@ module Plan
                names = set.sort.collect{|e| e.name}
                
                production_name   = Name.new( "_ignored_" + names.join("_"), grammar_name )
-               production_symbol = Symbol.new( production_name, :production )
+               production_symbol = Symbol.new( production_name, :discarder )
                prefilter_names[names.join("|")] = production_name
 
                default_prefilter = production_symbol if default_prefilter.nil?

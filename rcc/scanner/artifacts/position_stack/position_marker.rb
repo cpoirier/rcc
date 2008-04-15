@@ -36,6 +36,7 @@ module PositionStack
       attr_accessor :alternate_recovery_positions
       attr_accessor :sequence_number
       attr_reader   :position_registry
+      attr_accessor :branch_info
       
       def initialize( context, node, state, lexer, stream_position, recovery_registry = nil, next_token = nil )
          @context         = context
@@ -75,6 +76,11 @@ module PositionStack
          @stream_position = position
       end
       
+      
+      def branch_root?( position )
+         return false if @branch_info.nil?
+         return @branch_info.root_position.object_id == position.object_id
+      end
 
 
       #
@@ -312,7 +318,7 @@ module PositionStack
       #  - returns the new Position
       #  - raises Parser::PositionSeen if you attempt to push() to a Position we've already been
 
-      def push( node, state, reduce_position = nil, restore_lookahead = false )
+      def push( node, state, reduce_position = nil, restore_lookahead = false, branch_point = nil )
          next_position = nil
          
          #
@@ -644,4 +650,4 @@ end  # module RCC
 
 
 require "#{$RCCLIB}/scanner/artifacts/position_stack/start_position.rb"
-require "#{$RCCLIB}/scanner/artifacts/position_stack/attempt_position.rb"
+require "#{$RCCLIB}/scanner/artifacts/position_stack/branch_info.rb"

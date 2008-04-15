@@ -347,7 +347,7 @@ module Plan
       #  - calls your block once for every potential transition from this State
       #  - passes in the transition Symbol and the shifted Items it results in
       
-      def enumerate_transitions()
+      def enumerate_transitions( exclude_discarders = true )
          assert( @closed, "you must close() the State before enumerating the transitions" )
          
          #
@@ -385,9 +385,10 @@ module Plan
          # Note, finally, that there are no transitions for complete Items.  Such Items indicate reductions, not shifts.
          #
          # A NEW WRINKLE: every Symbol may have a prefilter Symbol, which may or may not be present before the actual
-         # Symbol.  The prefilter rule will always have a Discard resolution, and we generally use this feature to
-         # strip out ignorable tokens (like whitespace and comments) during parsing.  We enumerate these prefilters 
-         # here, along with the other potential state changes.
+         # Symbol.  The prefilter rule will generally have a Discard resolution, and we generally use this feature to
+         # strip out ignorable tokens (like whitespace and comments) during parsing.  However, we don't generally 
+         # enumerate these prefilters here, as a Discarder doesn't leave a symbol on the stack, and so it will never
+         # be shifted.  If you really want them included, you can set exclude_discarders to false.
          
          #
          # First up, sort the Items by leader symbol.
@@ -414,9 +415,19 @@ module Plan
                filter = symbol.prefilter
             end
 
+            #
+            # If the filter is a Discarder, it will never be shifted.  We include it only
+            # if isn't a Discarder.
+            
             if filter then
-               enumeration[filter.name] = [] unless enumeration.member?(filter.name)
-               enumeration[filter.name] << item
+               if filter.refers_to_discarder? then
+                  unless exclude_discarders
+                     enumeration[filter.name] = [] unless enumeration.member?(filter.name)
+                     enumeration[filter.name] << item
+                  end
+               else
+                  nyi( "what is the result of shifting a non-Discarder prefilter?" )
+               end
             end
          end
          
@@ -448,7 +459,6 @@ module Plan
          @explanations = (explain ? {} : nil)
          @actions      = {}
          
-
          #
          # First, sort into lists of options.  
          
@@ -517,198 +527,144 @@ module Plan
 
          recovery_data = {}
          options.each do |symbol_name, items|
-
-            explanations          = []
-            all_accepts           = []
-            all_reductions        = []
-            eliminated_reductions = []
-            all_shifts            = []
-            eliminated_shifts     = []
-            error_actions         = []
-
-
-            #
-            # If there is only one option for an la(1) Symbol, life is good.  
-
+            
+            explanations = []
+            in_play      = []
+            discarded    = []
+            
             if items.length == 1 then
                item = items[0]
-               explanations << Explanations::OnlyOneChoice.new( item )
-               
-               if item.complete? then
-                  all_reductions << item
-               else
-                  all_shifts     << item
-               end
-               
-            #
-            # Otherwise, either we must increase the lookahead length, request backtracking, or do something arbitrary.  
-            # Associativity and precedence are the best "arbitrary" things to do.
-            
+               in_play      << item
+               explanations << Explanations::OnlyOneChoice.new( item ) if explain
             else
                
                #
-               # Start by splitting the Items into reductions and shifts.
+               # If there are multiple options, we consider the highest priority shift (a shift/shift conflict 
+               # for the same symbol goes to the same State -- but we need the valid production list, to ensure
+               # that the forward States don't take liberties) and the highest priority reduce.  We consider
+               # *nothing* (reduce or shift) after the highest priority reduce, as we don't want to risk doing
+               # stupid things.  We tolerate as much ambiguity as might be useful, and no more.
                
-               items.each do |item|
-                  if item.complete? then
-                     all_reductions << item
+               sorted = items.sort do |lhs, rhs|
+                  if lhs.production.priority == rhs.production.priority then
+                     if lhs.complete? ^ rhs.complete? then
+                        lhs.complete? ? -1 : 1
+                     else
+                        rhs.production.length <=> lhs.production.length
+                     end
                   else
-                     all_shifts     << item
+                     lhs.production.priority <=> rhs.production.priority
                   end
                end
 
+               reduce_priority = 10000000000
+               sorted.each do |item|
+                  if item.production.priority > reduce_priority then    # priority 1 is higher than priority 2
+                     discarded << item
+                  elsif item.complete? then
+                     in_play << item
+                     reduce_priority = item.production.priority
+                  else
+                     in_play << item
+                  end
+               end
+               
+               explanations << Explanations::ItemsDoNotMeetThreshold.new( discarded ) if explain 
                
                #
-               # Sort the reductions by priority.
+               # At this point, in_play contains 0 or more high priority shifts followed by a set
+               # of 0 or more shifts and reduces at the same priority.  We have to look at that 
+               # second set (if present) and apply associativity.
                
-               all_reductions.sort!{|lhs, rhs| lhs.production.priority <=> rhs.production.priority }
-               explanations << Explanations::ReductionsSorted.new( all_reductions ) if explain and all_reductions.length > 1
+               keep_set  = []
+               assoc_set = []
                
-
-               #
-               # Arbitrate between shift/reduce conflicts by precedence and associativity, where available.
+               sorted.each do |item|
+                  if item.production.priority < reduce_priority then    # priority 1 is higher than priority 2
+                     keep_set << item
+                  else
+                     assoc_set << item
+                  end
+               end
                
-               all_shifts.each do |shift|
-
-                  #
-                  # This used to be "reductions.each", which refers to @reductions.  It's been that way for
-                  # a long while.  Not sure if it was intential or a mistake.  I'm changing it for now to 
-                  # see if it fixes a problem.
+               unless assoc_set.empty?
+                  assoc_shifts     = assoc_set.select{ |item| !item.complete? }
+                  assoc_reductions = assoc_set.select{ |item| item.complete?  }
                   
-                  all_reductions.each do |reduction|
-
-                     #
-                     # Lower priority numbers indicate higher priority.  To make the math more intuitive,
-                     # we'll negate them.
-                  
-                     shift_priority     = shift.production.priority     * -1
-                     reduction_priority = reduction.production.priority * -1
-
-                  
-                     #
-                     # If the shift priority is higher, we shift.  The reduction is eliminated.
-                  
-                     if shift_priority > reduction_priority then
-                        eliminated_reductions << reduction
-                        explanations          << Explanations::ShiftTrumpsReduce.new( shift, reduction ) if explain
-                     
-                     #
-                     # If the reduction priority is higher, we reduce.  The shift is eliminated.
-                     
-                     elsif shift_priority < reduction_priority then
-                        eliminated_shifts << shift
-                        explanations      << Explanations::ReduceTrumpsShift.new( reduction, shift ) if explain
-
-                     #
-                     # Otherwise, both items hold the same priority, and we'll let associativity decide.  
-                     
-                     else 
-                        
-                        #
-                        # For associativity, the decision is always on the associativity of the reduction Production:
-                        #   left-associativity  -- perform the reduce
-                        #   right-associativity -- perform the shift
-                        #   no associativity    -- invalidate both ops, create an Error Action
-                        # The default associativity is right.
-                        #
-                        # BUG: no associativity isn't working, and it is probably because of some bad thinking here!
-
+                  assoc_shifts.each do |shift|
+                     assoc_reductions.each do |reduction|
                         case reduction.production.associativity
                            when :none
-                              eliminated_reductions << reduction
                               warn_nyi( "nonassociativity" )
+                              # eliminated_reductions << reduction
                               # error_actions         << Actions::NonAssociativityViolation.new( shift, reduction )
                               # explanations          << Explanations::NonAssociativityViolation.new( shift, reduction ) if explain
                            when :left
-                              eliminated_shifts     << shift
-                              explanations          << Explanations::ReduceTrumpsShift.new( reduction, shift, true ) if explain
+                              assoc_set.delete_if{ |item| item.object_id == shift.object_id }
+                              explanations << Explanations::LeftAssocReduceEliminatesShift.new( reduction, shift ) if explain
                            else
-                              eliminated_reductions << reduction
-                              explanations          << Explanations::ShiftTrumpsReduce.new( shift, reduction, true ) if explain
+                              assoc_set.delete_if{ |item| item.object_id == reduction.object_id }
+                              explanations << Explanations::RightAssocReduceEliminated.new( shift, reduction ) if explain
                         end
                      end
                   end
                end
+               
+               in_play = keep_set + assoc_set
             end
-
             
             #
-            # Produce actions for the set, in the following order: valid shifts, valid reductions, error actions.
-            # If we end up with only one, we return it.  Otherwise, we we create an Attempt action to trigger 
-            # backtracking support.  
+            # Collect the set of valid productions that can be produced if using backtracking.  This 
+            # is the list of shift productions we try *before* any reductions.
+            
+            valid_productions = []
+            in_play.each do |item|
+               break if item.complete?
+               valid_productions << item.production
+            end
+            
             #
-            # BUG: At some point, k>1 could eliminate some backtracking, and would be especially useful for 
-            # reduce/reduce conflicts.
+            # Next, convert the in_play items to actions.
             
-            actions               = []
-            action_items          = []
-            chosen_shift_actions  = []
-            chosen_reduce_actions = []
-            
-            valid_shifts = (all_shifts - eliminated_shifts)
-            unless valid_shifts.empty?
-               
-               #
-               # We care only about the first shift (they all shift the same thing), but for backtracking,
-               # we also care that, ultimately, we produce one of the valid productions.  
-               
-               valid_productions = valid_shifts.collect{|shift| shift.production}
-
-               shift = valid_shifts[0]
-               if symbol_name.eof? then
-                  actions << Actions::Accept.new( shift.production )
-                  action_items << shift
-               else
-                  shift_action = Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions )
-                  chosen_shift_actions << shift_action
-                  actions              << shift_action
-                  action_items         << shift
+            shift_created = false
+            actions       = []
+            in_play.each do |item|
+               if item.complete? then
+                  production = item.production
+                  actions << (production.discard? ? Actions::Discard.new(production) : Actions::Reduce.new(production))
+               elsif symbol_name.eof? then
+                  actions << Actions::Accept.new( item.production )
+               elsif !shift_created then
+                  actions << Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions, (valid_productions.length == 1 and item.leader.refers_to_token?) )
+                  shift_created = true
                end
             end
             
-            (all_reductions - eliminated_reductions).each do |reduction|
-               production    = reduction.production
-               reduce_action = production.discard? ? Actions::Discard.new(production) : Actions::Reduce.new(production)
-               chosen_reduce_actions << reduce_action
-               actions               << reduce_action
-               action_items          << reduction
-            end
+            #
+            # Create a single action for this symbol.
             
-            actions.concat( error_actions )
-            
-            if actions.length == 0 then
-               options.each do |symbol_name, items|
-                  puts "#{symbol_name.description}:"
-                  items.each do |item|
-                     puts "   #{item.signature}"
+            case actions.length 
+               when 0 
+                  options.each do |symbol_name, items|
+                     puts "#{symbol_name.description}:"
+                     items.each do |item|
+                        puts "   #{item.signature}"
+                     end
                   end
-               end
 
-               bug "what the hell does this mean?"
-            elsif actions.length == 1 then
-               @actions[symbol_name] = actions[0]
-            else
-               if use_backtracking then
-                  @actions[symbol_name], additional_explanations = compile_backtracking_actions( chosen_shift_actions, chosen_reduce_actions, error_actions, explain )
-                  explanations.concat( additional_explanations ) if explain
-               else
-                  explanations << Explanations::FavouriteChosen.new( actions ) if explain
+                  bug "what the hell does this mean?"
+               when 1
                   @actions[symbol_name] = actions[0]
-               end
+               else
+                  explanations << Explanations::BacktrackingActivated.new( actions ) if explain
+                  @actions[symbol_name] = Actions::Attempt.new( actions )
             end
-            
-            assert( !@actions[symbol_name].nil?, "wtf?" )
-            
-            if explain then
-               explanations << Explanations::SelectedAction.new( @actions[symbol_name] )
-               @explanations[symbol_name] = explanations 
-            end
-            
             
             #
-            # Finally, stash the recovery data so we can generate a recovery plan.
+            # Finish up.
             
-            recovery_data[symbol_name] = action_items
+            @explanations[symbol_name] = explanations if explain
+            recovery_data[symbol_name] = in_play
          end
 
 
@@ -950,7 +906,7 @@ module Plan
          stream.indent do
             
             rows = []
-            if @actions.length == 1 and @actions.member?(Name.any_type) then
+            if @actions.exists? and @actions.length == 1 and @actions.member?(Name.any_type) then
                stream.puts "Context states are irrelevant to this State"
             else
                
@@ -1088,36 +1044,6 @@ module Plan
          return @item_index.member?(item.signature)
       end
 
-
-      #
-      # compile_backtracking_actions()
-      #  - helper for compile_actions that processing a set of actions into an Attempt plan
-      #  - returns an Action and an array of Explanations
-      
-      def compile_backtracking_actions( shift_actions, reduce_actions, error_actions, explain )
-
-         explanations = []
-         
-         #
-         # We still solve reduce/reduce conflicts by taking the first declared rule.
-
-         if reduce_actions.length > 1 then
-            explanations << Explanations::FavouriteChosen.new( reduce_actions ) if explain
-            reduce_actions = [reduce_actions[0]]
-         end
-         
-         #
-         # For shift/reduce conflicts, we try shift first, then reduce.
-         
-         actions = shift_actions + reduce_actions + error_actions
-
-         if actions.length == 1 then
-            return actions[0], explanations
-         else
-            explanations << Explanations::BacktrackingActivated.new( actions ) if explain
-            return Actions::Attempt.new( shift_actions + reduce_actions + error_actions ), explanations
-         end
-      end
       
       
    end # State

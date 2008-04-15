@@ -17,32 +17,27 @@ module Explanations
 
  
  #============================================================================================================================
- # class ShiftTrumpsReduce
- #  - explanation that indicates a shift action was chosen over a reduce action for precedence or associativity reasons
+ # class LeftAssocReduceEliminatesShift
+ #  - explanation that indicates a reduce action was chosen over a shift action for associativity reasons
 
-   class ShiftTrumpsReduce < Explanation
+   class LeftAssocReduceEliminatesShift < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( shift, reduction, by_associativity = false )
-         @shift            = shift
-         @reduction        = reduction
-         @by_associativity = by_associativity
+      def initialize( reduction, shift )
+         @reduction = reduction
+         @shift     = shift
       end
       
       
       def to_s()
-         if @by_associativity then
-            return "Shift [ #{@shift.to_s}] beats Reduce [ #{@reduction.to_s}]; equal precedence, right-associative"
-         else
-            return "Shift [ #{@shift.to_s}] beats Reduce [ #{@reduction.to_s}]; higher precedence"
-         end
+         return "Reduce [ #{@reduction.to_s}] eliminates Shift [ #{@shift.to_s}]; equal precedence, left-associative"
       end
       
       
-   end # ShiftTrumpsReduce
+   end # LeftAssocReduceEliminatesShift
    
 
 

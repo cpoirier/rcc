@@ -38,7 +38,7 @@ module Plan
       attr_writer :recoverable
       
       def initialize( name, type, prefilter = nil )
-         assert( type == :token || type == :production || type == :group, "type is invalid" )
+         assert( type == :token || type == :production || type == :group || type == :discarder, "type is invalid" )
          
          @name        = name
          @type        = type
@@ -51,11 +51,15 @@ module Plan
       end
       
       def refers_to_production?()
-         @type == :production
+         @type == :production || @type == :discarder
       end
       
       def refers_to_group?()
          @type == :group
+      end
+      
+      def refers_to_discarder?()
+         @type == :discarder
       end
       
       def token_names( master_plan )

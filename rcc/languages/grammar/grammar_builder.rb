@@ -907,7 +907,6 @@ module Grammar
                      unless @rule_defs.member?(child_name) 
                         @rule_defs[child_name]       = Pluralization.new( create_name(child_name), child_form )
                         @naming_contexts[child_name] = child_namer
-                        warn_nyi( "transformations for pluralizations" )
                         
                         child_namer.commit( @rule_defs[child_name] )
                      end

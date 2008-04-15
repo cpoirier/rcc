@@ -29,10 +29,19 @@ module Actions
       attr_reader :to_state
       attr_reader :valid_productions
       
-      def initialize( symbol_name, to_state, valid_productions )
-         @symbol_name       = symbol_name
-         @to_state          = to_state
-         @valid_productions = valid_productions
+      def initialize( symbol_name, to_state, valid_productions, disambiguates_parse )
+         @symbol_name         = symbol_name
+         @to_state            = to_state
+         @valid_productions   = valid_productions
+         @disambiguates_parse = disambiguates_parse
+      end
+      
+      def valid_production?( production )
+         return @valid_productions.member?(production)
+      end
+      
+      def disambiguates_parse?()
+         return @disambiguates_parse
       end
       
       def to_s()
