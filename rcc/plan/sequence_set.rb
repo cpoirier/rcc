@@ -162,7 +162,7 @@ module Plan
          return [] if loop_detection.member?(self.object_id)
          
          lookahead = {}
-         @sequences.collect{|sequence| sequence[0]}.each do |start_symbol|
+         @sequences.select{|sequence| !sequence.empty?}.collect{|sequence| sequence[0]}.each do |start_symbol|
             if start_symbol.refers_to_token? then
                lookahead[start_symbol.signature] = start_symbol
             else

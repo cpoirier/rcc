@@ -159,16 +159,16 @@ module Plan
                      symbols            = []
                      reduction_gateways = []
                      gateway_buffer     = []
+                     pending_commit     = nil
                      
                      elements = sequence
                      sequence.each_element do |element|
                         case element
                         when Model::Markers::GatewayMarker
                            gateway_buffer << element.symbol_name
-                        when Model::Markers::RecoveryCommit
-                           symbols[-1].recoverable = true unless symbols.empty?
+                        when Model::Markers::LocalCommit
+                           symbols[-1].commit_point = :local
                         else
-
                            slots << element.slot_name
                            ast_class.define_slot( element.slot_name, false ) unless element.slot_name.nil? 
                            
@@ -204,6 +204,11 @@ module Plan
                      warn_nyi( "support for trailing gateway markers" )
                      production = Production.new( productions.length, rule.name, symbols, slots, rule.associativity, rule.priority, ast_class, sequence.minimal?, postfilter )
                      productions << production
+
+                     if !symbols.empty? and symbols[-1].commit_point.exists? then
+                        production.commit_point = symbols[-1].commit_point
+                        symbols[-1].commit_point = nil
+                     end
                      
                      if debug_production_build then
                         $stderr.indent do

@@ -459,8 +459,38 @@ module Plan
          @explanations = (explain ? {} : nil)
          @actions      = {}
          
+         
          #
-         # First, sort into lists of options.  
+         # Merge the potential shift commit actions down to a single action for any shift (including
+         # production shifts).  If there is only one, then we do it.  If there are multiples and they 
+         # are not all the same, we do nothing.
+         
+         shift_commits_by_leader = {}
+         @items.each do |item|
+            next if item.complete?
+            next if item.production.discard?
+            
+            shift_commits_by_leader[item.leader.name] = [] unless shift_commits_by_leader.member?(item.leader.name)
+            shift_commits_by_leader[item.leader.name] << item.leader.commit_point
+         end
+         
+         shift_commits_by_leader.each do |symbol_name, shift_commits|
+            shift_commit = shift_commits[0]
+            shift_commit.each do |type|
+               if type != shift_commit then
+                  shift_commit = nil
+                  break
+               end
+            end
+            
+            shift_commits_by_leader[symbol_name] = shift_commit
+         end
+            
+
+         #
+         # Next, sort into lists of options.  We'll immediately create and store actions
+         # for Gotos, as they are very simple to do, and we don't want the complicating later
+         # work.         
          
          ignore  = []
          options = {}
@@ -479,7 +509,7 @@ module Plan
             # If the Item leader is a Production, generate Goto actions.
             
             elsif !item.complete? and item.leader.refers_to_production? then
-               @actions[item.leader.name] = Actions::Goto.new( @transitions[item.leader.name] )
+               @actions[item.leader.name] = Actions::Goto.new( @transitions[item.leader.name], shift_commits_by_leader[item.leader.name] )
 
                
             #
@@ -489,11 +519,11 @@ module Plan
             elsif !item.complete? and item.leader.refers_to_group? then
                @master_plan.group_members[item.leader.name].each do |member|
                   if member.refers_to_production? then
-                     @actions[member.name] = Actions::Goto.new( @transitions[member.name] ) unless @actions.member?(member.name)
+                     @actions[member.name] = Actions::Goto.new( @transitions[member.name], shift_commits_by_leader[item.leader.name] ) unless @actions.member?(member.name)
                   else
                      options[member.name] = [] unless options.member?(member.name)
                      options[member.name] << item
-                     
+                   
                      ignore << member.name if item.production.discard?
                   end
                end
@@ -519,7 +549,7 @@ module Plan
          end
          
          @lookahead = options.keys - ignore
-
+         
          #
          # Select an action for each lookahead terminal.
          
@@ -547,11 +577,7 @@ module Plan
                
                sorted = items.sort do |lhs, rhs|
                   if lhs.production.priority == rhs.production.priority then
-                     if lhs.complete? ^ rhs.complete? then
-                        lhs.complete? ? -1 : 1
-                     else
-                        rhs.production.length <=> lhs.production.length
-                     end
+                     lhs.complete? ^ rhs.complete? ? (lhs.complete? ? -1 : 1) : 0
                   else
                      lhs.production.priority <=> rhs.production.priority
                   end
@@ -569,7 +595,7 @@ module Plan
                   end
                end
                
-               explanations << Explanations::ItemsDoNotMeetThreshold.new( discarded ) if explain 
+               explanations << Explanations::ItemsDoNotMeetThreshold.new( discarded ) if explain and !discarded.empty?
                
                #
                # At this point, in_play contains 0 or more high priority shifts followed by a set
@@ -579,7 +605,7 @@ module Plan
                keep_set  = []
                assoc_set = []
                
-               sorted.each do |item|
+               in_play.each do |item|
                   if item.production.priority < reduce_priority then    # priority 1 is higher than priority 2
                      keep_set << item
                   else
@@ -635,10 +661,11 @@ module Plan
                elsif symbol_name.eof? then
                   actions << Actions::Accept.new( item.production )
                elsif !shift_created then
-                  actions << Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions, (valid_productions.length == 1 and item.leader.refers_to_token?) )
+                  actions << Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions, shift_commits_by_leader[item.leader.name] )
                   shift_created = true
                end
             end
+            
             
             #
             # Create a single action for this symbol.

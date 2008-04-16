@@ -81,7 +81,25 @@ module PositionStack
          return false if @branch_info.nil?
          return @branch_info.root_position.object_id == position.object_id
       end
+      
+      
+      def branch_id( default = nil )
+         return default if @branch_info.nil?
+         return @branch_info.id
+      end
 
+
+      def committable?
+         return false if @branch_info.nil?
+         
+         root_position = @branch_info.root_position
+         each_position do |position|
+            return false if position.object_id == root_position.object_id
+         end
+         
+         return true
+      end
+      
 
       #
       # next_token()
@@ -605,7 +623,9 @@ module PositionStack
             stream.puts "#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
          # end
          stream.puts "#{stack_bar}"
+         stream.puts "BRANCH #{branch_id("MAIN")}"
          stream.indent("| ") do
+            stream.puts ""
             @state.display( stream )
          end
       end

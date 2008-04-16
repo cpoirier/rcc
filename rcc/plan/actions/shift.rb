@@ -29,23 +29,39 @@ module Actions
       attr_reader :to_state
       attr_reader :valid_productions
       
-      def initialize( symbol_name, to_state, valid_productions, disambiguates_parse )
+      def initialize( symbol_name, to_state, valid_productions, commit_point )
          @symbol_name         = symbol_name
          @to_state            = to_state
          @valid_productions   = valid_productions
-         @disambiguates_parse = disambiguates_parse
+         @commit_point        = commit_point
+      end
+      
+      def local_commit?()
+         return @commit_point == :local
+      end
+      
+      def global_commit?()
+         return @commit_point == :global
+      end
+      
+      def commit?()
+         return !@commit_point.nil?
       end
       
       def valid_production?( production )
          return @valid_productions.member?(production)
       end
       
-      def disambiguates_parse?()
-         return @disambiguates_parse
-      end
-      
       def to_s()
-         return "Shift #{@symbol_name.description}, then goto #{@to_state.number}"
+         valid_names = @valid_productions.collect{|p| p.name}.uniq
+         producing   = ""
+         if valid_names.length == 1 then
+            producing = "; to produce #{valid_names[0]}"
+         else
+            producing = "; to produce one of #{valid_names.join(" ")}"
+         end
+         
+         return "Shift #{@symbol_name.description}, then goto #{@to_state.number}#{producing}"
       end
       
    end # Shift

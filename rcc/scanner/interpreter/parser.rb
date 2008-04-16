@@ -479,11 +479,24 @@ module Interpreter
                if new_branch_info.exists? then
                   next_position.branch_info = new_branch_info
                elsif position.branch_info.exists? then
-                  if action.disambiguates_parse? then
-                     next_position.branch_info = position.branch_info.context_info
-                  else
-                     next_position.branch_info = position.branch_info
+                  next_position.branch_info = position.branch_info
+                  
+                  if action.local_commit? then
+                     while next_position.committable? 
+                        estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream
+                        next_position.branch_info = next_position.branch_info.context_info
+                        if estream
+                           estream << "into #{next_position.branch_id("MAIN")}"
+                           estream.end_line
+                        end
+                     end
                   end
+                  # if position.branch_info.committable? and action.local_commit? then
+                  #    next_position.branch_info = position.branch_info.context_info
+                  #    estream.puts "===> COMMITING BRANCH #{position.branch_id} into #{next_position.branch_id("MAIN")}" if estream
+                  # else
+                  #    next_position.branch_info = position.branch_info
+                  # end
                end
                
                
@@ -519,30 +532,40 @@ module Interpreter
                # Pop the right number of nodes.  Position.pop() may throw an exception if it detects an error.  
                # We pass it through to our caller. 
                
-               nodes = []
-               top_position = position
+               nodes           = []
+               top_position    = position
+               top_branch_info = new_branch_info.nil? ? top_position.branch_info : new_branch_info
+
+               branch_info   = top_branch_info
+               root_position = branch_info.nil? ? nil : branch_info.root_position
                production.symbols.length.times do |i|
                   nodes.unshift position.node
-                  last_position = position
-                  position      = position.pop( production, top_position )
-                  
+
                   #
-                  # If the popped node is a root position for a branch, we need to verify
+                  # If the node we are about to pop is a root position for a branch, we need to verify
                   # that it produced a relevant production.  If not, it is time to reset for the
                   # next branch.
                   
-                  if last_position.branch_root?(position) then
-                     estream.puts "HMMMM" if estream
-                     unless last_position.branch_info.valid_production?(production)
-                        estream.puts "it's valid" if estream
-                        restart_info = last_position.branch_info.next_branch()
+                  if position.object_id == root_position.object_id then
+                     unless branch_info.valid_production?(production) 
+                        restart_info = branch_info.next_branch()
                         if restart_info then
+                           estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT" if estream
                            return perform_action( restart_info.root_position, restart_info.action, nil, estream, restart_info )
                         else
+                           estream.puts "===> ALL BRANCHES FAILED" if estream
                            nyi( "error trigger for out of options" )
                         end
                      end
+                     
+                     branch_info   = branch_info.context_info
+                     root_position = branch_info.nil? ? nil : branch_info.root_position
                   end
+
+                  #
+                  # If we are still here, do the pop.
+
+                  position = position.pop( production, top_position )
                end
                
                node = @build_ast ? ASN.map(production, nodes) : CSN.new(production.name, nodes)
@@ -570,7 +593,8 @@ module Interpreter
                #
                # Get the goto state from the now-top-of-stack State: it will be the next state.
                
-               goto_state = position.state.transitions[production.name]
+               goto_action = position.state.actions[production.name]
+               goto_state  = position.state.transitions[production.name]
 
                restore_lookahead = true
                warn_bug( "we should be able to optimize restore_lookahead" )
@@ -586,10 +610,31 @@ module Interpreter
                
                #
                # All reduced positions are part of the same branch as the top position in the 
-               # reduce.  The branch doesn't commit until a disambiguating shift.
+               # reduce.  The branch may commit at this point, if the production itself is commitable
+               # on reduce, or the shift of it is commitable.
                
-               next_position.branch_info = top_position.branch_info
-
+               next_position.branch_info = top_branch_info
+               if production.local_commit_point? or goto_action.local_commit? then
+                  while next_position.committable?
+                     estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
+                     next_position.branch_info = next_position.branch_info.context_info
+                     if estream then
+                        estream << "into #{next_position.branch_id("MAIN")}" 
+                        estream.end_line
+                     end
+                  end
+               end
+               #    
+               #    
+               # while next_position.branch_info.exists? and next_position.branch_info.committable? and (production.local_commit_point? or goto_action.local_commit?)
+               #    estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
+               #    next_position.branch_info = next_position.branch_info.context_info
+               #    if estream then
+               #       estream << "into #{next_position.branch_id("MAIN")}" 
+               #       estream.end_line
+               #    end
+               # end
+               
 
             when Plan::Actions::Attempt
 

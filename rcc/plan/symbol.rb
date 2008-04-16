@@ -33,17 +33,17 @@ module Plan
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :name
-      attr_reader :prefilter
-      attr_writer :recoverable
+      attr_reader   :name
+      attr_reader   :prefilter
+      attr_accessor :commit_point
       
       def initialize( name, type, prefilter = nil )
          assert( type == :token || type == :production || type == :group || type == :discarder, "type is invalid" )
          
-         @name        = name
-         @type        = type
-         @prefilter   = prefilter       # A Symbol that might be need to be Discarded before reading this one
-         @recoverable = false
+         @name            = name
+         @type            = type
+         @prefilter       = prefilter       # A Symbol that might be need to be Discarded before reading this one
+         @commit_point = nil
       end
       
       def refers_to_token?()
@@ -78,8 +78,16 @@ module Plan
          end
       end
       
-      def recoverable?()
-         @recoverable
+      def commit_point?()
+         !@commit_point.nil?
+      end
+      
+      def local_commit_point?()
+         @commit_point == :local
+      end
+      
+      def global_commit_point?()
+         @commit_point == :global
       end
       
       def signature()

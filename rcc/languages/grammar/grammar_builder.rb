@@ -40,7 +40,7 @@ module Grammar
       RuleReference          = RCC::Model::Markers::RuleReference
       GroupReference         = RCC::Model::Markers::GroupReference
       PluralizationReference = RCC::Model::Markers::PluralizationReference
-      RecoveryCommit         = RCC::Model::Markers::RecoveryCommit      
+      LocalCommit         = RCC::Model::Markers::LocalCommit      
       
       
       
@@ -931,8 +931,8 @@ module Grammar
                warn_nyi( "skipping gateway_exp, because I've no clue what to do with it" )
                result = create_sequence()
                
-            when "recovery_commit"
-               result = create_sequence( RecoveryCommit.new() )
+            when "local_commit"
+               result = create_sequence( LocalCommit.new() )
             
             when "string_exp"
                word_name = anonymous_string( process_string_data(node.string) )

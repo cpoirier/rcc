@@ -16,10 +16,10 @@ module Markers
 
  
  #============================================================================================================================
- # class RecoveryCommit
+ # class LocalCommit
  #  - a marker showing a recovery commit in a Rule
 
-   class RecoveryCommit
+   class LocalCommit
       include Model::Elements::SlotInfo
       
       
@@ -31,7 +31,7 @@ module Markers
          
       end
       
-   end # RecoveryCommit
+   end # LocalCommit
    
 
 

@@ -68,6 +68,7 @@ module Grammar
       #       word              => word_first_char word_char*
       #
       #       property_text     => [{general_character}]-[}]+
+      #       any_text          => any_character+
       #       general_text      => general_character+
       #       unicode_sequence  => '\\' 'u' hex_digit hex_digit hex_digit hex_digit
       #       escape_sequence   => '\\' [a-z\\\-\[\]\']
@@ -96,6 +97,7 @@ module Grammar
             string_spec( 'word'            , sp_reference('word_first_char'), sp_repeated('*', sp_reference('word_char')) ),
             
             string_spec( 'property_text'   , sp_repeated('+', cs_difference(cs_characters(cs_reference('general_character')), cs_characters('}')))  ),
+            string_spec( 'any_text'        , sp_repeated('+', sp_reference('any_character'))          ),
             string_spec( 'general_text'    , sp_repeated('+', sp_reference('general_character'))      ),
             string_spec( 'unicode_sequence', est('\\'), 'u', sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit') ),
             string_spec( 'escape_sequence' , est('\\'), cs_characters(cs_range('a', 'z'), est('\\'), est('-'), est('['), est(']'), est("'")) ),
@@ -113,7 +115,7 @@ module Grammar
       # 
       
          macros_spec(
-            simple_macro( 'statement', transclusion(), repeated_reference('+', 'eol', 'ignore'), recovery_commit() ),
+            simple_macro( 'statement', transclusion(), repeated_reference('+', 'eol', 'ignore'), local_commit() ),
             parameterized_macro( 'block', ['header'],
                macro_call('statement', [],
                   macro_call( 'statement', [], variable_exp('header') ),
@@ -125,12 +127,13 @@ module Grammar
          
       # 
       #    section grammar
-      #       system_spec  => grammar_spec+
+      #       system_spec  => grammar_spec+ addendum?
       #       grammar_spec => block('grammar' word:name) [ priority option* specification* transformations? ]
+      #       addendum     => statement() [ 'stop' ] any_text?
       # 
       
          section_spec( 'grammar',
-            rule_spec( 'system_spec', repeated_reference('*', 'eol', 'ignore'), repeated_reference('+', 'grammar_spec') ),
+            rule_spec( 'system_spec', repeated_reference('*', 'eol', 'ignore'), repeated_reference('+', 'grammar_spec'), repeated_reference('?', 'addendum') ),
             rule_spec( 'grammar_spec', 
                block_macro_call(
                   expression('grammar', reference_exp('word', 'name')), 
@@ -139,6 +142,9 @@ module Grammar
                   repeated_exp('*', reference_exp('specification'  )),
                   repeated_exp('?', reference_exp('transformations'))
                )
+            ),
+            rule_spec( 'addendum',
+               statement_macro_call('stop'), repeated_reference('?', 'any_text')
             ),
       
       #
@@ -323,7 +329,7 @@ module Grammar
       #          end
       #
       #          gateway_exp     => '!' !whitespace word
-      #          recovery_commit => ';'
+      #          local_commit => ';'
       #          transclusion    => '%%'
       #       end
       # 
@@ -349,7 +355,7 @@ module Grammar
                ),
                
                rule_spec( 'gateway_exp'     , '!', gateway_exp('whitespace'), reference_exp('word') ),
-               rule_spec( 'recovery_commit' , ';'  ),
+               rule_spec( 'local_commit' , ';'  ),
                rule_spec( 'transclusion'    , '%%' )
             ),
             
@@ -869,7 +875,7 @@ module Grammar
             return true if node.type == "branch_exp"   
             return true if node.type == "repeated_exp"
             return true if node.type == "gateway_exp"   
-            return true if node.type == "recovery_commit"
+            return true if node.type == "local_commit"
             return true if node.type == "transclusion"
             return true if node.type == "macro_call"   
          when "parameters"
@@ -1262,10 +1268,10 @@ module Grammar
    
    
    #
-   # ::recovery_commit()
+   # ::local_commit()
    
-   def self.recovery_commit()
-      return node( "recovery_commit" )
+   def self.local_commit()
+      return node( "local_commit" )
    end
    
    

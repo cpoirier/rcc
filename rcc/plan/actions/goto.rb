@@ -27,10 +27,25 @@ module Actions
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :to_state
+      attr_reader :commit_point
       
-      def initialize( to_state )
-         @to_state = to_state
+      def initialize( to_state, commit_point )
+         @to_state     = to_state
+         @commit_point = commit_point
       end
+      
+      def local_commit?()
+         return @commit_point == :local
+      end
+      
+      def global_commit?()
+         return @commit_point == :global
+      end
+      
+      def commit?()
+         return !@commit_point.nil?
+      end
+      
       
    end # Goto
    

@@ -571,7 +571,7 @@ module RCC
          #                Rules
          #                   options  => 'StartRule'          identifier:rule_name
          #                            => 'IgnoreTerminal'     identifier:terminal_name
-         #                            => 'RecoveryCommit'     identifier:non_terminal_name
+         #                            => 'LocalCommit'     identifier:non_terminal_name
          #                            => 'EnableBacktracking'
          #                end
          #             end

@@ -57,6 +57,7 @@ module Plan
       attr_reader   :postfilter
       attr_accessor :ast_class
       attr_accessor :master_plan
+      attr_writer   :commit_point
 
       def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries, postfilter )
          type_check( name, Scanner::Artifacts::Name )
@@ -69,6 +70,7 @@ module Plan
          @priority         = priority
          @ast_class        = ast_class
          @postfilter       = postfilter
+         @commit_point = nil
                   
          @generate_error_recoveries = generate_error_recoveries
       end
@@ -82,6 +84,19 @@ module Plan
       def discard?()
          return false
       end
+      
+      def commit_point?()
+         !@commit_point.nil?
+      end
+      
+      def local_commit_point?()
+         @commit_point == :local
+      end
+      
+      def global_commit_point?()
+         @commit_point == :global
+      end
+      
 
       def signature()
          return @name.signature

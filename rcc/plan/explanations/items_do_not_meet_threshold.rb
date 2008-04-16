@@ -31,7 +31,7 @@ module Explanations
       end
       
       def to_s()
-         return "Items that do not meet the priority threshold for this state: #{@items.collect{|item| item.to_s()}.join("; ")}"
+         return "Items that do not meet the priority threshold for this state:\n   " + @items.collect{|item| item.to_s()}.join("\n   ")
       end
       
       

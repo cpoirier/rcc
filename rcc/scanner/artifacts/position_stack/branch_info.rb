@@ -38,6 +38,7 @@ module PositionStack
          @branch_index      = branch_index
          @recovery_branches = nil
          @current_position  = nil
+         @committable       = false
       end
       
       
@@ -45,6 +46,23 @@ module PositionStack
          return @attempt_action.actions[@branch_index]
       end
       
+      
+      def committable?()
+         return @committable
+      end
+      
+      def committable=( value )
+         @committable = value
+      end
+      
+      def id()
+         local = "#{@root_position.sequence_number}:#{@branch_index + 1}/#{@attempt_action.actions.length}"
+         if context_id = @root_position.branch_id then
+            return context_id + " " + local
+         else
+            return local
+         end
+      end
       
       
       #
