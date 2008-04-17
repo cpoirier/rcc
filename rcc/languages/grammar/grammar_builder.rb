@@ -253,13 +253,16 @@ module Grammar
                      nyi( "error handling for bad start_rule [#{option.rule_name.text}]" )
                   end
                   
-               when "ignore_switch"
+               when "discard"
                   if @string_defs.member?(option.name.text) then
                      name = create_name( option.name )
-                     grammar.ignore_symbols << name unless grammar.ignore_symbols.member?(name)
+                     grammar.discard_symbols << name unless grammar.discard_symbols.member?(name)
                   else
-                     nyi( "error handling for bad ignore switch [#{option.ignore_switch.text}]" )
+                     nyi( "error handling for bad discard switch [#{option.discard.text}]" )
                   end
+                  
+                  warn_nyi( "gateway expression check for corresponding discard?" )
+                  warn_nyi( "gateway expression exclusion at end of rule?"        )
                   
                when "backtracking_switch"
                   warn_nyi( "backtracking switch support (isn't this going away?)" )

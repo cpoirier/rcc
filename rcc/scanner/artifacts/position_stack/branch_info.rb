@@ -46,6 +46,10 @@ module PositionStack
          return @attempt_action.actions[@branch_index]
       end
       
+      def started_with_shift?()
+         return @attempt_action.actions[@branch_index].is_a?(Plan::Actions::Shift)
+      end
+      
       
       def committable?()
          return @committable
@@ -53,6 +57,12 @@ module PositionStack
       
       def committable=( value )
          @committable = value
+      end
+      
+      def at_validate_position?( position )
+         return false unless started_with_shift?
+         return false unless position.node.token?
+         return position.context.object_id == @root_position.object_id
       end
       
       def id()

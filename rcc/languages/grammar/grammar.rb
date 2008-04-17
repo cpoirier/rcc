@@ -42,8 +42,8 @@ module Grammar
       #    priority ascending
       # 
       #    start_rule system_spec
-      #    ignore     whitespace
-      #    ignore     comment
+      #    discard    whitespace
+      #    discard    comment
       #    enable     backtracking
       # 
       
@@ -52,8 +52,8 @@ module Grammar
          priority( "ascending" ),
       
          start_rule( "system_spec" ),
-         ignore_switch( "whitespace" ),
-         ignore_switch( "comment"    ),
+         discard( "whitespace" ),
+         discard( "comment"    ),
          enable_backtracking(),
 
       #
@@ -152,7 +152,7 @@ module Grammar
       #
       #       group option
       #          start_rule          => statement() [ 'start_rule' word:rule_name        ]
-      #          ignore_switch       => statement() [ 'ignore'     word:name             ]
+      #          discard             => statement() [ 'discard'    word:name             ]
       #          backtracking_switch => statement() [ 'enable'     'backtracking'        ]
       #          pluralization_guide => statement() [ 'pluralize'  word:name word:plural ]
       #       end
@@ -162,7 +162,7 @@ module Grammar
             
             group_spec( 'option',
                rule_spec( 'start_rule'         , statement_macro_call(string_exp('start_rule'), reference_exp('word', 'rule_name')) ),
-               rule_spec( 'ignore_switch'      , statement_macro_call(string_exp('ignore'    ), reference_exp('word', 'name'     )) ),
+               rule_spec( 'discard'            , statement_macro_call(string_exp('discard'   ), reference_exp('word', 'name'     )) ),
                rule_spec( 'backtracking_switch', statement_macro_call(string_exp('enable'    ), string('backtracking'))             ),       
                rule_spec( 'pluralization_guide', statement_macro_call(string_exp('pluralize' ), reference_exp('word', 'name'), reference_exp('word', 'plural')) )
             ),
@@ -837,7 +837,7 @@ module Grammar
       case type
          when "option"
             return true if node.type == "start_rule"
-            return true if node.type == "ignore_switch"
+            return true if node.type == "discard"
             return true if node.type == "backtracking_switch"
          when "specification"
             return true if node.type == "macros_spec"
@@ -969,10 +969,10 @@ module Grammar
    end
    
    #
-   # ::ignore_switch()
+   # ::discard()
    
-   def self.ignore_switch( name )
-      return node( "ignore_switch", "name" => w(name) )
+   def self.discard( name )
+      return node( "discard", "name" => w(name) )
    end
    
    #

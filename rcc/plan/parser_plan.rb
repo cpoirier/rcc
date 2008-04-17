@@ -38,8 +38,8 @@ module Plan
          @master_plan         = master_plan
          @name                = name
          @state_table         = state_table
-         @lexer_plan          = master_plan.lexer_plans[ name ]
-         @ast_classes         = master_plan.get_ast_plan( name )
+         @lexer_plan          = master_plan.lexer_plans[name]
+         @ast_classes         = master_plan.ast_plans[name]
          @enable_backtracking = enable_backtracking
       end
       

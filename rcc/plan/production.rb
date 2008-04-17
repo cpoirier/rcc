@@ -27,7 +27,7 @@ module Plan
          symbols = [Plan::Symbol.new(start_rule_name, :production), Plan::Symbol.new(Scanner::Artifacts::Name.end_of_file_type, :token)]
          slots   = [nil, nil]
          
-         return self.new( 0, Scanner::Artifacts::Name.any_type, symbols, slots, :right, 0, nil, false, nil )
+         return self.new( 0, Scanner::Artifacts::Name.any_type, symbols, slots, :right, 0, nil, false )
       end
       
       
@@ -35,7 +35,7 @@ module Plan
          symbols = @symbols + [Plan::Symbol.new(Scanner::Artifacts::Name.end_of_file_type, :token)]
          slots   = @slots   + [nil]
          
-         return self.class.new( @number, @name, symbols, slots, @associativity, @priority, @ast_class, @generate_error_recoveries, @postfilter )
+         return self.class.new( @number, @name, symbols, slots, @associativity, @priority, @ast_class, @generate_error_recoveries )
       end
       
       
@@ -54,23 +54,21 @@ module Plan
       attr_reader   :associativity          # nil, :left, :right, or :none
       attr_reader   :priority
       attr_reader   :ignore_symbols
-      attr_reader   :postfilter
       attr_accessor :ast_class
       attr_accessor :master_plan
       attr_writer   :commit_point
 
-      def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries, postfilter )
+      def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries )
          type_check( name, Scanner::Artifacts::Name )
          
-         @number           = number
-         @name             = name
-         @symbols          = symbols
-         @slots            = slots
-         @associativity    = associativity
-         @priority         = priority
-         @ast_class        = ast_class
-         @postfilter       = postfilter
-         @commit_point = nil
+         @number        = number
+         @name          = name
+         @symbols       = symbols
+         @slots         = slots
+         @associativity = associativity
+         @priority      = priority
+         @ast_class     = ast_class
+         @commit_point  = nil
                   
          @generate_error_recoveries = generate_error_recoveries
       end
@@ -79,10 +77,6 @@ module Plan
       
       def generate_error_recoveries?()
          return @generate_error_recoveries
-      end
-      
-      def discard?()
-         return false
       end
       
       def commit_point?()
@@ -122,7 +116,7 @@ module Plan
       
       
       def display( stream = $stdout )
-         stream.puts "#{@name}#{self.discard? ? " (discard result)" : ""} =>"
+         stream.puts "#{@name} =>"
          stream.indent do
             length().times do |i|
                stream << @symbols[i].description

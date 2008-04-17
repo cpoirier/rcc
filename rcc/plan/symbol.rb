@@ -34,15 +34,16 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader   :name
-      attr_reader   :prefilter
+      attr_reader   :type
+      attr_reader   :gateways
       attr_accessor :commit_point
       
-      def initialize( name, type, prefilter = nil )
+      def initialize( name, type, gateways = nil )
          assert( type == :token || type == :production || type == :group || type == :discarder, "type is invalid" )
          
-         @name            = name
-         @type            = type
-         @prefilter       = prefilter       # A Symbol that might be need to be Discarded before reading this one
+         @name         = name
+         @type         = type
+         @gateways     = gateways       # A list of symbols to discard (if present) before reading this Symbol
          @commit_point = nil
       end
       
@@ -101,6 +102,15 @@ module Plan
       def hash()
          return signature().hash
       end
+      
+      def ==( rhs )
+         return @type == rhs.type && @name == rhs.name
+      end
+      
+      def eql( rhs )
+         return @type == rhs.type && @name == rhs.name
+      end
+      
       
       def to_s()
          return description()

@@ -38,7 +38,7 @@ module Plan
          @production       = production
          @at               = at
          @follow_contexts  = []               # Items that provide follow symbols to us
-         @follow_sources   = []               # Itmes that provide late-bound follow contexts to us (anything that created us or an equivalent with shift())
+         @follow_sources   = []               # Items that provide late-bound follow contexts to us (anything that created us or an equivalent with shift())
          @followers        = nil
          @follow_sequences = nil
          @start_item       = false

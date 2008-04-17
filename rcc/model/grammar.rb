@@ -34,7 +34,7 @@ module Model
       attr_reader :groups               # name => Group
       attr_reader :rules                # name => Rule
 
-      attr_reader :ignore_symbols       # The names of any symbols the lexer should (usually) eat
+      attr_reader :discard_symbols      # The names of any symbols the lexer should (usually) discard
       attr_writer :enable_backtracking  # If true, backtracking will be used, where necessary, to handle conflicts
 
       attr_reader :state_table          # An Array of States for all states in the Grammar
@@ -46,7 +46,7 @@ module Model
          
          @name                = name
          @start_rule_name     = nil
-         @ignore_symbols      = []
+         @discard_symbols     = []
          @enable_backtracking = false
                             
          @strings = Util::OrderedHash.new()

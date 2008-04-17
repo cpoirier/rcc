@@ -52,7 +52,6 @@ end  # module RCC
 
 require "#{$RCCLIB}/plan/actions/shift.rb"
 require "#{$RCCLIB}/plan/actions/reduce.rb"
-require "#{$RCCLIB}/plan/actions/discard.rb"
 require "#{$RCCLIB}/plan/actions/goto.rb"
 require "#{$RCCLIB}/plan/actions/accept.rb"
 require "#{$RCCLIB}/plan/actions/attempt.rb"

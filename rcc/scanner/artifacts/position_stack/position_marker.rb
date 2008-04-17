@@ -106,9 +106,7 @@ module PositionStack
       #  - returns the next_token from this Position
 
       def next_token( estream = nil, position = nil )
-         if position.nil? and @state.actions.length == 1 and @state.actions.member?(Name.any_type) then
-            return Artifacts::Nodes::Token.hypothetical
-         elsif @next_token.nil? or !position.nil? then
+         if @next_token.nil? or !position.nil? then
             if estream then 
                lexer_explanation = "Lexing with prioritized symbols: #{@state.lexer_plan.order.collect{|symbol_name| symbol_name.description}.join(" ")}"
 
@@ -117,9 +115,24 @@ module PositionStack
                estream.puts lexer_explanation
                estream.puts "=" * lexer_explanation.length
             end
-         
-            token = ContextStream.indent_with(estream, "|   ") do
-               @lexer.read( (position.nil? ? @stream_position : position), @state.lexer_plan, @rewind_position, estream ) 
+
+            done = false
+            until done
+               token = ContextStream.indent_with(estream, "|   ") do
+                  @lexer.read( (position.nil? ? @stream_position : position), @state.lexer_plan, @rewind_position, estream ) 
+               end
+               
+               done = true
+               
+               if @state.discard_names.member?(token.type) then
+                  done = false
+                  estream.puts "\n===> DISCARDING\n" if estream
+                  if position.nil? then
+                     @stream_position = token.follow_position
+                  else
+                     position = token.follow_position
+                  end
+               end
             end
          
             if position.nil? then 

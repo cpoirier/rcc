@@ -12,7 +12,6 @@ require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/e
 require "#{$RCCLIB}/scanner/artifacts/name.rb"
 require "#{$RCCLIB}/plan/symbol.rb"
 require "#{$RCCLIB}/plan/production.rb"
-require "#{$RCCLIB}/plan/discarder.rb"
 require "#{$RCCLIB}/plan/production_set.rb"
 require "#{$RCCLIB}/plan/ast_class.rb"
 require "#{$RCCLIB}/plan/lexer_plan.rb"
@@ -47,6 +46,7 @@ module Plan
          ast_plans         = {}
          master_lexer_plan = LexerPlan.new()
          lexer_plans       = {}
+         discard_lists     = {}
 
       
          #
@@ -60,6 +60,8 @@ module Plan
             
             ast_plan = {}
             ast_plans[grammar_name] = ast_plan
+            discard_lists[grammar_name] = grammar_model.discard_symbols.collect{ |name| Symbol.new(name, :token) }
+
 
             #
             # Move the lexer data into the master LexerPlan.
@@ -73,34 +75,6 @@ module Plan
             end
             
             lexer_plans[grammar_name] = master_lexer_plan.prioritize( grammar_model.strings.keys )
-
-
-            #
-            # Generate Discarders for each potential combination of ignored symbols.  We'll
-            # link these to Symbols when constructing real Productions, and then 
-            # State.enumerate_transitions() will apply those additional transitions.  We do it this 
-            # way -- instead of just making extra Productions that allow ignored whitespace -- to
-            # avoid unnecessary Production explosion.
-
-            prefilter_names = {}
-            ignore_symbols  = grammar_model.ignore_symbols
-
-            default_prefilter = nil
-            ignore_symbols.subsets(true).each do |set|
-               next if set.empty?
-               names = set.sort.collect{|e| e.name}
-               
-               production_name   = Name.new( "_ignored_" + names.join("_"), grammar_name )
-               production_symbol = Symbol.new( production_name, :discarder )
-               prefilter_names[names.join("|")] = production_name
-
-               default_prefilter = production_symbol if default_prefilter.nil?
-               
-               set.each do |name|
-                  base_symbol = Symbol.new( name, :token )
-                  productions << Discarder.new( productions.length, production_name, [base_symbol], [], :left, 0, nil )
-               end
-            end
             
 
             #
@@ -172,37 +146,22 @@ module Plan
                            slots << element.slot_name
                            ast_class.define_slot( element.slot_name, false ) unless element.slot_name.nil? 
                            
-                           prefilter = default_prefilter
-                           unless gateway_buffer.empty?
-                              prefilterable_names = gateway_buffer & ignore_symbols
-                              unless prefilterable_names.empty?
-                                 prefilter = prefilter_names[prefilterable_names.sort.join("|")]
-                              end
-                           end
-
                            case element
                               when Model::Markers::RuleReference
-                                 symbols << Symbol.new( element.symbol_name, :production, prefilter )
+                                 symbols << Symbol.new( element.symbol_name, :production, gateway_buffer )
                               when Model::Markers::StringReference
-                                 symbols << Symbol.new( element.symbol_name, :token     , prefilter )
+                                 symbols << Symbol.new( element.symbol_name, :token     , gateway_buffer )
                               when Model::Markers::GroupReference
-                                 symbols << Symbol.new( element.symbol_name, :group     , prefilter )
+                                 symbols << Symbol.new( element.symbol_name, :group     , gateway_buffer )
                               else
                                  nyi( "support for [#{element.class.name}]", element )
                            end
+                           
+                           gateway_buffer.clear
                         end
                      end
                      
-                     postfilter = default_prefilter
-                     unless gateway_buffer.empty?
-                        postfilterable_names = gateway_buffer & ignore_symbols
-                        unless postfilterable_names.empty?
-                           postfilter = prefilter_names[postfilterable_names.sort.join("|")]
-                        end
-                     end
-                     
-                     warn_nyi( "support for trailing gateway markers" )
-                     production = Production.new( productions.length, rule.name, symbols, slots, rule.associativity, rule.priority, ast_class, sequence.minimal?, postfilter )
+                     production = Production.new( productions.length, rule.name, symbols, slots, rule.associativity, rule.priority, ast_class, sequence.minimal? )
                      productions << production
 
                      if !symbols.empty? and symbols[-1].commit_point.exists? then
@@ -289,7 +248,7 @@ module Plan
             
          end
          
-         return MasterPlan.new( productions, group_members, ast_plans, lexer_plans, explain )
+         return MasterPlan.new( productions, group_members, ast_plans, lexer_plans, discard_lists, explain )
       end
       
       
@@ -306,13 +265,16 @@ module Plan
       attr_accessor :produce_explanations
       attr_reader   :production_sets
       attr_reader   :group_members
+      attr_reader   :ast_plans
       attr_reader   :lexer_plans
+      attr_reader   :discard_lists
       
-      def initialize( productions, group_members, ast_plans, lexer_plans, produce_explanations = true )
+      def initialize( productions, group_members, ast_plans, lexer_plans, discard_lists, produce_explanations = true )
          @productions          = productions
          @group_members        = group_members
          @ast_plans            = ast_plans
          @lexer_plans          = lexer_plans                # grammar name => LexerPlan
+         @discard_lists        = discard_lists              # grammar name => [ Symbol ]
          @produce_explanations = produce_explanations       # If true, we'll generate explanations
          
          #
@@ -341,16 +303,6 @@ module Plan
          end
       end
       
-      
-      #
-      # get_ast_plan()
-      #  - returns the ASTPlan for the named grammar
-      
-      def get_ast_plan( grammar_name )
-         assert( @ast_plans.member?(grammar_name), "cannot get AST plan for non-existent grammar [#{grammar_name}]" )
-         return @ast_plans[grammar_name]
-      end
-
 
 
 
@@ -364,7 +316,6 @@ module Plan
       #
       # compile_parser_plan()
       #  - generates a ParserPlan for a specific start rule
-      #  - you must pass the grammar_name and symbol_name (or a Symbol or RuleReference that can provide it)
       
       def compile_parser_plan( name )
          case name
@@ -374,7 +325,7 @@ module Plan
 
          assert( @production_sets.member?(name), "not a valid start rule name" )
          start_state = State.start_state( self, name )
-         start_state.close()
+         start_state.close(@discard_lists)
          
          
          #
@@ -403,8 +354,8 @@ module Plan
                
                   else
                      transition_state = State.new( self, state_table.length, shifted_items, current_state )
-                     transition_state.close()
-                  
+                     transition_state.close(@discard_lists)
+
                      state_table << transition_state
                      state_index[transition_state.signature] = transition_state
                   

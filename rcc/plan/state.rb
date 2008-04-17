@@ -70,25 +70,29 @@ module Plan
       attr_reader   :lexer_plan
       attr_reader   :recovery_predicates
       attr_accessor :context_grammar_name
+      attr_reader   :discard_names
       
       def initialize( master_plan, state_number = 0, start_items = [], context_state = nil  )
-         @master_plan            = master_plan        # I think this is self-explanatory ;-)
-         @number                 = state_number       # The number of this State within the overall ParserPlan
-         @items                  = []                 # All Items in this State
-         @start_items            = []                 # The Items that started this State (ie. weren't added by close())
-         @closed                 = false              # A flag indicating that close() has been called
-         @signature              = nil                # A representation of this State that will be common to all mergable States
-         @transitions            = {}                 # Symbol.name => State
-         @reductions             = []                 # An array of complete? Items
-         @queue                  = []                 # A queue of unclosed Items in this State
-         @lookahead              = []                 # The names of the Terminals we expect on lookahead
-         @actions                = nil                # Symbol.name => Action
-         @explanations           = nil                # A set of Explanations for the Actions, if requested during creation
-         @lookahead_explanations = nil                # An InitialOptions Explanation, if requested
-         @lexer_plan             = nil                # A LexerPlan that gives our lookahead requirements precedence
+         @master_plan            = master_plan              # I think this is self-explanatory ;-)
+         @number                 = state_number             # The number of this State within the overall ParserPlan
+         @items                  = []                       # All Items in this State
+         @start_items            = []                       # The Items that started this State (ie. weren't added by close())
+         @discard_list           = []                       # List of Symbols to discard before reading our lookahead
+         @explicit_discards      = []                       # Symbols that would have been on @discard_list except they lead some of our Items
+         @gateway_discards       = []                       # Symbols that would have been on @discard_list except they are gateways on some of our leaders
+         @closed                 = false                    # A flag indicating that close() has been called
+         @signature              = nil                      # A representation of this State that will be common to all mergable States
+         @transitions            = {}                       # Symbol.name => State
+         @reductions             = []                       # An array of complete? Items
+         @queue                  = []                       # A queue of unclosed Items in this State
+         @lookahead              = []                       # The names of the Terminals we expect on lookahead
+         @actions                = nil                      # Symbol.name => Action
+         @explanations           = nil                      # A set of Explanations for the Actions, if requested during creation
+         @lookahead_explanations = nil                      # An InitialOptions Explanation, if requested
+         @lexer_plan             = nil                      # A LexerPlan that gives our lookahead requirements precedence
          @context_grammar_name   = context_state.nil? ? nil : context_state.context_grammar_name
 
-         @item_index   = {}              # An index used to avoid duplication of Items within the State
+         @item_index = {}       # An index used to avoid duplication of Items within the State
          start_items.each do |item|
             add_item( item )
          end
@@ -150,10 +154,9 @@ module Plan
       # close()
       #  - completes the State by calculating the closure of the start items
       
-      def close()
+      def close( discard_lists )
          @closed    = true
          @signature = State.signature( @start_items )
-         
          
          #
          # For this discussion, we'll use the following grammar (we'll dispense with quoting of terminals):
@@ -309,10 +312,6 @@ module Plan
                         
             if item.complete? then
                @reductions << item
-               
-               if item.production.postfilter then
-                  add_productions( @master_plan.production_sets[item.production.postfilter.name], item ) 
-               end
             else
                if item.leader.refers_to_production? or item.leader.refers_to_group? then
                   if @master_plan.production_sets.member?(item.leader.name) then
@@ -320,15 +319,6 @@ module Plan
                   elsif item.leader.refers_to_production? then
                      nyi "error handling for missing reference name [#{item.leader.name}]" 
                   end
-               end
-               
-               #
-               # Handle the prefilter, if present.  The prefilter is a Production-referring Symbol that
-               # is used to read and discard and ignored tokens that precede the item.leader.
-               
-               prefilter = item.leader.prefilter
-               if prefilter then
-                  add_productions( @master_plan.production_sets[prefilter.name], item )
                end
             end
          end
@@ -339,6 +329,40 @@ module Plan
          
          @item_index = nil
          
+         #
+         # Next, we'll go through our Items and figure out our list of discard symbols.  See the 
+         # discussion in enumerate_transitions() for details on discard processing.  All we have to do 
+         # here is get our shiftable items, collect the grammar names from the leaders, and pick the
+         # appropriate discard symbols from the global list.  With that done, we'll undiscard any of
+         # those symbols that are relevant to this state (discard symbols that are used as leaders or
+         # gateways on leaders in our items).
+         
+         shiftable_items   = @items.select{|item| !item.complete?}
+         involved_grammars = shiftable_items.collect{|item| item.production.name.grammar}.uniq
+         discard_list      = involved_grammars.collect{|name| discard_lists.member?(name) ? discard_lists[name] : []}.flatten.uniq
+
+         explicit_discards = {}
+         gateway_discards  = {}
+         shiftable_items.each do |item|
+            symbol = item.leader
+               
+            if symbol.refers_to_group? then
+               @master_plan.group_members[symbol.name].each do |member|
+                  explicit_discards[member] = true if discard_list.member?(member)
+               end
+            else
+               explicit_discards[symbol] = true if discard_list.member?(symbol)
+            end
+            
+            symbol.gateways.each do |gateway|
+               gateway_discards[gateway] = true if discard_list.member?(gateway)
+            end
+         end
+
+         @explicit_discards = explicit_discards.keys
+         @gateway_discards  = gateway_discards.keys
+         @discard_list      = discard_list - @explicit_discards - @gateway_discards
+         @discard_names     = @discard_list.collect{|symbol| symbol.name}         
       end
 
 
@@ -347,7 +371,7 @@ module Plan
       #  - calls your block once for every potential transition from this State
       #  - passes in the transition Symbol and the shifted Items it results in
       
-      def enumerate_transitions( exclude_discarders = true )
+      def enumerate_transitions()
          assert( @closed, "you must close() the State before enumerating the transitions" )
          
          #
@@ -384,53 +408,146 @@ module Plan
          #
          # Note, finally, that there are no transitions for complete Items.  Such Items indicate reductions, not shifts.
          #
-         # A NEW WRINKLE: every Symbol may have a prefilter Symbol, which may or may not be present before the actual
-         # Symbol.  The prefilter rule will generally have a Discard resolution, and we generally use this feature to
-         # strip out ignorable tokens (like whitespace and comments) during parsing.  However, we don't generally 
-         # enumerate these prefilters here, as a Discarder doesn't leave a symbol on the stack, and so it will never
-         # be shifted.  If you really want them included, you can set exclude_discarders to false.
-         
          #
-         # First up, sort the Items by leader symbol.
+         # DISCARD PROCESSING
+         # ==================
+         #
+         # Of course, this isn't a perfect world.  In the real world, we have an additional problem: discard symbols.
+         # These are irrelevant symbols the lexer will generate that should not (generally) be used -- things like whitespace 
+         # and comments, for instance.  The lexer doesn't filter them out directly because there are occassions when we
+         # might actually care about those symbols.  For instance, in a line-oriented language, we may explicitly care about
+         # the EOL as a statement terminator, but not care about incidental EOLs that occur at random places within a 
+         # statement, where they should just be considered whitespace.  The following Ruby statement contains two EOLs,
+         # the first of which is irrelevant, and the second of white is a statement termintor:
+         #
+         #   x = a + b +
+         #     c - d
+         #
+         # On the opposite end of things, we may not care about a symbol usually, but may specifically want to exclude
+         # it in specific locations.  Again in Ruby, the following two statements differ only in whitespace, but the first
+         # adds a number to the result of a function call, while the second adds a number to the parameter passed *to* the
+         # function call (ie. the first form would use a gateway to exclude whitespace before the '(', while the second 
+         # would explicitly require the whitespace symbol):
+         #
+         #   do_something( 3 ) + 10
+         #   do_something ( 3 ) + 10
+         #
+         # Most states will use the default discard list, and we don't have to do anything special.  However, if the
+         # Item leaders mention a discarded symbol -- either directly or as a gateway -- we must explicitly handle
+         # the symbols and alter the transitions accordingly.  For our example, we'll assume 'comment', 'whitespace',
+         # and 'eol' discard symbols.  State 1 is this state.
+         #
+         #
+         # State 1, Discard: comment                           Transitions
+         #   e . !whitespace !eol '!' e                         '!'        => State 2
+         #   e . eol '+' e                                      eol        => State 3  
+         #   e . whitespace '*' e                               whitespace => State 4
+         #   e . '/' e                                          '/'        => State 5
+         #   e . !whitespace eol '-' e                          
+         #                                                      
+         # State 2, Discard: comment whitespace eol
+         #   e '!' . e
+         #
+         # State 3, Discard: comment eol                       Transitions
+         #   e eol . '+' e                                      whitespace => State 6
+         #   e . whitespace '*' e                               '+'        => . . . 
+         #   e . '/' e                                          '/'        => . . . 
+         #   e eol . '-' e                                      '-'        => . . . 
+         #
+         # State 4, Discard: comment whitespace                Transitions
+         #   e . eol '+' e                                      eol        => State 7
+         #   e whitespace . '*' e                               '+'        => . . . 
+         #   e . '/' e                                          '*'        => . . . 
+         #
+         # State 5, Discard: comment whitespace eol
+         #   e '/' . e
+         #
+         # State 6, Discard: comment whitespace eol
+         #  e eol . '+' e
+         #  e whitespace . '*' e
+         #  e . '/' e
+         #  e eol . '-' e
+         #
+         # State 7, Discard: comment whitespace eol
+         #  e eol . '+' e
+         #  e whitespace . '*' e
+         #  e . '/' e
+         #
+         #
+         # A second example:
+         #
+         # State 1, Discard: comment                           Transitions
+         #  e . !whitespace !eol '!' e                          eol        => State 2
+         #  e . !whitespace '*' e                               '!'        => . . .
+         #                                                      '*'        => . . . 
+         #
+         # State 2, Discard: comment eol                       Transitions
+         #  e . !whitespace '*' e                               '*'        => . . .
+         #
+         #
+         # And a third:
+         #
+         # State 1, Discard: comment whitespace                Transitions
+         #  e . eol '!' e                                       eol        => State 2
+         #  e . '*' e                                           '*'        => . . . 
+         #
+         # State 2, Discard: comment whitespace eol
+         #  e eol . '!' e        
+         #  e . '*' e
+         #
+         
+
+         #
+         # First, sort the Items by leader symbol.  
          
          enumeration = Util::OrderedHash.new()
          @items.each do |item|
-            filter = nil
+            next if item.complete?
             
-            if item.complete? then
-               filter = item.production.postfilter
+            symbol = item.leader
+            if symbol.refers_to_group? then
+               @master_plan.group_members[symbol.name].each do |member|
+                  enumeration[member.name] = [] unless enumeration.member?(member.name)
+                  enumeration[member.name] << item.shift
+               end
             else
-               symbol = item.leader
-               
-               if symbol.refers_to_group? then
-                  @master_plan.group_members[symbol.name].each do |member|
-                     enumeration[member.name] = [] unless enumeration.member?(member.name)
-                     enumeration[member.name] << item.shift
-                  end
-               else
-                  enumeration[symbol.name] = [] unless enumeration.member?(symbol.name)
-                  enumeration[symbol.name] << item.shift
-               end
-               
-               filter = symbol.prefilter
-            end
-
-            #
-            # If the filter is a Discarder, it will never be shifted.  We include it only
-            # if isn't a Discarder.
-            
-            if filter then
-               if filter.refers_to_discarder? then
-                  unless exclude_discarders
-                     enumeration[filter.name] = [] unless enumeration.member?(filter.name)
-                     enumeration[filter.name] << item
-                  end
-               else
-                  nyi( "what is the result of shifting a non-Discarder prefilter?" )
-               end
+               enumeration[symbol.name] = [] unless enumeration.member?(symbol.name)
+               enumeration[symbol.name] << item.shift
             end
          end
          
+         #
+         # Next, we generate transitions for undiscards.  If the discard symbol is explicitly referenced,
+         # it's already been added to enumeration as a shift.  However, all other items that would have 
+         # relied on the discard to consume that symbol will need to be transfered with it, unshifted.  
+         # For leaders with gateway expressions, we'll just let the regular enumeration handle it, which it 
+         # will in the absense of that symbol on the discard list.  The interaction of the two types, 
+         # however, is a bit more complicated.
+         
+         if !@gateway_discards.empty? then
+            @gateway_discards.each do |symbol|
+               enumeration[symbol.name] = [] unless enumeration.member?(symbol.name)
+            end
+         
+            @items.each do |item|
+               next if item.complete?            
+               leader = item.leader
+               (@gateway_discards - leader.gateways).each do |gateway|
+                  next if leader == gateway              # Already in enumeration, shifted
+                  enumeration[gateway.name] << item      # Otherwise, add it unshifted
+               end
+            end
+         elsif !@explicit_discards.empty? then
+            @items.each do |item|
+               next if item.complete?
+               leader = item.leader
+               @explicit_discards.each do |explicit|
+                  next if leader == explicit             # Already in enumeration, shifted
+                  enumeration[explicit.name] << item     # Otherwise, add it unshifted
+               end
+            end
+         end
+
          #
          # Yield for each in turn.
          
@@ -468,7 +585,6 @@ module Plan
          shift_commits_by_leader = {}
          @items.each do |item|
             next if item.complete?
-            next if item.production.discard?
             
             shift_commits_by_leader[item.leader.name] = [] unless shift_commits_by_leader.member?(item.leader.name)
             shift_commits_by_leader[item.leader.name] << item.leader.commit_point
@@ -492,23 +608,13 @@ module Plan
          # for Gotos, as they are very simple to do, and we don't want the complicating later
          # work.         
          
-         ignore  = []
          options = {}
          @items.each do |item|  
             
             #
-            # For complete Discarders, we don't need to bother checking any lookahead.  Discarders
-            # are always "floaters", so there is no point calculating determinants (we use >true< as
-            # the wildcard lookahead type).
-            
-            if item.complete? and item.production.discard? then
-               options[Scanner::Artifacts::Name.any_type] = [] unless options.member?(Scanner::Artifacts::Name.any_type)
-               options[Scanner::Artifacts::Name.any_type] << item
-               
-            #
             # If the Item leader is a Production, generate Goto actions.
             
-            elsif !item.complete? and item.leader.refers_to_production? then
+            if !item.complete? and item.leader.refers_to_production? then
                @actions[item.leader.name] = Actions::Goto.new( @transitions[item.leader.name], shift_commits_by_leader[item.leader.name] )
 
                
@@ -523,8 +629,6 @@ module Plan
                   else
                      options[member.name] = [] unless options.member?(member.name)
                      options[member.name] << item
-                   
-                     ignore << member.name if item.production.discard?
                   end
                end
                
@@ -542,13 +646,11 @@ module Plan
                determinants.each do |determinant|
                   options[determinant.name] = [] unless options.member?(determinant.name)
                   options[determinant.name] << item
-                  
-                  ignore << determinant.name if item.production.discard?
                end
             end
          end
          
-         @lookahead = options.keys - ignore
+         @lookahead = (options.keys + @discard_names).uniq
          
          #
          # Select an action for each lookahead terminal.
@@ -656,8 +758,7 @@ module Plan
             actions       = []
             in_play.each do |item|
                if item.complete? then
-                  production = item.production
-                  actions << (production.discard? ? Actions::Discard.new(production) : Actions::Reduce.new(production))
+                  actions << Actions::Reduce.new( item.production )
                elsif symbol_name.eof? then
                   actions << Actions::Accept.new( item.production )
                elsif !shift_created then

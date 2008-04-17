@@ -95,7 +95,6 @@ module Interpreter
       #  - error corrections will not be run indefinitely
       
       def parse( estream = nil, recovery_time_limit = 3 )
-         recovery_time_limit = 3
          allow_shortcutting  = true
          
          start_position        = StartPosition.new(@parser_plan.state_table[0], @lexer)
@@ -109,7 +108,7 @@ module Interpreter
          error_positions     = {}
          recovery_start_time = nil
          start_time          = Time.now
-         until @in_recovery and ((@recovery_queue.empty? and error_queue.empty?) or (Time.now - recovery_start_time > recovery_time_limit))
+         until @in_recovery and ((@recovery_queue.empty? and error_queue.empty?) or (recovery_time_limit == 0 or Time.now - recovery_start_time > recovery_time_limit))
 
             if @in_recovery then
 
@@ -176,7 +175,7 @@ module Interpreter
                   elsif position.recovered? then
                      estream.puts "POSITION IS RECOVERED; QUEUEING NEW ERROR PROCESSING: #{position.description(true)};" if estream
                      soft_correction_limit = min( soft_correction_limit, position.corrections_cost )
-                  
+               
                      signature = position.signature()
                      if error_positions.member?(signature) then
                         error_positions[signature].join_position( position )
@@ -439,12 +438,24 @@ module Interpreter
                         position = perform_action( position, action, next_token, estream )
                      end
                   else
-                     if estream then
-                        estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
-                        # BUG: how do we handle this with the ContextStream: explain_indent += "   "
-                     end
+                     if position.branch_info.exists? then
+                        branch_info = position.branch_info
+                        restart_info = branch_info.next_branch()
+                        if restart_info then
+                           estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT" if estream
+                           position = perform_action( restart_info.root_position, restart_info.action, nil, estream, restart_info )
+                        else
+                           estream.puts "===> ALL BRANCHES FAILED" if estream
+                           raise ParseError.new( position )
+                        end                        
+                     else
+                        if estream then
+                           estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
+                           # BUG: how do we handle this with the ContextStream: explain_indent += "   "
+                        end
 
-                     raise ParseError.new( position )
+                        raise ParseError.new( position )
+                     end
                   end
                end
             end
@@ -500,30 +511,6 @@ module Interpreter
                end
                
                
-            when Plan::Actions::Discard
-               production = action.by_production
-               estream.puts "===> DISCARD #{production.to_s}" if estream
-               
-               #
-               # Pop the right number of nodes.  Position.pop() may throw and exception if it detects an error.
-               # We pass it through to our caller.
-               
-               top_position = position
-               production.symbols.length.times do |i|
-                  position = position.pop( production, top_position )
-               end
-               
-               warn_bug( "not sure this changing stream_position thing is a good idea" )
-               position.stream_position = top_position.stream_position
-               next_position = position
-               
-               estream.discard() if estream && estream[:hide_ignored]
-               
-               #
-               # Note that with discard, we have nothing to do with branch info, as we are
-               # returning to a position already on the stack and linked into a branch.
-               
-               
             when Plan::Actions::Reduce
                production = action.by_production
                estream.puts "===> REDUCE #{production.to_s}" if estream
@@ -546,7 +533,7 @@ module Interpreter
                   # that it produced a relevant production.  If not, it is time to reset for the
                   # next branch.
                   
-                  if position.object_id == root_position.object_id then
+                  if branch_info.exists? and branch_info.at_validate_position?(position) then
                      unless branch_info.valid_production?(production) 
                         restart_info = branch_info.next_branch()
                         if restart_info then
