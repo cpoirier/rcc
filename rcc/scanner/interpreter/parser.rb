@@ -396,35 +396,57 @@ module Interpreter
 
                ContextStream.buffer_with(estream, true) do 
                   
-                  #
-                  # Get the lookahead.
-               
-                  estream.blank_lines(3) if estream
-                  next_token = position.next_token( estream )
-                  position.display( estream ) if estream
+                  action = nil
 
-               
-                  #
-                  # Select the next action.
-         
-                  action = state.actions[next_token.type]
                   if estream then
-                     if next_token.type.wildcard? then
-                        estream.puts "| Skipping lookahead, as it is irrelevant to this State"
-                     else
-                        estream.puts "| #{state.lookahead_explanations}"
-                        estream.puts "| Action analysis for lookahead #{next_token.description}"
+                     estream.blank_lines(5)
+                     estream.puts "POSITION #{position.sequence_number}"
+                     estream.puts "BRANCH #{position.branch_id("MAIN")}"
+                     estream << "IN " 
+                     estream.indent("| ") do
+                        position.state.display(estream)
+                        estream.puts "#{state.lookahead_explanations}"
+                        estream.puts 
                      end
+                  end
 
-                     if state.explanations.nil? then
-                        bug( "no explanations found" )
-                     else
-                        state.explanations[next_token.type].each do |explanation|
-                           estream.indent( "|    " ) { estream.puts explanation }
+                  
+                  #
+                  # For simple states, save some work and just pick the only reduce action.  Otherwise,
+                  # read the lookahead and choose and action accordingly.
+                  
+                  if state.simple? then
+                     if estream then
+                        estream.indent("| ") do
+                           estream.puts "===> SKIPPING LOOKAHEAD, as this State can only reduce"
+                           estream.puts
+                        end
+                     end
+                     
+                     next_token = position.next_token_hypothetical()
+                     action     = state.actions[state.actions.keys[0]]
+                  else
+                     next_token = position.next_token( estream )
+                     action = state.actions[next_token.type]
+                  end
+                  
+                  if estream then
+                     position.display( estream ) 
+                     estream.indent( "| " ) do
+                        estream.puts
+                        unless next_token.type.wildcard?
+                           estream.puts "Action analysis for lookahead #{next_token.description}"
+                        end
+                  
+                        if state.explanations.nil? then
+                           bug( "no explanations found" )
+                        else
+                           state.explanations[next_token.type].each do |explanation|
+                              estream.indent() { estream.puts explanation }
+                           end
                         end
                      end
                   end
-               
                         
                   #
                   # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
@@ -598,11 +620,15 @@ module Interpreter
                #
                # All reduced positions are part of the same branch as the top position in the 
                # reduce.  The branch may commit at this point, if the production itself is commitable
-               # on reduce, or the shift of it is commitable.
+               # on reduce, or the shift of it is commitable.  We'll also commit the branch if it
+               # started with a shift and the branch root position is now off the stack (meaning the
+               # shift produced something useful).  
+               #
+               # BUG: shift/reduce commit needs more thought!
                
                next_position.branch_info = top_branch_info
-               if production.local_commit_point? or goto_action.local_commit? then
-                  while next_position.committable?
+               # if production.local_commit_point? or goto_action.local_commit? then
+                  while (production.local_commit_point? or goto_action.local_commit? or (next_position.branch_info.exists? and next_position.branch_info.started_with_shift?)) and next_position.committable?
                      estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
                      next_position.branch_info = next_position.branch_info.context_info
                      if estream then
@@ -610,7 +636,7 @@ module Interpreter
                         estream.end_line
                      end
                   end
-               end
+               # end
                #    
                #    
                # while next_position.branch_info.exists? and next_position.branch_info.committable? and (production.local_commit_point? or goto_action.local_commit?)

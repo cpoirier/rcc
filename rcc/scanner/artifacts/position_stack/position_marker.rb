@@ -95,6 +95,7 @@ module PositionStack
          root_position = @branch_info.root_position
          each_position do |position|
             return false if position.object_id == root_position.object_id
+            break if position.sequence_number < root_position.sequence_number
          end
          
          return true
@@ -109,8 +110,6 @@ module PositionStack
          if @next_token.nil? or !position.nil? then
             if estream then 
                lexer_explanation = "Lexing with prioritized symbols: #{@state.lexer_plan.order.collect{|symbol_name| symbol_name.description}.join(" ")}"
-
-               estream.blank_lines(2)
                estream.puts "=" * lexer_explanation.length
                estream.puts lexer_explanation
                estream.puts "=" * lexer_explanation.length
@@ -124,9 +123,9 @@ module PositionStack
                
                done = true
                
-               if @state.discard_names.member?(token.type) then
+               if @state.active_discard.member?(token.type) then
                   done = false
-                  estream.puts "\n===> DISCARDING\n" if estream
+                  estream.indent("|   ") { estream.puts "===> DISCARDING\n" } if estream
                   if position.nil? then
                      @stream_position = token.follow_position
                   else
@@ -143,6 +142,27 @@ module PositionStack
          end
 
          return @next_token
+      end
+      
+      
+      #
+      # next_token_hypothetical()
+      #  - used to give the position hypothetical lookahead
+   
+      def next_token_hypothetical( estream = nil )
+         token = @next_token
+         if @next_token.nil? then
+            if estream then
+               estream.puts "=================================================="
+               estream.puts "Skipping lexing, as it is irrelevant to this State"
+               estream.puts "=================================================="
+            end
+            
+            token = @lexer.hypothetical(@stream_position, @rewind_position..(@stream_position-1))
+            @next_token = token
+         end
+         
+         return token
       end
       
       
@@ -636,11 +656,10 @@ module PositionStack
             stream.puts "#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
          # end
          stream.puts "#{stack_bar}"
-         stream.puts "BRANCH #{branch_id("MAIN")}"
-         stream.indent("| ") do
-            stream.puts ""
-            @state.display( stream )
-         end
+         # stream.indent("| ") do
+         #    stream.puts ""
+         #    @state.display( stream )
+         # end
       end
 
 

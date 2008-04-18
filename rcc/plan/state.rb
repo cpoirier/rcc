@@ -71,12 +71,14 @@ module Plan
       attr_reader   :recovery_predicates
       attr_accessor :context_grammar_name
       attr_reader   :discard_names
+      attr_reader   :active_discard
       
       def initialize( master_plan, state_number = 0, start_items = [], context_state = nil  )
          @master_plan            = master_plan              # I think this is self-explanatory ;-)
          @number                 = state_number             # The number of this State within the overall ParserPlan
          @items                  = []                       # All Items in this State
          @start_items            = []                       # The Items that started this State (ie. weren't added by close())
+         @active_discard         = []                       # The symbols we *actually* discard from this state at runtime
          @discard_list           = []                       # List of Symbols to discard before reading our lookahead
          @explicit_discards      = []                       # Symbols that would have been on @discard_list except they lead some of our Items
          @gateway_discards       = []                       # Symbols that would have been on @discard_list except they are gateways on some of our leaders
@@ -105,6 +107,15 @@ module Plan
          
          @recovery_predicates = {}  
          @used_to_states      = {}
+      end
+      
+      
+      #
+      # simple?
+      #  - returns true if this state contains only one Item, and it is complete
+      
+      def simple?()
+         return (@items.length == 1 and @items[0].complete?)
       end
       
       
@@ -337,13 +348,12 @@ module Plan
          # those symbols that are relevant to this state (discard symbols that are used as leaders or
          # gateways on leaders in our items).
          
-         shiftable_items   = @items.select{|item| !item.complete?}
-         involved_grammars = shiftable_items.collect{|item| item.production.name.grammar}.uniq
+         involved_grammars = @items.collect{|item| item.production.name.grammar}.uniq
          discard_list      = involved_grammars.collect{|name| discard_lists.member?(name) ? discard_lists[name] : []}.flatten.uniq
 
          explicit_discards = {}
          gateway_discards  = {}
-         shiftable_items.each do |item|
+         @items.select{|item| !item.complete?}.each do |item|
             symbol = item.leader
                
             if symbol.refers_to_group? then
@@ -640,17 +650,49 @@ module Plan
                duration = Time.measure do
                   determinants = item.determinants( 1 )
                end
-
+               
                $stderr.puts "Determinants calculation for state #{@number} item [#{item.signature}] duration: #{duration}s" if $stderr['show_statistics'] and duration > 0.1
 
                determinants.each do |determinant|
                   options[determinant.name] = [] unless options.member?(determinant.name)
                   options[determinant.name] << item
                end
+               
+               #
+               # For every complete item, we (theoretically) need to add in the discard list from our context 
+               # item's shifted item.  Consider this example, where we are State 3:
+               #
+               # State 1:
+               #  x => . e t
+               #
+               # State 2:
+               #  e => . b
+               #
+               # State 3:
+               #  e => b .
+               # 
+               # State 4:
+               #  x => e . t
+               #
+               # State 1 is a follow context, supplying t as a determinant for the reduce of e => b.  However,
+               # there are discard symbols that may preface t in that follow context, and they are *not* the
+               # discard symbols from either this state (3) or from State 1!  They are the discard symbols from 
+               # State 4!  (Because discard happens *before* reading the lookahead for a State).
+               #
+               # Unfortunately, due to the way that we generate the State table, figuring out from where to
+               # get the discard determinants is not trivial.  Further, if we just add the discard tokens as
+               # determinants, we may end up with shift/reduce conflicts that don't really exist.  What we
+               # really need to do is 
+               
+               
+               # We need to add the discard  follow 
+               if item.complete? then
+               end
             end
          end
-         
-         @lookahead = (options.keys + @discard_names).uniq
+
+         @active_discard = @discard_names - options.keys
+         @lookahead      = options.keys + @active_discard
          
          #
          # Select an action for each lookahead terminal.
@@ -697,7 +739,7 @@ module Plan
                   end
                end
                
-               explanations << Explanations::ItemsDoNotMeetThreshold.new( discarded ) if explain and !discarded.empty?
+               explanations << Explanations::ItemsDoNotMeetThreshold.new( discarded ) if (explain and !discarded.empty?)
                
                #
                # At this point, in_play contains 0 or more high priority shifts followed by a set
@@ -719,8 +761,33 @@ module Plan
                   assoc_shifts     = assoc_set.select{ |item| !item.complete? }
                   assoc_reductions = assoc_set.select{ |item| item.complete?  }
                   
-                  assoc_shifts.each do |shift|
+                  #
+                  # If there are any right-associative reductions, we can immediately eliminate them if there
+                  # are any equal or higher-priority shifts.  We would definitely eliminate a right-assoc reduction
+                  # in the presence of any equal priority shift, so why wouldn't we do the same for higher priority
+                  # shifts?
+                  
+                  unless assoc_shifts.empty? and keep_set.empty?
+                     shift = (keep_set.empty? ? assoc_shifts[0] : keep_set[0])
                      assoc_reductions.each do |reduction|
+                        case reduction.production.associativity
+                        when :none
+                           false
+                        when :left
+                           false
+                        else
+                           assoc_set.delete_if{ |item| item.object_id == reduction.object_id }
+                           assoc_reductions.delete_if{ |item| item.object_id == reduction.object_id }
+                           explanations << Explanations::RightAssocReduceEliminated.new( shift, reduction ) if explain
+                        end
+                     end
+                  end
+                  
+                  #
+                  # If there are any reduces left, check them against the assoc_shifts.
+                  
+                  assoc_reductions.each do |reduction|
+                     assoc_shifts.each do |shift|
                         case reduction.production.associativity
                            when :none
                               warn_nyi( "nonassociativity" )
@@ -731,8 +798,7 @@ module Plan
                               assoc_set.delete_if{ |item| item.object_id == shift.object_id }
                               explanations << Explanations::LeftAssocReduceEliminatesShift.new( reduction, shift ) if explain
                            else
-                              assoc_set.delete_if{ |item| item.object_id == reduction.object_id }
-                              explanations << Explanations::RightAssocReduceEliminated.new( shift, reduction ) if explain
+                              # already done
                         end
                      end
                   end
@@ -759,11 +825,14 @@ module Plan
             in_play.each do |item|
                if item.complete? then
                   actions << Actions::Reduce.new( item.production )
+                  explanations << actions[-1]
                elsif symbol_name.eof? then
                   actions << Actions::Accept.new( item.production )
+                  explanations << actions[-1]
                elsif !shift_created then
                   actions << Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions, shift_commits_by_leader[item.leader.name] )
                   shift_created = true
+                  explanations << actions[-1]
                end
             end
             
@@ -791,6 +860,7 @@ module Plan
             #
             # Finish up.
             
+            bug( "wtf?" ) if explanations.empty?
             @explanations[symbol_name] = explanations if explain
             recovery_data[symbol_name] = in_play
          end
@@ -1032,6 +1102,7 @@ module Plan
       def display( stream = $stdout )
          stream.puts "#{@context_grammar_name} State #{@number}"
          stream.indent do
+            stream.puts "Discards: #{@active_discard.collect{|n| n.description}.join(", ")}"
             
             rows = []
             if @actions.exists? and @actions.length == 1 and @actions.member?(Name.any_type) then

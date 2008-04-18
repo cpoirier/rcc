@@ -59,32 +59,35 @@ module Grammar
       #
       #    strings
       #       any_character     => [\u0000-\uFFFF]
+      #       whitespace        => [ \t\r]+
+      #       comment           => '#' [{any_character}]-[\n]*
+      #       eol               => '\n'
+      #
       #       digit             => [0-9]
       #       hex_digit         => [{digit}a-fA-F]
       #       general_character => [{any_character}]-['\n\r\\]
       #
-      #       word_first_char   => [a-zA-Z_]
-      #       word_char         => [{word_first_char}{digit}]
-      #       word              => word_first_char word_char*
-      #
-      #       property_text     => [{general_character}]-[}]+
       #       any_text          => any_character+
+      #       property_text     => [{general_character}]-[}]+
       #       general_text      => general_character+
       #       unicode_sequence  => '\\' 'u' hex_digit hex_digit hex_digit hex_digit
       #       escape_sequence   => '\\' [a-z\\\-\[\]\']
       #
-      #       whitespace        => [ \t\r]+
-      #       comment           => '#' [{any_character}]-[\n]*
-      #       eol               => '\n'
+      #       word_first_char   => [a-zA-Z_]
+      #       word_char         => [{word_first_char}{digit}]
+      #       word              => word_first_char word_char*
       #    end
       #
       
          strings_spec(
             
             string_spec( 'any_character'    , cs_characters(cs_range(ust('0000'), ust('FFFF'))) ),
+            string_spec( 'whitespace'       , sp_repeated('+', cs_characters(' ', est('t'), est('r'))) ),
+            string_spec( 'comment'          , '#', sp_repeated('*', cs_difference(cs_characters(cs_reference('any_character')), est('n'))) ),
+            string_spec( 'eol'              , est('n')                                                 ),
+            
             string_spec( 'digit'            , cs_characters(cs_range('0'        , '9'        )) ),
             string_spec( 'hex_digit'        , cs_characters(cs_reference('digit'), cs_range('a', 'f'), cs_range('A', 'F')) ),
-            
             string_spec( 'general_character',
                cs_difference(
                   cs_characters( cs_reference('any_character') ),
@@ -92,19 +95,16 @@ module Grammar
                )
             ),
          
-            string_spec( 'word_first_char' , cs_characters(cs_range('a', 'z'), cs_range('A', 'Z'), '_')            ),
-            string_spec( 'word_char'       , cs_characters(cs_reference('word_first_char'), cs_reference('digit')) ),
-            string_spec( 'word'            , sp_reference('word_first_char'), sp_repeated('*', sp_reference('word_char')) ),
+            string_spec( 'any_text'         , sp_repeated('+', sp_reference('any_character'))          ),
+            string_spec( 'property_text'    , sp_repeated('+', cs_difference(cs_characters(cs_reference('general_character')), cs_characters('}')))  ),
+            string_spec( 'general_text'     , sp_repeated('+', sp_reference('general_character'))      ),
+            string_spec( 'unicode_sequence' , est('\\'), 'u', sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit') ),
+            string_spec( 'escape_sequence'  , est('\\'), cs_characters(cs_range('a', 'z'), est('\\'), est('-'), est('['), est(']'), est("'")) ),
+                                            
+            string_spec( 'word_first_char'  , cs_characters(cs_range('a', 'z'), cs_range('A', 'Z'), '_')            ),
+            string_spec( 'word_char'        , cs_characters(cs_reference('word_first_char'), cs_reference('digit')) ),
+            string_spec( 'word'             , sp_reference('word_first_char'), sp_repeated('*', sp_reference('word_char')) )
             
-            string_spec( 'property_text'   , sp_repeated('+', cs_difference(cs_characters(cs_reference('general_character')), cs_characters('}')))  ),
-            string_spec( 'any_text'        , sp_repeated('+', sp_reference('any_character'))          ),
-            string_spec( 'general_text'    , sp_repeated('+', sp_reference('general_character'))      ),
-            string_spec( 'unicode_sequence', est('\\'), 'u', sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit'), sp_reference('hex_digit') ),
-            string_spec( 'escape_sequence' , est('\\'), cs_characters(cs_range('a', 'z'), est('\\'), est('-'), est('['), est(']'), est("'")) ),
-            
-            string_spec( 'whitespace'      , sp_repeated('+', cs_characters(' ', est('t'), est('r'))) ),
-            string_spec( 'comment'         , '#', sp_repeated('*', cs_difference(cs_characters(cs_reference('any_character')), est('n'))) ),
-            string_spec( 'eol'             , est('n')                                                 )
          ),
 
       #
@@ -313,6 +313,10 @@ module Grammar
 
       #       
       #       group expression
+      #          local_commit => ';'
+      #          transclusion => '%%'
+      #          gateway_exp  => '!' !whitespace word
+      #
       #          group general_exp
       #             group repeatable_exp
       #                reference_exp => labelled() [ word:name            ]
@@ -327,14 +331,14 @@ module Grammar
       #
       #             repeated_exp => repeatable_exp:expression ('*'|'+'|'?'):repeat_count
       #          end
-      #
-      #          gateway_exp     => '!' !whitespace word
-      #          local_commit => ';'
-      #          transclusion    => '%%'
       #       end
       # 
          
             group_spec( 'expression',
+               rule_spec( 'local_commit', ';'  ),
+               rule_spec( 'transclusion', '%%' ),
+               rule_spec( 'gateway_exp' , '!', gateway_exp('whitespace'), reference_exp('word') ),
+               
                group_spec( 'general_exp',
                   group_spec( 'repeatable_exp',
                      rule_spec( 'reference_exp' , macro_call('labelled', [], reference_exp('word', 'name'))         ),
@@ -352,11 +356,7 @@ module Grammar
                   ),
                   
                   rule_spec( 'repeated_exp'  , reference_exp('repeatable_exp', 'expression'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') )
-               ),
-               
-               rule_spec( 'gateway_exp'     , '!', gateway_exp('whitespace'), reference_exp('word') ),
-               rule_spec( 'local_commit' , ';'  ),
-               rule_spec( 'transclusion'    , '%%' )
+               )               
             ),
             
       # 

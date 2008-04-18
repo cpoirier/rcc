@@ -115,6 +115,23 @@ module Interpreter
       end
       
       
+      #
+      # hypothetical
+      #  - produces a hypothetical token as if read from the specified position 
+      
+      def hypothetical( position, footprint, estream = nil )
+         position = @next_position if position.nil?
+         token    = nil
+         
+         if @source.at_eof?(position) then
+            token = Artifacts::Nodes::Token.hypothetical( position, @source.eof_line_number, @source.eof_column_number, @source, footprint )
+         else
+            token = Artifacts::Nodes::Token.hypothetical( position, @source.line_number(position), @source.column_number(position), @source, footprint )
+         end
+         
+         return token
+      end
+      
       
 
 

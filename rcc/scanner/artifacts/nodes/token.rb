@@ -48,8 +48,12 @@ module Nodes
       # ::hypothetical()
       #  - returns a hypothetical token useful as a placeholder
       
-      def self.hypothetical()
-         return @@hypothetical_token
+      def self.hypothetical( start_position = nil, line_number = nil, column_number = nil, source = nil, footprint = nil )
+         if start_position.nil? then
+            return @@hypothetical_token
+         else
+            return new( "", Name.any_type, start_position, line_number, column_number, source, footprint, true )
+         end
       end
       
 
