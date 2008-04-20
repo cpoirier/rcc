@@ -294,7 +294,7 @@ module Util
 
          if node?(from) then
             if leaf?(from) then
-               @leaves.delete_if do |id, leaf|
+               @leaves.reject! do |id, leaf|
                   @by_reference ? from.object_id : from == id
                end
             end
@@ -304,7 +304,7 @@ module Util
 
          if node?(to) then
             if root?(to) then
-               @roots.delete_if do |id, root|
+               @roots.reject! do |id, root|
                   @by_reference ? to.object_id : to == id
                end
             end

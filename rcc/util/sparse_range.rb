@@ -163,7 +163,7 @@ module Util
                #
                # First, remove any ranges that are wholly covered.
          
-               @ranges.delete_if do |range|
+               @ranges.reject! do |range|
                   range.begin >= delta.begin and range.end <= delta.end
                end
          

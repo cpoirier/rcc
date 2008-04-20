@@ -398,7 +398,8 @@ module Plan
          # those symbols that are relevant to this state (discard symbols that are used as leaders or
          # gateways on leaders in our items).
          
-         involved_grammars = @items.collect{|item| item.production.name.grammar}.uniq
+         involved_grammars = @items.collect{|item| item.production.name.grammar}.uniq.compact
+         involved_grammars = [@items[0].symbols[0].name.grammar] if (involved_grammars.empty? and !@items.empty? and !@items[0].symbols.empty?)
          discard_list      = involved_grammars.collect{|name| discard_lists.member?(name) ? discard_lists[name] : []}.flatten.uniq
 
          explicit_discards = {}
@@ -631,10 +632,6 @@ module Plan
                gateways = leader.nil? ? [] : leader.gateways
                
                (@undiscards - gateways).each do |undiscard|
-                  p "leader & undiscard"
-                  puts item
-                  puts leader
-                  puts undiscard
                   next if leader == undiscard                                          # Already in enumeration, shifted
                   next if limit_transfers_for.member?(undiscard) and leader.exists?    # We don't shift past a reduce-causing undiscard
                   enumeration[undiscard.name] << item.transfer(undiscard)              # Otherwise, transfer it
@@ -754,8 +751,8 @@ module Plan
             end
          end
          
-         @lookahead = options.keys | @discard_names
-         @active_discard = discard_names - options.keys         
+         @lookahead      = options.keys | @discard_names
+         @active_discard = discard_names - options.keys
          
          #
          # Select an action for each lookahead terminal.
@@ -872,7 +869,7 @@ module Plan
                   # Delete anything we've identified.
                   
                   to_delete.each do |reduction|
-                     assoc_set.delete_if{ |item| item.object_id == reduction.object_id }
+                     assoc_set.reject!{ |item| item.object_id == reduction.object_id }
                   end
                   
                   #
@@ -887,7 +884,7 @@ module Plan
                               # error_actions         << Actions::NonAssociativityViolation.new( shift, reduction )
                               # explanations          << Explanations::NonAssociativityViolation.new( shift, reduction ) if explain
                            when :left
-                              assoc_set.delete_if{ |item| item.object_id == shift.object_id }
+                              assoc_set.reject!{ |item| item.object_id == shift.object_id }
                               explanations << Explanations::LeftAssocReduceEliminatesShift.new( reduction, shift ) if explain
                            else
                               # already done
