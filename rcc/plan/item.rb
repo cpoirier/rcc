@@ -48,7 +48,11 @@ module Plan
             add_follow_context( item )
          end
          
-         @follow_sources = [ shifted_from_item ] unless shifted_from_item.nil?
+         if shifted_from_item.is_an?(Array) then
+            @follow_sources = shifted_from_item
+         else
+            @follow_sources = [ shifted_from_item ] unless shifted_from_item.nil?
+         end
          
          #
          # Caching support
@@ -97,6 +101,56 @@ module Plan
       end
       
       
+      #
+      # leadin()
+      #  - returns the Symbol before the mark
+      
+      def leadin()
+         if @at == 0 then
+            return nil
+         else
+            return @production.symbols[@at-1]
+         end
+      end
+      
+      
+      #
+      # length()
+      #  - returns the length of the underlying Production
+      
+      def length()
+         return @production.length
+      end
+
+
+      #
+      # symbols()
+      #  - returns the full set of Production symbols
+      
+      def symbols()
+         return @production.symbols
+      end
+
+
+      #
+      # priority()
+      #  - returns the priority for this Item
+      
+      def priority()
+         return @priority if (defined?(@priority) and @priority.set?)
+         return @production.priority
+      end
+      
+      
+      #
+      # priority=()
+      #  - overrides the default priority for this Item and all Items made from it
+      
+      def priority=( value )
+         @priority  = value
+         @signature = self.to_s
+      end
+
 
 
 
@@ -115,7 +169,37 @@ module Plan
          if complete? then
             return nil
          else
-            return Item.new( @production, @at + 1, [] + @follow_contexts, self )
+            item = Item.new( @production, @at + 1, [] + @follow_contexts, self )
+            item.priority = @priority if (defined?(@priority) and @priority.set?)
+            return item
+         end
+      end
+      
+      
+      #
+      # transfer()
+      #  - returns an Item like this one, but rewritten to have just shifted an additional symbol
+      
+      def transfer( symbol )
+         production = @production.new_transfer_version( symbol, @at, @master_plan )
+         item = Item.new( production, @at + 1, [] + @follow_contexts, self )
+         item.priority = @priority if (defined?(@priority) and @priority.set?)
+         return item
+      end
+      
+      
+      #
+      # unshift()
+      #  - returns an Item like this one, but shifted on position to the left
+      #  - don't rely on the follow contexts for this -- they probably won't be correct!
+      
+      def unshift()
+         if @at == 0 then
+            return nil
+         else
+            item = Item.new( @production, @at - 1, [] + @follow_contexts, @follow_sources )
+            item.priority = @priority if (defined?(@priority) and @priority.set?)
+            return item
          end
       end
       
@@ -403,7 +487,7 @@ module Plan
     #---------------------------------------------------------------------------------------------------------------------
 
       def to_s()
-         base = rule_name().description + " => " + prefix().join(" ") + " . " + rest().join(" ")
+         base = "#{priority().to_s} " + rule_name().description + " => " + prefix().join(" ") + " . " + rest().join(" ")
       end
       
       def display( stream = $stdout )

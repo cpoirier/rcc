@@ -89,16 +89,17 @@ module PositionStack
       end
 
 
-      def committable?
+      def committable?()
          return false if @branch_info.nil?
-         
-         root_position = @branch_info.root_position
-         each_position do |position|
-            return false if position.object_id == root_position.object_id
-            break if position.sequence_number < root_position.sequence_number
-         end
-         
-         return true
+         return @branch_info.committable?(self)
+         # 
+         # root_position = @branch_info.root_position
+         # each_position do |position|
+         #    return false if position.object_id == root_position.object_id
+         #    break if position.sequence_number < root_position.sequence_number
+         # end
+         # 
+         # return true
       end
       
 
@@ -660,6 +661,28 @@ module PositionStack
          #    stream.puts ""
          #    @state.display( stream )
          # end
+      end
+      
+      
+      #
+      # display_stack()
+      
+      def display_stack( stream )
+         stack_description = description()
+         stack_label       = "STACK"
+         stack_bar         = "=" * (stack_description.length + stack_label.length + 3)
+
+         stream.puts stack_bar
+         stream.puts "#{stack_label} #{stack_description} |"
+         stream.puts "#{stack_bar}"
+      end
+      
+      
+      #
+      # display_lookahead()
+      
+      def display_lookahead( stream )
+         stream.puts "LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
       end
 
 

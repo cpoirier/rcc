@@ -78,7 +78,6 @@ module Plan
          @number                 = state_number             # The number of this State within the overall ParserPlan
          @items                  = []                       # All Items in this State
          @start_items            = []                       # The Items that started this State (ie. weren't added by close())
-         @active_discard         = []                       # The symbols we *actually* discard from this state at runtime
          @discard_list           = []                       # List of Symbols to discard before reading our lookahead
          @explicit_discards      = []                       # Symbols that would have been on @discard_list except they lead some of our Items
          @gateway_discards       = []                       # Symbols that would have been on @discard_list except they are gateways on some of our leaders
@@ -93,6 +92,7 @@ module Plan
          @lookahead_explanations = nil                      # An InitialOptions Explanation, if requested
          @lexer_plan             = nil                      # A LexerPlan that gives our lookahead requirements precedence
          @context_grammar_name   = context_state.nil? ? nil : context_state.context_grammar_name
+         @transfers              = {}                       # Symbol.name => [Item], for items transferred to other states because of undiscards
 
          @item_index = {}       # An index used to avoid duplication of Items within the State
          start_items.each do |item|
@@ -134,10 +134,15 @@ module Plan
       # add_productions( )
       #  - adds all Productions in a ProductionSet to this state, as 0 mark Items
       
-      def add_productions( production_set, context_items = nil )
+      def add_productions( production_set, context_item = nil )
+         items = []
          production_set.productions.each do |production|
-            add_item( Item.new(production, 0, context_items) )
+            item = Item.new( production, 0, context_item )
+            add_item( item )
+            items << item
          end
+         
+         return items
       end
       
       
@@ -314,6 +319,22 @@ module Plan
          #
          # For now (and at long last), let's just build the damned thing.
          
+         reprioritize = false
+         leadin = @start_items[0].leadin
+         if leadin.set? and leadin.refers_to_token? then
+            reprioritize = true
+            @start_items.each do |start_item|
+               if start_item.complete? then
+                  reprioritize = false 
+                  break
+               elsif start_item.leadin != leadin then
+                  reprioritize = false
+                  break
+               end
+            end
+         end
+         
+         added_by_context = {}
          until @queue.empty? 
             item = @queue.shift
             
@@ -325,12 +346,41 @@ module Plan
                @reductions << item
             else
                if item.leader.refers_to_production? or item.leader.refers_to_group? then
-                  if @master_plan.production_sets.member?(item.leader.name) then
-                     add_productions( @master_plan.production_sets[item.leader.name], item )
-                  elsif item.leader.refers_to_production? then
-                     nyi "error handling for missing reference name [#{item.leader.name}]" 
+                  production_names = item.leader.refers_to_group? ? @master_plan.group_members[item.leader.name].select{|member| member.refers_to_production?}.collect{|member| member.name} : [item.leader.name]
+                  production_names.each do |name|
+                     if @master_plan.production_sets.member?(name) then
+                        added_items = add_productions( @master_plan.production_sets[name], item )
+                        if reprioritize then
+                           added_items.each do |added_item|
+                              added_by_context[added_item] = [] unless added_by_context.member?(added_item)
+                              added_by_context[added_item] << item unless added_by_context[added_item].member?(item)
+                           end
+                        end
+                     else
+                        nyi "error handling for missing reference name [#{name}]"
+                     end
                   end
+                  
+                  # if @master_plan.production_sets.member?(item.leader.name) then
+                  #    added_items = add_productions( @master_plan.production_sets[item.leader.name], item )
+                  #    if reprioritize then
+                  #       added_items.each do |added_item|
+                  #          added_by_context[added_item] = [] unless added_by_context.member?(added_item)
+                  #          added_by_context[added_item] << item unless added_by_context[added_item].member?(item)
+                  #       end
+                  #    end
+                  # elsif item.leader.refers_to_production? then
+                  #    nyi "error handling for missing reference name [#{item.leader.name}]" 
+                  # end
                end
+            end
+         end
+         
+         if reprioritize then
+            added_by_context.each do |added_item, context_items|
+               unique_contexts = context_items.collect{|item| item.production.ast_class}.uniq
+               next unless unique_contexts.length == 1
+               added_item.priority = context_items[0].priority
             end
          end
 
@@ -371,8 +421,10 @@ module Plan
 
          @explicit_discards = explicit_discards.keys
          @gateway_discards  = gateway_discards.keys
-         @discard_list      = discard_list - @explicit_discards - @gateway_discards
+         @undiscards        = (@explicit_discards + @gateway_discards).uniq
+         @discard_list      = discard_list - @undiscards
          @discard_names     = @discard_list.collect{|symbol| symbol.name}         
+         @active_discard    = []
       end
 
 
@@ -444,16 +496,21 @@ module Plan
          #
          # Most states will use the default discard list, and we don't have to do anything special.  However, if the
          # Item leaders mention a discarded symbol -- either directly or as a gateway -- we must explicitly handle
-         # the symbols and alter the transitions accordingly.  For our example, we'll assume 'comment', 'whitespace',
-         # and 'eol' discard symbols.  State 1 is this state.
+         # the symbols and alter the transitions accordingly (transferring items to another State for processing).  
+         # We must also transfer reductions in this case, as we don't want to make the discard symbols determinants for
+         # reduction (they might not be), but still want the parse to work correctly.  By transferring them to a state
+         # on the should-be-discarded lookahead, we get them past the problem without prejudicing the outcome.
          #
+         #
+         # For our example, we'll assume 'comment', 'whitespace', and 'eol' discard symbols.  State 1 is this state.
          #
          # State 1, Discard: comment                           Transitions
          #   e . !whitespace !eol '!' e                         '!'        => State 2
          #   e . eol '+' e                                      eol        => State 3  
          #   e . whitespace '*' e                               whitespace => State 4
          #   e . '/' e                                          '/'        => State 5
-         #   e . !whitespace eol '-' e                          
+         #   e . !whitespace eol '-' e                  
+         #   e '%' e .        
          #                                                      
          # State 2, Discard: comment whitespace eol
          #   e '!' . e
@@ -463,11 +520,13 @@ module Plan
          #   e . whitespace '*' e                               '+'        => . . . 
          #   e . '/' e                                          '/'        => . . . 
          #   e eol . '-' e                                      '-'        => . . . 
+         #   e '%' e .
          #
          # State 4, Discard: comment whitespace                Transitions
          #   e . eol '+' e                                      eol        => State 7
          #   e whitespace . '*' e                               '+'        => . . . 
          #   e . '/' e                                          '*'        => . . . 
+         #   e '%' e .
          #
          # State 5, Discard: comment whitespace eol
          #   e '/' . e
@@ -482,6 +541,7 @@ module Plan
          #  e eol . '+' e
          #  e whitespace . '*' e
          #  e . '/' e
+         #  e '%' e .
          #
          #
          # A second example:
@@ -531,29 +591,56 @@ module Plan
          # it's already been added to enumeration as a shift.  However, all other items that would have 
          # relied on the discard to consume that symbol will need to be transfered with it, unshifted.  
          # For leaders with gateway expressions, we'll just let the regular enumeration handle it, which it 
-         # will in the absense of that symbol on the discard list.  The interaction of the two types, 
-         # however, is a bit more complicated.
+         # will in the absense of that symbol on the discard list.
+         #
+         # However, there's another problem.  If the gateway affects a production symbol, it doesn't affect
+         # just the one item -- it affects any items expanded from it by close().  Fortunately, there is a way
+         # around this: we just won't ever transfer those unstarted items.  Instead, we'll allow the 
+         # close() on the State on the other side to *recreate* them.  Of course, to make this work, we have
+         # to disallow gateways before the first symbol in a Production, so we can easily distinguish between
+         # items that need to be transferred, and those that don't.  However, this seems a reasonable limit, 
+         # and maybe even a good idea (you shouldn't be gatewaying the entrance to a production, should you?).
+         #
+         # Finally, if the shift of an explicitly-named discard symbol completes that production, we transfer 
+         # no other items with it that would require shifting data *beyond* that discard symbol.  They are
+         # not equivalent!
          
-         if !@gateway_discards.empty? then
+         state_has_gateways = !@gateway_discards.empty?
+         unless @undiscards.empty?
+            
+            limit_transfers_for = []
+            @undiscards.each do |symbol|
+               if enumeration.member?(symbol.name) then
+                  limit_transfers = true
+                  enumeration[symbol.name].each do |item|
+                     limit_transfers = false unless item.complete?
+                  end
+                  
+                  limit_transfers_for << symbol.name if limit_transfers
+               end
+            end
+
             @gateway_discards.each do |symbol|
                enumeration[symbol.name] = [] unless enumeration.member?(symbol.name)
             end
-         
+      
             @items.each do |item|
-               next if item.complete?            
-               leader = item.leader
-               (@gateway_discards - leader.gateways).each do |gateway|
-                  next if leader == gateway              # Already in enumeration, shifted
-                  enumeration[gateway.name] << item      # Otherwise, add it unshifted
-               end
-            end
-         elsif !@explicit_discards.empty? then
-            @items.each do |item|
-               next if item.complete?
-               leader = item.leader
-               @explicit_discards.each do |explicit|
-                  next if leader == explicit             # Already in enumeration, shifted
-                  enumeration[explicit.name] << item     # Otherwise, add it unshifted
+               next if (state_has_gateways and item.at == 0)
+               
+               leader   = item.leader
+               gateways = leader.nil? ? [] : leader.gateways
+               
+               (@undiscards - gateways).each do |undiscard|
+                  p "leader & undiscard"
+                  puts item
+                  puts leader
+                  puts undiscard
+                  next if leader == undiscard                                          # Already in enumeration, shifted
+                  next if limit_transfers_for.member?(undiscard) and leader.exists?    # We don't shift past a reduce-causing undiscard
+                  enumeration[undiscard.name] << item.transfer(undiscard)              # Otherwise, transfer it
+                  
+                  @transfers[undiscard.name] = [] unless @transfers.member?(undiscard.name)
+                  @transfers[undiscard.name] << enumeration[undiscard.name][-1].unshift()
                end
             end
          end
@@ -615,7 +702,7 @@ module Plan
 
          #
          # Next, sort into lists of options.  We'll immediately create and store actions
-         # for Gotos, as they are very simple to do, and we don't want the complicating later
+         # for Gotos, as they are very simple to do, and we don't want them complicating later
          # work.         
          
          options = {}
@@ -657,42 +744,18 @@ module Plan
                   options[determinant.name] = [] unless options.member?(determinant.name)
                   options[determinant.name] << item
                end
-               
-               #
-               # For every complete item, we (theoretically) need to add in the discard list from our context 
-               # item's shifted item.  Consider this example, where we are State 3:
-               #
-               # State 1:
-               #  x => . e t
-               #
-               # State 2:
-               #  e => . b
-               #
-               # State 3:
-               #  e => b .
-               # 
-               # State 4:
-               #  x => e . t
-               #
-               # State 1 is a follow context, supplying t as a determinant for the reduce of e => b.  However,
-               # there are discard symbols that may preface t in that follow context, and they are *not* the
-               # discard symbols from either this state (3) or from State 1!  They are the discard symbols from 
-               # State 4!  (Because discard happens *before* reading the lookahead for a State).
-               #
-               # Unfortunately, due to the way that we generate the State table, figuring out from where to
-               # get the discard determinants is not trivial.  Further, if we just add the discard tokens as
-               # determinants, we may end up with shift/reduce conflicts that don't really exist.  What we
-               # really need to do is 
-               
-               
-               # We need to add the discard  follow 
-               if item.complete? then
-               end
             end
          end
-
-         @active_discard = @discard_names - options.keys
-         @lookahead      = options.keys + @active_discard
+         
+         @transfers.each do |name, items|
+            unless items.empty?
+               options[name] = [] unless options.member?(name)
+               options[name].concat( items )
+            end
+         end
+         
+         @lookahead = options.keys | @discard_names
+         @active_discard = discard_names - options.keys         
          
          #
          # Select an action for each lookahead terminal.
@@ -720,37 +783,38 @@ module Plan
                # stupid things.  We tolerate as much ambiguity as might be useful, and no more.
                
                sorted = items.sort do |lhs, rhs|
-                  if lhs.production.priority == rhs.production.priority then
+                  if lhs.priority == rhs.priority then
                      lhs.complete? ^ rhs.complete? ? (lhs.complete? ? -1 : 1) : 0
                   else
-                     lhs.production.priority <=> rhs.production.priority
+                     lhs.priority <=> rhs.priority
                   end
                end
 
                reduce_priority = 10000000000
                sorted.each do |item|
-                  if item.production.priority > reduce_priority then    # priority 1 is higher than priority 2
-                     discarded << item
+                  if item.priority > reduce_priority then    # priority 1 is higher than priority 2
+                     in_play << item
+                     # discarded << item
                   elsif item.complete? then
                      in_play << item
-                     reduce_priority = item.production.priority
+                     reduce_priority = item.priority
                   else
                      in_play << item
                   end
                end
                
-               explanations << Explanations::ItemsDoNotMeetThreshold.new( discarded ) if (explain and !discarded.empty?)
+               # explanations << Explanations::ItemsDoNotMeetThreshold.new( discarded ) if (explain and !discarded.empty?)
                
                #
                # At this point, in_play contains 0 or more high priority shifts followed by a set
                # of 0 or more shifts and reduces at the same priority.  We have to look at that 
-               # second set (if present) and apply associativity.
+               # second set (if present) and apply associativity rules.
                
                keep_set  = []
                assoc_set = []
                
                in_play.each do |item|
-                  if item.production.priority < reduce_priority then    # priority 1 is higher than priority 2
+                  if item.priority < reduce_priority then    # priority 1 is higher than priority 2
                      keep_set << item
                   else
                      assoc_set << item
@@ -760,27 +824,55 @@ module Plan
                unless assoc_set.empty?
                   assoc_shifts     = assoc_set.select{ |item| !item.complete? }
                   assoc_reductions = assoc_set.select{ |item| item.complete?  }
+                  to_delete        = []
                   
                   #
-                  # If there are any right-associative reductions, we can immediately eliminate them if there
-                  # are any equal or higher-priority shifts.  We would definitely eliminate a right-assoc reduction
-                  # in the presence of any equal priority shift, so why wouldn't we do the same for higher priority
-                  # shifts?
+                  # Identify any reductions that meet certain global requirements.
                   
                   unless assoc_shifts.empty? and keep_set.empty?
-                     shift = (keep_set.empty? ? assoc_shifts[0] : keep_set[0])
                      assoc_reductions.each do |reduction|
                         case reduction.production.associativity
-                        when :none
-                           false
+                        when :right
+
+                           #
+                           # We can immediately eliminate any right-associative reductions if there are any equal or higher-priority 
+                           # shifts.  We would definitely eliminate a right-assoc reduction in the presence of any equal priority shift, 
+                           # so why wouldn't we do the same for higher priority shifts?
+
+                           to_delete << reduction
+                           explanations << Explanations::RightAssocReduceEliminated.new( keep_set.empty? ? assoc_shifts[0] : keep_set[0], reduction ) if explain
+                              
                         when :left
-                           false
-                        else
-                           assoc_set.delete_if{ |item| item.object_id == reduction.object_id }
-                           assoc_reductions.delete_if{ |item| item.object_id == reduction.object_id }
-                           explanations << Explanations::RightAssocReduceEliminated.new( shift, reduction ) if explain
+                           
+                           #
+                           # We can eliminate any left-associative reductions that are lower priority than one or more of
+                           # our shifts and that don't interact with the shifts for backtracking purposes.  
+                           
+                           unless keep_set.empty?
+                              delete_worthy = true
+                              keep_set.each do |shift|
+                                 prefix = shift.prefix
+                                 if reduction.length <= prefix.length then
+                                    if reduction.symbols == prefix.slice(-reduction.length..-1) then
+                                       delete_worthy = false 
+                                    end
+                                 end
+                              end
+                           
+                              if delete_worthy then
+                                 to_delete << reduction
+                                 explanations << Explanations::LeftAssocReduceEliminated.new( reduction, keep_set ) if explain
+                              end
+                           end
                         end
                      end
+                  end
+                  
+                  #
+                  # Delete anything we've identified.
+                  
+                  to_delete.each do |reduction|
+                     assoc_set.delete_if{ |item| item.object_id == reduction.object_id }
                   end
                   
                   #
@@ -813,26 +905,45 @@ module Plan
             
             valid_productions = []
             in_play.each do |item|
-               break if item.complete?
+               next if item.complete?
                valid_productions << item.production
             end
             
             #
             # Next, convert the in_play items to actions.
             
-            shift_created = false
-            actions       = []
+            shift_created   = false
+            actions         = []
+            attempt_span    = 0
+            last_is_longest = nil
             in_play.each do |item|
                if item.complete? then
+                  if item.length > attempt_span then
+                     attempt_span = item.length
+                     last_is_longest = item.production.ast_class
+                  else
+                     last_is_longest = nil unless item.production.ast_class == last_is_longest
+                  end
+
                   actions << Actions::Reduce.new( item.production )
                   explanations << actions[-1]
                elsif symbol_name.eof? then
                   actions << Actions::Accept.new( item.production )
                   explanations << actions[-1]
-               elsif !shift_created then
-                  actions << Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions, shift_commits_by_leader[item.leader.name] )
-                  shift_created = true
-                  explanations << actions[-1]
+               else
+                  length = item.prefix.length
+                  if length > attempt_span then
+                     attempt_span = length
+                     last_is_longest = item.production.ast_class
+                  else
+                     last_is_longest = nil unless item.production.ast_class == last_is_longest
+                  end
+                  
+                  if !shift_created then
+                     actions << Actions::Shift.new( symbol_name, @transitions[symbol_name], valid_productions, shift_commits_by_leader[item.leader.name] )
+                     shift_created = true
+                     explanations << actions[-1]
+                  end
                end
             end
             
@@ -854,7 +965,7 @@ module Plan
                   @actions[symbol_name] = actions[0]
                else
                   explanations << Explanations::BacktrackingActivated.new( actions ) if explain
-                  @actions[symbol_name] = Actions::Attempt.new( actions )
+                  @actions[symbol_name] = Actions::Attempt.new( actions, attempt_span, last_is_longest.set? )
             end
             
             #
@@ -1102,7 +1213,7 @@ module Plan
       def display( stream = $stdout )
          stream.puts "#{@context_grammar_name} State #{@number}"
          stream.indent do
-            stream.puts "Discards: #{@active_discard.collect{|n| n.description}.join(", ")}"
+            stream.puts "Discards: #{@discard_names.collect{|n| n.description}.join(", ")}"
             
             rows = []
             if @actions.exists? and @actions.length == 1 and @actions.member?(Name.any_type) then
@@ -1117,11 +1228,11 @@ module Plan
                @items.each do |item|
                   prefix_signatures = item.prefix.collect{|symbol| symbol.name.description}
                   rest_signatures   = item.rest.collect{|symbol| symbol.name.description}
-                  rows << row = [ item.start_item ? "*" : " ", item.production.name.description, prefix_signatures.join(" ") + " . " + rest_signatures.join(" ") ]
+                  rows << row = [ item.start_item ? "*" : " ", item.priority.to_s, item.production.name.description, prefix_signatures.join(" ") + " . " + rest_signatures.join(" ") ]
             
                   case stream[:state_context]
                      when nil, :determinants
-                        tail = item.complete? ? item.determinants.join(" | ") : nil
+                        # tail = item.complete? ? item.determinants.join(" | ") : nil
                      when :determinants_plus
                         tail = item.complete? ? item.determinants.join(" | ") : item.sequences_after_mark(3).sequences.collect{|sequence| sequence.join(" ")}.join(" | ")
                      when :follow_contexts
@@ -1143,7 +1254,7 @@ module Plan
             #
             # Calculate a width for each column.
          
-            widths = [0, 0, 0, 0]
+            widths = [0, 0, 0, 0, 0]
             rows.each do |row|
                column = 0
                row.each do |datum|
@@ -1157,13 +1268,13 @@ module Plan
             #
             # Display the formatted items.
          
-            format_string = "%s %-#{widths[1]}s => %-#{widths[2]}s"
+            format_string = "%s % #{widths[1]}s %-#{widths[2]}s => %-#{widths[3]}s"
             rows.each do |row|
-               output = sprintf(format_string, row[0], row[1], row[2]).ljust(60)
-               if row[3].nil? then
+               output = sprintf(format_string, row[0], row[1], row[2], row[3]).ljust(60)
+               if row[4].nil? then
                   stream << output << "\n"
                else
-                  stream << output << "   >>> Context >>> " << row[3] << "\n"
+                  stream << output << "   >>> Context >>> " << row[4] << "\n"
                end
             end
          

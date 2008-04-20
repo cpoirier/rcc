@@ -408,6 +408,10 @@ module Interpreter
                         estream.puts "#{state.lookahead_explanations}"
                         estream.puts 
                      end
+                     position.display_stack(estream)
+                     estream.indent("| ") do
+                        estream.blank_lines(2)
+                     end                     
                   end
 
                   
@@ -464,8 +468,20 @@ module Interpreter
                         branch_info = position.branch_info
                         restart_info = branch_info.next_branch()
                         if restart_info then
-                           estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT" if estream
-                           position = perform_action( restart_info.root_position, restart_info.action, nil, estream, restart_info )
+                           if estream then
+                              estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT" 
+                              estream.blank_lines(5)
+                              estream.puts "RESTARTING AT POSITION #{restart_info.root_position.sequence_number}"
+                              estream.puts "BRANCH #{restart_info.root_position.branch_id("MAIN")}"
+                              estream << "IN " 
+                              estream.indent("| ") do
+                                 restart_info.root_position.state.display(estream)
+                                 estream.puts 
+                              end                              
+                              restart_info.root_position.display( estream ) 
+                           end
+                              
+                           position = perform_action( restart_info.root_position, restart_info.action, restart_info.root_position.next_token, estream, restart_info )
                         else
                            estream.puts "===> ALL BRANCHES FAILED" if estream
                            raise ParseError.new( position )
@@ -559,7 +575,19 @@ module Interpreter
                      unless branch_info.valid_production?(production) 
                         restart_info = branch_info.next_branch()
                         if restart_info then
-                           estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT" if estream
+                           if estream then
+                              estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT"
+                              estream.blank_lines(5)
+                              estream.puts "RESTARTING AT POSITION #{restart_info.root_position.sequence_number}"
+                              estream.puts "BRANCH #{restart_info.root_position.branch_id("MAIN")}"
+                              estream << "IN " 
+                              estream.indent("| ") do
+                                 restart_info.root_position.state.display(estream)
+                                 estream.puts 
+                              end
+                              restart_info.root_position.display( estream )                               
+                           end
+                           
                            return perform_action( restart_info.root_position, restart_info.action, nil, estream, restart_info )
                         else
                            estream.puts "===> ALL BRANCHES FAILED" if estream
@@ -603,7 +631,7 @@ module Interpreter
                # Get the goto state from the now-top-of-stack State: it will be the next state.
                
                goto_action = position.state.actions[production.name]
-               goto_state  = position.state.transitions[production.name]
+               goto_state  = goto_action.to_state
 
                restore_lookahead = true
                warn_bug( "we should be able to optimize restore_lookahead" )
@@ -628,7 +656,8 @@ module Interpreter
                
                next_position.branch_info = top_branch_info
                # if production.local_commit_point? or goto_action.local_commit? then
-                  while (production.local_commit_point? or goto_action.local_commit? or (next_position.branch_info.exists? and next_position.branch_info.started_with_shift?)) and next_position.committable?
+                  # while (production.local_commit_point? or goto_action.local_commit? or (next_position.branch_info.exists? and (next_position.branch_info.started_with_shift? or next_position.branch_info.last_option?))) and next_position.committable?
+                  while next_position.committable?
                      estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
                      next_position.branch_info = next_position.branch_info.context_info
                      if estream then

@@ -301,6 +301,8 @@
          return !nil?()
       end
       
+      alias set? exists?
+      
       alias is_an? is_a?
 
       

@@ -206,6 +206,16 @@ module Grammar
          
          
          #
+         # Assign rule priorities.
+         
+         prioritize_rules()
+
+         @rule_defs.each do |name, definition|
+            definition.priority = 1 if definition.is_a?(Pluralization)
+         end
+
+
+         #
          # Display the work, if appropriate.
 
          if false then
@@ -223,12 +233,6 @@ module Grammar
                $stdout.puts ""
             end
          end
-         
-         
-         #
-         # Assign rule priorities.
-         
-         prioritize_rules()
          
          
          #
@@ -261,8 +265,8 @@ module Grammar
                      nyi( "error handling for bad discard switch [#{option.discard.text}]" )
                   end
                   
-                  warn_nyi( "gateway expression check for corresponding discard?" )
-                  warn_nyi( "gateway expression exclusion at end of rule?"        )
+                  warn_nyi( "gateway expression check for corresponding discard?"    )
+                  warn_nyi( "gateway expression exclusion at start AND end of rule?" )
                   
                when "backtracking_switch"
                   warn_nyi( "backtracking switch support (isn't this going away?)" )
@@ -889,7 +893,7 @@ module Grammar
                         singular_name = child_form[0].symbol_name
                         plural_name   = pluralize( singular_name )
                         if @specifications.member?(plural_name) then
-                           child_name = "_plural_of_#{singular_name}"
+                           child_name = "_plural_of_#{singular_name.name}"
                         else
                            child_name = plural_name
                         end

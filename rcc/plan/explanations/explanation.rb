@@ -55,4 +55,5 @@ require "#{$RCCLIB}/plan/explanations/items_do_not_meet_threshold.rb"
 require "#{$RCCLIB}/plan/explanations/only_one_choice.rb"
 require "#{$RCCLIB}/plan/explanations/left_assoc_reduce_eliminates_shift.rb"
 require "#{$RCCLIB}/plan/explanations/right_assoc_reduce_eliminated.rb"
+require "#{$RCCLIB}/plan/explanations/left_assoc_reduce_eliminated.rb"
 

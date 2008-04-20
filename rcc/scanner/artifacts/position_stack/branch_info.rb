@@ -38,7 +38,18 @@ module PositionStack
          @branch_index      = branch_index
          @recovery_branches = nil
          @current_position  = nil
-         @committable       = false
+         @last_option       = (@branch_index + 1 == @attempt_action.actions.length)
+         @committable_after = root_position.sequence_number
+         
+         position = @root_position
+         attempt_action.attempt_span.times do
+            if position then
+               @committable_after = position.sequence_number
+               position = position.context
+            else
+               break
+            end
+         end
       end
       
       
@@ -50,14 +61,27 @@ module PositionStack
          return @attempt_action.actions[@branch_index].is_a?(Plan::Actions::Shift)
       end
       
-      
-      def committable?()
-         return @committable
+      def last_option?()
+         return @last_option
       end
       
-      def committable=( value )
-         @committable = value
+
+      def committable?( current_top_position )
+         if @last_option then
+            current_top_position.each_position do |position|
+               return false if position.sequence_number == @root_position.sequence_number
+               break if position.sequence_number < @root_position.sequence_number
+            end
+         else
+            current_top_position.each_position do |position|
+               return false if position.sequence_number == @committable_after
+               break if position.sequence_number < @committable_after
+            end
+         end
+         
+         return true
       end
+
       
       def at_validate_position?( position )
          return false unless started_with_shift?

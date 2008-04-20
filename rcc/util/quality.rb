@@ -41,8 +41,11 @@
    # assert()
    #  - raises an AssertionFailure if the condition is false
 
-   def assert( condition, message )
-      raise RCC::AssertionFailure.new(message) unless condition
+   def assert( condition, message, *data )
+      unless condition
+         data = yield() if block_given?
+         raise RCC::AssertionFailure.new(message, data)
+      end
    end
 
 

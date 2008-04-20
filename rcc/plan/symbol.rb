@@ -38,7 +38,7 @@ module Plan
       attr_reader   :gateways
       attr_accessor :commit_point
       
-      def initialize( name, type, gateways = nil )
+      def initialize( name, type, gateways = [] )
          assert( type == :token || type == :production || type == :group || type == :discarder, "type is invalid" )
          
          @name         = name
@@ -71,7 +71,7 @@ module Plan
             return []
          when :group
             names = []
-            master_plan.group_members[self].each do |member|
+            master_plan.group_members[@name].each do |member|
                names << member.name if member.refers_to_token?
             end
             
@@ -104,10 +104,12 @@ module Plan
       end
       
       def ==( rhs )
+         type_check( rhs, Symbol )
          return @type == rhs.type && @name == rhs.name
       end
       
-      def eql( rhs )
+      def eql?( rhs )
+         type_check( rhs, Symbol )
          return @type == rhs.type && @name == rhs.name
       end
       

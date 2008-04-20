@@ -27,7 +27,7 @@ module Plan
          symbols = [Plan::Symbol.new(start_rule_name, :production), Plan::Symbol.new(Scanner::Artifacts::Name.end_of_file_type, :token)]
          slots   = [nil, nil]
          
-         return self.new( 0, Scanner::Artifacts::Name.any_type, symbols, slots, :right, 0, nil, false )
+         return self.new( 0, Scanner::Artifacts::Name.any_type, symbols, slots, nil, 0, nil, false )
       end
       
       
@@ -58,7 +58,7 @@ module Plan
       attr_accessor :master_plan
       attr_writer   :commit_point
 
-      def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries )
+      def initialize( number, name, symbols, slots, associativity, priority, ast_class, generate_error_recoveries, master_plan = nil )
          type_check( name, Scanner::Artifacts::Name )
          
          @number        = number
@@ -69,6 +69,7 @@ module Plan
          @priority      = priority
          @ast_class     = ast_class
          @commit_point  = nil
+         @master_plan   = master_plan
                   
          @generate_error_recoveries = generate_error_recoveries
       end
@@ -91,7 +92,7 @@ module Plan
          @commit_point == :global
       end
       
-
+      
       def signature()
          return @name.signature
       end
@@ -104,6 +105,33 @@ module Plan
       def length()
          return @symbols.length
       end
+      
+      
+      #
+      # new_transfer_version()
+      #  - returns a copy of this Production with an additional (disposable) symbol inserted at some point
+      #  - registers the new Production with the master_plan, if you pass it
+      
+      def new_transfer_version( symbol, at, master_plan = nil )
+         symbols = @symbols.dup()
+         symbols[at, 0] = symbol
+         
+         slots = nil
+         if @slots then
+            slots = @slots.dup()
+            slots[at, 0] = nil
+         end
+         
+         transfer_version = self.class.new( -1, @name, symbols, slots, :left, @priority, @ast_class, false, @master_plan )
+         
+         if master_plan then
+            return master_plan.register_transfer_production( transfer_version )
+         else
+            return transfer_version
+         end
+      end
+      
+      
       
       
       def to_s()

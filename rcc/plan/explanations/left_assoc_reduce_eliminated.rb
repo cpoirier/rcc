@@ -9,41 +9,41 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/plan/actions/action.rb"
+require "#{$RCCLIB}/plan/explanations/explanation.rb"
 
 module RCC
 module Plan
-module Actions
+module Explanations
 
  
  #============================================================================================================================
- # class Attempt
- #  - a Action that allows a set of Actions to be attempted, in sequence, until one of them succeeds
+ # class LeftAssocReduceEliminated
+ #  - explanation that indicates a shift action was chosen over a reduce action for associativity reasons
 
-   class Attempt < Action
+   class LeftAssocReduceEliminated < Explanation
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
-      
-      attr_reader :actions
-      attr_reader :attempt_span
-      attr_reader :last_is_longest
-      
-      def initialize( actions, attempt_span, last_is_longest )
-         @actions         = actions
-         @attempt_span    = attempt_span
-         @last_is_longest = last_is_longest
+
+      def initialize( reduction, shifts )
+         @reduction = reduction
+         @shifts    = shifts
       end
+      
       
       def to_s()
-         return "Attempt:\n   " + @actions.collect{|action| action.to_s}.join("\n   ")
+         return "High-priority shifts [#{@shifts.join("], [")}] eliminate unrelated, lower-priority, left-associativeReduce [#{@reduction.to_s}]"
       end
       
-   end # Attempt
+      
+   end # LeftAssocReduceEliminated
    
 
 
-end  # module Actions
+
+end  # module Explanations
 end  # module Plan
 end  # module RCC
+
+

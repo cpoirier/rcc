@@ -303,6 +303,17 @@ module Plan
          end
       end
       
+      
+      def register_transfer_production( production )
+         number = @productions.length
+         production.instance_eval do
+            @number = number
+         end
+         
+         @productions << production
+         return production
+      end
+      
 
 
 
@@ -355,7 +366,7 @@ module Plan
                   else
                      transition_state = State.new( self, state_table.length, shifted_items, current_state )
                      transition_state.close(@discard_lists)
-
+                     
                      state_table << transition_state
                      state_index[transition_state.signature] = transition_state
                   

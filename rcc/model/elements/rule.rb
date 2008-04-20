@@ -117,7 +117,7 @@ module Elements
       end
 
       def display( stream = $stdout )
-         stream.puts "rule #{@name}"
+         stream.puts "rule #{@name} priority #{@priority}"
          stream.indent do
             @master_form.display( stream )
             
