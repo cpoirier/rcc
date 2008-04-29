@@ -46,6 +46,7 @@ module Util
          return @ranges[0].first
       end
       
+      
       def last()
          return nil if @ranges.empty?
          return @ranges[-1].last
@@ -79,15 +80,56 @@ module Util
       end
       
       
+      def &( rhs )
+         results = []
+         set1 = [] + @ranges.dup
+         set2 = [] + rhs.instance_eval{@ranges}
+         
+         range1 = set1.shift
+         range2 = set2.shift
+         while range1.exists? and range2.exists?
+            if range1.first <= range2.first and range1.last >= range2.last then
+               results << range2
+               range2 = set2.shift
+            elsif range2.first <= range1.first and range2.last >= range1.first then
+               results << range1
+               range1 = set1.shift
+            else
+               if range1 === range2.first then
+                  results << range2.first..range1.last
+                  range1 = set1.shift
+               elsif range2 === range1.first then
+                  results << range1.first..range2.last
+                  range2 = set2.shift
+               else
+                  if range1.first < range2.first then
+                     range1 = set1.shift
+                  else
+                     range2 = set2.shift
+                  end
+               end
+            end
+         end
+            
+         return self.class.new( *results )
+      end
+      
+      
       #
       # each()
       #  - calls your block once for each number in the range
-      
-      def each()
+       
+      def each( )
          @ranges.each do |range|
             range.each do |number|
                yield( number )
             end
+         end
+      end
+      
+      def each_range()
+         @ranges.each do |range|
+            yield( range )
          end
       end
       
@@ -100,9 +142,38 @@ module Util
          return false
       end
 
+      def overlaps?( other )
+         case range
+         when SparseRange
+            other.each_range do |piece|
+               return true if overlaps?(piece)
+            end
+         when Range
+            @ranges.each do |range|
+               return true if range.member?(other.first)
+               return true if range.member?(other.last)
+            end
+         end
+         
+         return false
+      end
+
+      def empty?
+         return @ranges.empty?
+      end
       
-
-
+      
+      def replace( sparse_range )
+         data = nil
+         sparse_range.instance_eval do
+            data = @ranges.dup
+         end
+         @ranges = data
+      end
+      
+      
+      
+      
 
     #---------------------------------------------------------------------------------------------------------------------
     # Operations
@@ -183,7 +254,7 @@ module Util
          
                @ranges.length.times do |index|
                   range = @ranges[index]
-                  if range === delta.begin then
+                  if range === delta.begin and range.begin != delta.begin then
                      @ranges[index] = range.begin..(delta.begin - 1)
                   elsif range === delta.end then
                      @ranges[index] = (delta.end + 1)..range.end

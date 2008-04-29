@@ -42,6 +42,16 @@
       end      
    end
    
+   def with_context_variable( name, value )
+      old = Thread.current[name]
+      begin
+         Thread.current[name] = value
+         yield()
+      ensure
+         Thread.current[name] = old
+      end
+   end
+   
    
    def context_variable( name )
       return Thread.current[name]
@@ -298,7 +308,7 @@
       end
       
       def exists?()
-         return !nil?()
+         return true
       end
       
       alias set? exists?
@@ -329,6 +339,10 @@
       
       def to_a()
          return []
+      end
+      
+      def exists?()
+         return false
       end
    end
    
@@ -524,7 +538,7 @@
       
    end # ContextStream
 
-
+   
    $stdout = ContextStream.new( $stdout ) unless $stdout.is_a?(ContextStream)
    $stderr = ContextStream.new( $stderr ) unless $stderr.is_a?(ContextStream)
    

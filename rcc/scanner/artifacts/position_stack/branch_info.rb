@@ -30,14 +30,16 @@ module PositionStack
       attr_reader   :root_position
       attr_reader   :attempt_action
       attr_reader   :branch_index
-      attr_accessor :current_position
+      attr_accessor :end_position
+      attr_reader   :previous_attempt
       
-      def initialize( root_position, attempt_action, branch_index )
+      def initialize( root_position, attempt_action, branch_index, previous_attempt = nil )
          @root_position     = root_position
+         @previous_attempt  = previous_attempt
          @attempt_action    = attempt_action
          @branch_index      = branch_index
          @recovery_branches = nil
-         @current_position  = nil
+         @end_position      = nil
          @last_option       = (@branch_index + 1 == @attempt_action.actions.length)
          @committable_after = root_position.sequence_number
          
@@ -162,9 +164,10 @@ module PositionStack
       #    context one
       #  - if it returns nil, you are out of options
       
-      def next_branch()
+      def next_branch( end_position = nil )
          branch = nil
          
+         @end_position = end_position
          if @branch_index + 1 < @attempt_action.actions.length then
             branch = BranchInfo.new( @root_position, @attempt_action, @branch_index + 1 )
          elsif context_branch = context_info() then

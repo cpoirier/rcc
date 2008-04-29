@@ -11,6 +11,7 @@
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/plan/lexer_state.rb"
 require "#{$RCCLIB}/util/ordered_hash.rb"
+require "#{$RCCLIB}/util/sparse_array.rb"
 
 
 module RCC
@@ -54,6 +55,7 @@ module Plan
          type_check( name, Scanner::Artifacts::Name )
          assert( @lexer_state.nil?, "you cannot add_pattern()s to this LexerPlan after close()ing it" )
          @closed_patterns[name] = expression
+         @exemplars[name]       = make_exemplar( expression )
       end
       
       
@@ -66,6 +68,7 @@ module Plan
          type_check( name, Scanner::Artifacts::Name )
          assert( @lexer_state.nil?, "you cannot add_pattern()s to this LexerPlan after close()ing it" )
          @open_patterns[name] = expression
+         @exemplars[name]     = make_exemplar( expression )
       end
       
       
@@ -134,8 +137,34 @@ module Plan
       end
 
 
+
+
+    
+    #---------------------------------------------------------------------------------------------------------------------
+    # Exemplar construction
+    #---------------------------------------------------------------------------------------------------------------------
+
+    protected
+          
+      #
+      # make_exemplar()
+      #  - creates a text example of something that matches the supplied ExpressionForm
+      
+      def make_exemplar( form, so_far = "" )
+         method_name = form.specialize_method_name( "make_examplar" ) 
+         if self.class.method_defined?(method_name) then
+            send( method_name, form )
+         else
+            nyi( "support for examplar creation from form type [#{form.class.name}]; please define a method named [#{method_name}]", form )
+         end
+      end
       
       
+      def make_example_sequence( sequence )
+         
+      end
+      
+
    end # LexerPlan
    
 

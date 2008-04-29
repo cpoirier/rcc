@@ -219,6 +219,7 @@ module Nodes
       
       def similar_to?( type )
          return @type == type unless type.literal?
+         return false if type.name.nil?
 
          exemplar = type.name
          return false unless (@text.length - exemplar.length).abs < 3

@@ -465,27 +465,7 @@ module Interpreter
                      end
                   else
                      if position.branch_info.exists? then
-                        branch_info = position.branch_info
-                        restart_info = branch_info.next_branch()
-                        if restart_info then
-                           if estream then
-                              estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT" 
-                              estream.blank_lines(5)
-                              estream.puts "RESTARTING AT POSITION #{restart_info.root_position.sequence_number}"
-                              estream.puts "BRANCH #{restart_info.root_position.branch_id("MAIN")}"
-                              estream << "IN " 
-                              estream.indent("| ") do
-                                 restart_info.root_position.state.display(estream)
-                                 estream.puts 
-                              end                              
-                              restart_info.root_position.display( estream ) 
-                           end
-                              
-                           position = perform_action( restart_info.root_position, restart_info.action, restart_info.root_position.next_token, estream, restart_info )
-                        else
-                           estream.puts "===> ALL BRANCHES FAILED" if estream
-                           raise ParseError.new( position )
-                        end                        
+                        position = setup_next_branch( position, nil, estream )
                      else
                         if estream then
                            estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
@@ -511,6 +491,7 @@ module Interpreter
       #  - raises PositionSeen if the action has a recovery context and would duplicate a position already seen
       
       def perform_action( position, action, next_token, estream, new_branch_info = nil )
+         type_check( next_token, Scanner::Artifacts::Nodes::Token )
          next_position = nil
          
          case action
@@ -540,12 +521,6 @@ module Interpreter
                         end
                      end
                   end
-                  # if position.branch_info.committable? and action.local_commit? then
-                  #    next_position.branch_info = position.branch_info.context_info
-                  #    estream.puts "===> COMMITING BRANCH #{position.branch_id} into #{next_position.branch_id("MAIN")}" if estream
-                  # else
-                  #    next_position.branch_info = position.branch_info
-                  # end
                end
                
                
@@ -572,28 +547,7 @@ module Interpreter
                   # next branch.
                   
                   if branch_info.exists? and branch_info.at_validate_position?(position) then
-                     unless branch_info.valid_production?(production) 
-                        restart_info = branch_info.next_branch()
-                        if restart_info then
-                           if estream then
-                              estream.puts "===> BRANCH #{branch_info.id} FAILED to produce expected results; TRYING NEXT"
-                              estream.blank_lines(5)
-                              estream.puts "RESTARTING AT POSITION #{restart_info.root_position.sequence_number}"
-                              estream.puts "BRANCH #{restart_info.root_position.branch_id("MAIN")}"
-                              estream << "IN " 
-                              estream.indent("| ") do
-                                 restart_info.root_position.state.display(estream)
-                                 estream.puts 
-                              end
-                              restart_info.root_position.display( estream )                               
-                           end
-                           
-                           return perform_action( restart_info.root_position, restart_info.action, nil, estream, restart_info )
-                        else
-                           estream.puts "===> ALL BRANCHES FAILED" if estream
-                           nyi( "error trigger for out of options" )
-                        end
-                     end
+                     return setup_next_branch(top_position, branch_info, estream) if not branch_info.valid_production?(production) 
                      
                      branch_info   = branch_info.context_info
                      root_position = branch_info.nil? ? nil : branch_info.root_position
@@ -621,11 +575,6 @@ module Interpreter
                # Create/transfer recoverability marks, if appropriate.
 
                warn_nyi( "error recovery commit" )
-               # if production.name == "statement".intern then
-               #    node.recoverable = true
-               # elsif nodes[-1].recoverable? then
-               #    node.recoverable = true
-               # end
                                  
                #
                # Get the goto state from the now-top-of-stack State: it will be the next state.
@@ -647,35 +596,17 @@ module Interpreter
                
                #
                # All reduced positions are part of the same branch as the top position in the 
-               # reduce.  The branch may commit at this point, if the production itself is commitable
-               # on reduce, or the shift of it is commitable.  We'll also commit the branch if it
-               # started with a shift and the branch root position is now off the stack (meaning the
-               # shift produced something useful).  
-               #
-               # BUG: shift/reduce commit needs more thought!
+               # reduce.  Once we've dealt with that, look for any branches that can now be committed.
                
                next_position.branch_info = top_branch_info
-               # if production.local_commit_point? or goto_action.local_commit? then
-                  # while (production.local_commit_point? or goto_action.local_commit? or (next_position.branch_info.exists? and (next_position.branch_info.started_with_shift? or next_position.branch_info.last_option?))) and next_position.committable?
-                  while next_position.committable?
-                     estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
-                     next_position.branch_info = next_position.branch_info.context_info
-                     if estream then
-                        estream << "into #{next_position.branch_id("MAIN")}" 
-                        estream.end_line
-                     end
+               while next_position.committable?
+                  estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
+                  next_position.branch_info = next_position.branch_info.context_info
+                  if estream then
+                     estream << "into #{next_position.branch_id("MAIN")}" 
+                     estream.end_line
                   end
-               # end
-               #    
-               #    
-               # while next_position.branch_info.exists? and next_position.branch_info.committable? and (production.local_commit_point? or goto_action.local_commit?)
-               #    estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
-               #    next_position.branch_info = next_position.branch_info.context_info
-               #    if estream then
-               #       estream << "into #{next_position.branch_id("MAIN")}" 
-               #       estream.end_line
-               #    end
-               # end
+               end
                
 
             when Plan::Actions::Attempt
@@ -694,6 +625,35 @@ module Interpreter
          return next_position
       end
 
+
+      
+      #
+      # setup_next_branch()
+      #  - when a branch fails to parse, picks the next branch and restarts the parse
+
+      def setup_next_branch( position, branch_info, estream = nil )
+         branch_info  = position.branch_info if branch_info.nil?
+         restart_info = branch_info.next_branch( position )
+         if restart_info then
+            if estream then
+               estream.puts "===> BRANCH #{position.branch_info.id} FAILED to produce expected results; TRYING NEXT"
+               estream.blank_lines(5)
+               estream.puts "RESTARTING AT POSITION #{restart_info.root_position.sequence_number}"
+               estream.puts "BRANCH #{restart_info.root_position.branch_id("MAIN")}"
+               estream << "IN " 
+               estream.indent("| ") do
+                  restart_info.root_position.state.display(estream)
+                  estream.puts 
+               end
+               restart_info.root_position.display( estream )                               
+            end
+
+            return perform_action( restart_info.root_position, restart_info.action, restart_info.root_position.next_token, estream, restart_info )
+         else
+            estream.puts "===> ALL BRANCHES FAILED" if estream
+            raise ParseError.new( position )
+         end
+      end
 
       
       #
@@ -916,7 +876,7 @@ module Interpreter
                         #
                         # Token replacement is one option.  But we never attempt to replace the EOS marker.
 
-                        if replace and !lookahead_type.nil? then
+                        if replace and lookahead_type.name.exists? then
                            if recovery_position.next_token.similar_to?(leader_type) then
                               estream.puts "[#{leader_type}] SIMILAR to [#{lookahead_type}]; WILL TRY REPLACE" if estream
                               begin
@@ -944,28 +904,28 @@ module Interpreter
                      end  # ContextStream.indent_with() 3
                   end
 
-
-                  #
-                  # We can also try deleting tokens until we find something we can use.  
-                  # BUG: THIS IS BORKED BY PositionSeen
-
-                  deleted_tokens = []
-
-                  begin
-                     recovered_position = recovery_position.correct_by_deletion( recovery_context )
-                     until recovered_position.nil?
-                        deleted_tokens << recovered_position.next_token().last_correction.deleted_token
-                        break if recovered_position.next_token.type.nil? or recovered_position.state.actions.member?(recovered_position.next_token.type)
-
-                        recovered_position = recovered_position.correct_by_deletion( recovery_context )
-                     end
-                  rescue PositionSeen => e
-                     deleted_tokens
-                  end
-
-                  estream.puts "WILL TRY DELETING [#{deleted_tokens.collect{|t| t.description}.join(", ")}]" if estream
-
-                  recovery_positions.unshift recovered_position unless recovered_position.nil?
+         
+                  # #
+                  # # We can also try deleting tokens until we find something we can use.  
+                  # # BUG: THIS IS BORKED BY PositionSeen
+                  # 
+                  # deleted_tokens = []
+                  # 
+                  # begin
+                  #    recovered_position = recovery_position.correct_by_deletion( recovery_context )
+                  #    until recovered_position.nil?
+                  #       deleted_tokens << recovered_position.next_token().last_correction.deleted_token
+                  #       break if recovered_position.next_token.type.nil? or recovered_position.state.actions.member?(recovered_position.next_token.type)
+                  #          
+                  #       recovered_position = recovered_position.correct_by_deletion( recovery_context )
+                  #    end
+                  # rescue PositionSeen => e
+                  #    deleted_tokens
+                  # end
+                  # 
+                  # estream.puts "WILL TRY DELETING [#{deleted_tokens.collect{|t| t.description}.join(", ")}]" if estream
+                  # 
+                  # recovery_positions.unshift recovered_position unless recovered_position.nil?
                
                end   # ContextStream.indent_with() 2
             end

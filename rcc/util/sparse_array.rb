@@ -43,17 +43,25 @@ module Util
       def []( index )
          result = nil
          
-         first_index = index.is_a?(Range) ? index.first : index
-         range_index = find_range_index( first_index )
-         if @ranges[range_index] === first_index then
-            if index.is_a?(Range) then
-               result = []
-               until (range_index == @ranges.length or @ranges[range_index].first > index.last)
-                  result << @data[range_index] 
-                  range_index += 1
+         if index.is_a?(SparseRange) then
+            result = []
+            index.each_range do |range|
+               result.concat( self[range] )
+            end
+            result.uniq!
+         else
+            first_index = index.is_a?(Range) ? index.first : index
+            range_index = find_range_index( first_index )
+            if @ranges[range_index] === first_index then
+               if index.is_a?(Range) then
+                  result = []
+                  until (range_index == @ranges.length or @ranges[range_index].first > index.last)
+                     result << @data[range_index] 
+                     range_index += 1
+                  end
+               else
+                  result = @data[range_index]
                end
-            else
-               result = @data[range_index]
             end
          end
          
@@ -132,6 +140,120 @@ module Util
             @data[start_index..end_index]   = [@data[start_index]                         , value, @data[end_index]                       ]
          end
       end
+      
+      
+      #
+      # separate_over()
+      #  - given a range, separates existing elements as necessary to ensure the specified range can be 
+      #    uniquely addressed
+      #  - can optional call dup() on values during separation, either :none, :inside, or :outside
+      
+      def separate_over( index, dup_policy = :none )
+         range = index.is_a?(Range) ? index : index..index
+         start_index = find_range_index( range.first )
+         end_index   = find_range_index( range.last  )
+         
+         covered_ranges = []
+
+
+         #
+         # If the range is entirely after, before, or between the current ranges, everything is 
+         # already separate, and we have nothing more to do.
+         
+         if start_index >= @ranges.length or (@ranges[start_index].first > range.last) then
+            covered_ranges << range
+            
+            
+         #
+         # Otherwise, we are splitting existing ranges.
+         
+         else
+            
+            middle_first = range.first
+            middle_last  = range.last
+            append_range = nil
+            
+            #
+            #    |-------|   range
+            # ------|        found
+            # =====================
+            # --||--|        result
+            
+            if @ranges[start_index].first < range.first and @ranges[start_index].last >= range.first then
+               p "a"
+               p @ranges[start_index]
+               p range
+               
+               case dup_policy
+               when :outside
+                  self[@ranges[start_index].first..(range.first-1)] = @data[start_index].dup
+                  start_index += 1
+                  end_index   += 1
+               when :inside
+                  self[range.first..@ranges[start_index].last] = @data[start_index].dup
+                  start_index += 1
+                  end_index   += 1
+               end
+               
+               covered_ranges << (range.first..(@ranges[start_index].last))
+               middle_first = @ranges[start_index].last + 1
+               start_index += 1
+            end
+            
+            #
+            #
+            #    |-------|    range
+            #         |------ found
+            # ======================
+            #         |--||-- result
+            
+            if end_index < @ranges.length then
+               p "b"
+               case dup_policy
+               when :outside
+                  self[(range.last + 1)..@ranges[end_index].last] = @data[end_index].dup
+               when :inside
+                  self[@ranges[end_index].first..range.last] = @data[end_index].dup
+               end
+               
+               append_range = ((@ranges[end_index].first)..range.last)
+               middle_last  = @ranges[end_index].first - 1
+               end_index -= 1
+            else
+               end_index = @ranges.length - 1
+            end
+            
+            #
+            #  |---------------------|   range
+            #     |--|    |-------|      found
+            # =================================
+            #  |-||--||--||-------||-|   result
+            #
+            # The stuff in between doesn't get duped, but we do have to fill in any gaps not directly 
+            # covered by the existing ranges.
+            
+            (start_index..end_index).each do |index|
+               p "c"
+               if middle_first < @ranges[index].first then
+                  covered_ranges << (middle_first..(@ranges[index].first - 1))
+                  middle_first = @ranges[index].last + 1
+               end
+               
+               covered_ranges << @ranges[index]
+            end
+            
+            if middle_first <= middle_last then
+               covered_ranges << (middle_first..middle_last)
+            end
+            
+            covered_ranges << append_range unless append_range.nil?
+         end
+         
+         return covered_ranges
+      end
+      
+
+
 
 
       def ==( rhs )
@@ -161,6 +283,20 @@ module Util
          return pieces.join(", ")
       end
       
+      
+      def dup()
+         pairs = {}
+         @ranges.length.times do |i|
+            pairs[@ranges[i].dup] = @data[i].dup
+         end
+         
+         return self.class.new( pairs )
+      end
+
+
+
+
+
 
     #---------------------------------------------------------------------------------------------------------------------
     # Operations Support
@@ -221,7 +357,7 @@ end  # module RCC
 if $0 == __FILE__ then
    C = RCC::Util::SparseArray
    array = C.new( 5..10 => "a", 28..30 => "b" )
-   
+
    test = C.new( 5..10 => "a", 28..30 => "b" )
    puts (array == test ? "PASS" : "FAIL") + ": #{array}   ==   #{test}"
    puts ""
