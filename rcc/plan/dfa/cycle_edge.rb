@@ -20,9 +20,9 @@ module DFA
  #============================================================================================================================
  # class CycleEdge
  #  - a specialized Edge that marks the beginning of a cycle
- #  - the last Edge in the Cycle will have a nil target
+ #  - the last Edge in the Cycle will have a nil target 
 
-   class CycleEdge
+   class CycleEdge < Edge
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization

@@ -304,7 +304,7 @@
    
    class Object
       def each()
-         yield( self )
+         yield( self ) 
       end
       
       def exists?()
@@ -344,6 +344,8 @@
       def exists?()
          return false
       end
+      
+      alias set? exists?
    end
    
    

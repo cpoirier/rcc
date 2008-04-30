@@ -273,6 +273,8 @@ module DFA
     # Internals
     #---------------------------------------------------------------------------------------------------------------------
 
+    protected
+
       #
       # prepare_for_inputs()
       #  - does any prepatory work necessary to allow the supplied inputs to be processed:
@@ -431,6 +433,36 @@ if $0 == __FILE__ then
 
       start.display( $stdout )
    end
+    
+   
+   $stdout.blank_lines(3)
+
+   
+   $stdout.puts "Example 5:"
+   $stdout.puts "   rule => b((x*|yz)b)*c"
+   $stdout.blank_lines(2)
+   $stdout.indent do
+      start = Point.new()
+      
+      start.make('rule') do |p|
+         p = p.make_edge(SparseRange.new(98))
+         b1 = p.make_cycle(SparseRange)
+         
+         
+         r = branch_point.make_cycle(SparseRange.new(97..98)) + 
+             branch_point.make_cycle(SparseRange.new(109)) do |c|
+                c = c.make_edge( SparseRange.new(99..100) )
+                c = c.make_edge( SparseRange.new(113) )
+             end
+         r.make_edge(SparseRange.new(100))
+      end
+   
+      start.make('simple') {|p| p.make_cycle(SparseRange.new(98)).make_edge(SparseRange.new(108)) }
+      
+      start.display( $stdout )
+   end
+   
+   
    
 end
 
