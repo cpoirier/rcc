@@ -9,9 +9,6 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/util/expression_forms/repeater.rb"
-require "#{$RCCLIB}/model/model.rb"
-
 
 module RCC
 module Model
@@ -19,10 +16,48 @@ module Elements
 
  
  #============================================================================================================================
- # class Pluralization
- #  - represents a subrule that has been factor out for repeating
+ # class Pattern
+ #  - describes a lexical string that can be produced by the Parser
+
+   class Pattern
+      
+    #---------------------------------------------------------------------------------------------------------------------
+    # Initialization
+    #---------------------------------------------------------------------------------------------------------------------
+    
+      attr_reader :name
+      attr_reader :master_form
+
+      def initialize( name, master_form )
+         @name        = name
+         @master_form = master_form
+      end
+      
+      def display( stream = $stdout )
+         stream.puts "string pattern #{@name}:"
+         stream.indent do
+            @master_form.display( stream )
+         end
+      end
+      
+      def tokenizeable?()
+         return true
+      end
+      
+      
+   end # Pattern
+   
+
+
+
+
+
+
+ #============================================================================================================================
+ # class Subpattern
+ #  - represents a subpattern that has been factored out for repeating
  
-   class Pluralization < Rule
+   class Subpattern < Pattern
       
       Optional = Util::ExpressionForms::Optional
       Sequence = Util::ExpressionForms::Sequence
@@ -32,33 +67,25 @@ module Elements
     #---------------------------------------------------------------------------------------------------------------------
 
       attr_reader :rule_form
-      attr_reader :singular
+      attr_reader :singular_form
       
       def initialize( name, singular_form )
          @singular_form = singular_form
          
-         tree_side = Markers::RuleReference.new( name )
+         tree_side = Markers::Reference.new( name )
          rule_form = Sequence.new( Optional.new(tree_side), @singular_form )
          super( name, rule_form )
+      end
+      
+      def tokenizeable?()
+         return false
+      end
 
-         # BUG: this prevents effectively slotless Pluralizations from being discarded internally, and maybe should be fixed
-         tree_side.set_slot_name( self, "_tree" )
-      end
-      
-      
-      def reference( optional = true )
-         return Markers::PluralizationReference.new( self, optional )
-      end
-      
-      
-      def has_slots?()
-         return @slots.length > 1
-      end
-      
-      
-   end # Pluralizer
+   end # Subpattern
    
-
+   
+   
+ 
 end  # module Elements
 end  # module Model
 end  # module RCC

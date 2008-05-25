@@ -54,9 +54,9 @@ module Interpreter
       #  - initializes this Parser for use
       #  - repair_search_tolerance is used to limit recursion in discover_repair_options()
       
-      def initialize( parser_plan, lexer, build_ast = true )
+      def initialize( parser_plan, source, build_ast = true )
          @parser_plan    = parser_plan
-         @lexer          = lexer
+         @source         = source
          @build_ast      = build_ast
          @work_queue     = []
          @in_recovery    = false
@@ -97,7 +97,7 @@ module Interpreter
       def parse( estream = nil, recovery_time_limit = 3 )
          allow_shortcutting  = true
          
-         start_position        = StartPosition.new(@parser_plan.state_table[0], @lexer)
+         start_position        = StartPosition.new(@parser_plan.state_table[0], @source)
          hard_correction_limit = 1000000000
          soft_correction_limit = 1000000000
          error_queue           = [] 
@@ -261,219 +261,71 @@ module Interpreter
       #
       # parse_until_error()
       #  - applies the Grammar to the inputs and builds a generic AST
-      #  - manages FlowControl through Attempts
       #  - raises FlowControl for errors
       #  - returns any solution Position found
       
       def parse_until_error( position, estream )
-         solution   = nil
-         work_queue = [position]
-         
-         #
-         # We want to avoid deep recursion for attempts.  Life would be a lot easier if we didn't care, but we do.
-         # So, the underlying structures will throw FlowControl exceptions we use to manage our place.  We keep track
-         # of which AttemptPosition is in which set by use of an attempt_depth marking, which we maintain.
-         #
-         # Error recovery with attempts is tricky, because if something goes wrong, we'll have several positions
-         # from which to start error recovery (the terminal position for each attempt in the set).  That said, we 
-         # don't want to keep those positions as suspect forever -- once one of the attempts succeeds, we're probably 
-         # done with the alternate recovery positions produced by that attempt set.  
-         #
-         # We manage error recovery options by accumulating recovery positions in our position stack.  After an attempt 
-         # fails, we add its last-processed position and any of its alternate recovery positions to the next AttemptPosition
-         # as alternate recovery positions.  If we run out of attempts before finding a solution, we raise a ParseError
-         # for the last position tried.  The error recovery code will then ensure that all our alternates are considered, 
-         # when the time comes.
-         #
-         # This method works great for AttemptPositions that launch with a Shift.  The AttemptPosition will be on the
-         # stack of active positions until it is Reduced off, indicating that we have successfully left the attempt
-         # and are on to bigger things.  At this point, all the alternate recovery positions are irrelevant, and naturally 
-         # fall from our attention when the AttemptPosition leaves the stack.  The problem is that if the AttemptPosition 
-         # launches with a Reduce, it *immediately* leaves the stack.  Oops.  So, in this one case, we'll transfer any 
-         # alternate recovery positions to the resulting position.  That position will stay on the stack until it is reduced
-         # off, and that should be long enough to get us past any need for the alternate recovery positions from the set.
-         #
-         # Whew.  My brain hurts.
-         
-         until solution.exists? or work_queue.empty?
-            position      = work_queue.shift
-            attempt_depth = 0
-            
-            #
-            # If the current position is an AttemptPosition, we have some setup work to do.  See the notes above
-            # for details.  Note that we shoud never get a FlowControl exception from our launch action, as the
-            # thing that created the AttemptPosition already verified the lookahead.
-            
-            # if position.is_a?(AttemptPosition) then
-            #    attempt_depth = position.attempt_depth
-            #    next_position = perform_action( position, position.launch_action, position.next_token, estream )
-            #    
-            #    #
-            #    # Shift actions will make a new position with the old position as context.  Reduce actions will
-            #    # make a new position without the old position as context.  In the latter case, we need to transfer
-            #    # our recovery suspicions to the new position, so they don't immediately fall off the stack.
-            #    
-            #    if next_position.context.object_id != position.object_id then
-            #       next_position.alternate_recovery_positions.concat( position.alternate_recovery_positions )
-            #    end
-            #    
-            #    position = next_position
-            # end
-            
-
-            #
-            # So, we're all set and ready to go.  Parse until some FlowControl indicates we have work to do.
-            
-            begin
-               solution = parse_until_branch_point( position, estream )
-               
-               
-            #
-            # AttemptsPending is thrown to send us a new batch of AttemptPositions.  We reverse them onto the head of
-            # our work_queue in order to process in the "natural" order.
-            
-            rescue AttemptsPending => e
-               e.attempts.reverse.each do |child_attempt|
-                  child_attempt.attempt_depth = attempt_depth + 1
-                  work_queue.unshift child_attempt
-               end
-               
-            #
-            # ParseFailed is thrown if the parse encountered an error (ParseError), or if the parser attempted
-            # to Reduce past an AttemptPosition with something other than the exected Productions (AttemptFailed).
-            # This latter one generally occurs when the code parsed, but was reduced by a Production from one of our 
-            # peer Attempts.
-            
-            rescue ParseFailed => e
-               attempt_context = e.position.attempt_context
-               
-               #
-               # If there is no attempt_context, all attempts have been successful, and our work_queue is irrelevant.
-               # Re-raise the error.  Note that AttemptFailed will never trigger this condition.
-               
-               raise if attempt_context.nil?
-               
-               #
-               # Discard things from our work_queue that were made irrelevant by the actual parse -- ie. any peers to 
-               # attempts that succeeded.  We need the next thing on the stack (if anything) to be the AttemptPosition 
-               # to try next (a peer in this set, or something in a context set).  
-               
-               work_queue.shift until (work_queue.empty? or work_queue[0].attempt_depth <= attempt_context.attempt_depth)
-               
-               #
-               # If the work_queue is empty, we failed.  Raise an error.
-               
-               raise ParseError.new( e.position ) if work_queue.empty?
-               
-               #
-               # Otherwise, the error becomes an alternate recovery position for the next work_queue position.
-               
-               work_queue[0].alternate_recovery_positions.concat( e.position.alternate_recovery_positions )
-               work_queue[0].alternate_recovery_positions << e.position
-               
-            end
-         end
-
-         return solution
-      end
-      
-      
-
-      #
-      # parse_until_branch_point()
-      #  - applies the Grammar to the inputs and builds a generic AST
-      #  - raises FlowControl on branch points
-      #  - returns any solution Position found
-      
-      def parse_until_branch_point( position, estream )
          solution = nil
-         
-         #
-         # Process actions until a solution is found or an exception is raised (AttemptsPending, for instance).
-         
          while solution.nil?
             position.state.provide_context do |state|
 
-               ContextStream.buffer_with(estream, true) do 
-                  
-                  action = nil
+               action      = nil
+               determinant = nil
 
-                  if estream then
-                     estream.blank_lines(5)
-                     estream.puts "POSITION #{position.sequence_number}"
-                     estream.puts "BRANCH #{position.branch_id("MAIN")}"
-                     estream << "IN " 
-                     estream.indent("| ") do
+               if estream then
+                  estream.blank_lines(5)
+                  estream.puts "POSITION #{position.sequence_number}"
+                  estream.puts "BRANCH #{position.branch_id("MAIN")}"
+                  estream << "IN " 
+                  estream.indent("| ") do
+                     estream.with( :state_complete => true ) do
                         position.state.display(estream)
-                        estream.puts "#{state.lookahead_explanations}"
-                        estream.puts 
                      end
-                     position.display_stack(estream)
-                     estream.indent("| ") do
-                        estream.blank_lines(2)
-                     end                     
+                     estream.puts "#{state.lookahead_explanations}"
+                     estream.puts 
                   end
+               end
+               
 
-                  
-                  #
-                  # For simple states, save some work and just pick the only reduce action.  Otherwise,
-                  # read the lookahead and choose and action accordingly.
-                  
-                  if state.simple? then
-                     if estream then
-                        estream.indent("| ") do
-                           estream.puts "===> SKIPPING LOOKAHEAD, as this State can only reduce"
-                           estream.puts
-                        end
-                     end
-                     
-                     next_token = position.next_token_hypothetical()
-                     action     = state.actions[state.actions.keys[0]]
-                  else
-                     next_token = position.next_token( estream )
-                     action = state.actions[next_token.type]
-                  end
-                  
+               #
+               # Pick an action.
+               
+               unless state.simple? or determinant = position.determinant()
+                  nyi( "processing for EOF" )
+               else
+                  action = state.find_action( determinant )
                   if estream then
                      position.display( estream ) 
                      estream.indent( "| " ) do
                         estream.puts
-                        unless next_token.type.wildcard?
-                           estream.puts "Action analysis for lookahead #{next_token.description}"
-                        end
-                  
-                        if state.explanations.nil? then
-                           bug( "no explanations found" )
-                        else
-                           state.explanations[next_token.type].each do |explanation|
-                              estream.indent() { estream.puts explanation }
-                           end
+                        estream.puts "Action analysis for lookahead #{determinant.description}" unless determinant.nil? 
+                        state.find_explanations( determinant ).each do |explanation|
+                           estream.indent() { estream.puts explanation }
                         end
                      end
                   end
-                        
-                  #
-                  # If there is no action, we have an error.  We'll try to recover.  Otherwise, we process the action.
-                  # perform_action() raises an AttemptsPending exception if it encounters a branch point -- we pass it
-                  # through to our caller.
+               end
+               
+               
+               #
+               # Process the action.  If there is no action, we have an error: move to the next branch or fail.
 
-                  if action.exists? then
-                     if action.is_a?(Plan::Actions::Accept) then
-                        solution = position
-                     else
-                        position = perform_action( position, action, next_token, estream )
-                     end
+               if action.exists? then
+                  if action.is_a?(Plan::Actions::Accept) then
+                     solution = position
                   else
-                     if position.branch_info.exists? then
-                        position = setup_next_branch( position, nil, estream )
-                     else
-                        if estream then
-                           estream.puts "===> ERROR DETECTED: cannot use #{next_token.description}"
-                           # BUG: how do we handle this with the ContextStream: explain_indent += "   "
-                        end
-
-                        raise ParseError.new( position )
+                     position = perform_action( position, action, estream )
+                  end
+               else
+                  if position.branch_info.exists? then
+                     position = launch_next_branch( position, nil, estream )
+                  else
+                     if estream then
+                        estream.puts "===> ERROR DETECTED: cannot use #{determinant.description}"
+                        # BUG: how do we handle this with the ContextStream: explain_indent += "   "
                      end
+
+                     raise ParseError.new( position )
                   end
                end
             end
@@ -487,151 +339,264 @@ module Interpreter
       # perform_action()
       #  - performs a single action against a Position 
       #  - returns the next Position to process, or nil when the last position was accepted
-      #  - raises AttemptsPendings if the parse hit a branch point
       #  - raises PositionSeen if the action has a recovery context and would duplicate a position already seen
       
-      def perform_action( position, action, next_token, estream, new_branch_info = nil )
-         type_check( next_token, Scanner::Artifacts::Nodes::Token )
-         next_position = nil
+      def perform_action( position, action, estream, new_branch_info = nil )
+         return send( action.specialize_method_name("perform"), position, action, estream, new_branch_info )
+      end
+      
+      
+      
+      #
+      # perform_shift()
+
+      def perform_shift( position, action, estream, new_branch_info = nil )
+         node = position.determinant()
          
-         case action
-            when Plan::Actions::Shift
-               estream.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if estream
-               next_position = position.push( next_token, action.to_state )
-               estream.discard() if estream && estream[:hide_ignored] && action.to_state.items[0].complete? and action.to_state.items[0].production.name.name.slice(0..8) == "_ignored_"
+         estream.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if estream
+         next_position = position.push( node, action.to_state )
 
-               #
-               # With the next_position chosen, we need to chain forward the branch information.
-               # If one is supplied, we use it.  Otherwise, we copy forward one from the previous
-               # position: either the context info if this action disambiguates the parse, or
-               # the existing one otherwise.
-               
-               if new_branch_info.exists? then
-                  next_position.branch_info = new_branch_info
-               elsif position.branch_info.exists? then
-                  next_position.branch_info = position.branch_info
-                  
-                  if action.local_commit? then
-                     while next_position.committable? 
-                        estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream
-                        next_position.branch_info = next_position.branch_info.context_info
-                        if estream
-                           estream << "into #{next_position.branch_id("MAIN")}"
-                           estream.end_line
-                        end
-                     end
-                  end
-               end
-               
-               
-            when Plan::Actions::Reduce
-               production = action.by_production
-               estream.puts "===> REDUCE #{production.to_s}" if estream
-               
-               #
-               # Pop the right number of nodes.  Position.pop() may throw an exception if it detects an error.  
-               # We pass it through to our caller. 
-               
-               nodes           = []
-               top_position    = position
-               top_branch_info = new_branch_info.nil? ? top_position.branch_info : new_branch_info
-
-               branch_info   = top_branch_info
-               root_position = branch_info.nil? ? nil : branch_info.root_position
-               production.symbols.length.times do |i|
-                  nodes.unshift position.node
-
-                  #
-                  # If the node we are about to pop is a root position for a branch, we need to verify
-                  # that it produced a relevant production.  If not, it is time to reset for the
-                  # next branch.
-                  
-                  if branch_info.exists? and branch_info.at_validate_position?(position) then
-                     return setup_next_branch(top_position, branch_info, estream) if not branch_info.valid_production?(production) 
-                     
-                     branch_info   = branch_info.context_info
-                     root_position = branch_info.nil? ? nil : branch_info.root_position
-                  end
-
-                  #
-                  # If we are still here, do the pop.
-
-                  position = position.pop( production, top_position )
-               end
-               
-               node = @build_ast ? ASN.map(production, nodes) : CSN.new(production.name, nodes)
-               
-               #
-               # Untaint the node if the error recovery is complete.
-               
-               if node.tainted? then
-                  if next_token.rewind_position > node.original_error_position then
-                     estream.puts "UNTAINTING" if estream
-                     node.untaint()
-                  end
-               end
-               
-               #
-               # Create/transfer recoverability marks, if appropriate.
-
-               warn_nyi( "error recovery commit" )
-                                 
-               #
-               # Get the goto state from the now-top-of-stack State: it will be the next state.
-               
-               goto_action = position.state.actions[production.name]
-               goto_state  = goto_action.to_state
-
-               restore_lookahead = true
-               warn_bug( "we should be able to optimize restore_lookahead" )
-               
-               if estream then
-                  estream << "===> "
-                  estream << "RESTORE skipped lookahead; " if restore_lookahead
-                  estream << "PUSH AND GOTO #{goto_state.number}" 
-                  estream.end_line
-               end
-
-               next_position = position.push( node, goto_state, top_position, restore_lookahead )
-               
-               #
-               # All reduced positions are part of the same branch as the top position in the 
-               # reduce.  Once we've dealt with that, look for any branches that can now be committed.
-               
-               next_position.branch_info = top_branch_info
-               while next_position.committable?
-                  estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
+         #
+         # With the next_position chosen, we need to chain forward the branch information.
+         # If one is supplied, we use it.  Otherwise, we copy forward one from the previous
+         # position: either the context info if this action disambiguates the parse, or
+         # the existing one otherwise.
+         
+         if new_branch_info.exists? then
+            next_position.branch_info = new_branch_info
+         elsif position.branch_info.exists? then
+            next_position.branch_info = position.branch_info
+            
+            if action.local_commit? then
+               while next_position.committable? 
+                  estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream
                   next_position.branch_info = next_position.branch_info.context_info
-                  if estream then
-                     estream << "into #{next_position.branch_id("MAIN")}" 
+                  if estream
+                     estream << "into #{next_position.branch_id("MAIN")}"
                      estream.end_line
                   end
                end
-               
+            end
+         end         
+         
+         return next_position         
+      end
+      
 
-            when Plan::Actions::Attempt
+      #
+      # perform_read()
+      
+      def perform_read( position, action, estream, new_branch_info = nil )
+         character = position.determinant()
+         
+         estream.puts "===> READ #{character.description} AND GOTO #{action.to_state.number}" if estream
+         next_position = position.push( character, action.to_state )
 
-               #
-               # For Attempt, our only function is to pick the first action and set it running with 
-               # a new BranchInfo context.  Other parts of the parser deal with moving to subsequent
-               # branches when it is appropriate to do so (when the current branch fails).
-               
-               next_position = perform_action( position, action.actions[0], next_token, estream, BranchInfo.new(position, action, 0) )
-               
-            else
-               nyi "support for #{action.class.name}"
+         #
+         # With the next_position chosen, we need to chain forward the branch information.
+         # If one is supplied, we use it.  Otherwise, we copy forward one from the previous
+         # position: either the context info if this action disambiguates the parse, or
+         # the existing one otherwise.
+         
+         if new_branch_info.exists? then
+            next_position.branch_info = new_branch_info
+         elsif position.branch_info.exists? then
+            next_position.branch_info = position.branch_info
+            
+            if action.local_commit? then
+               while next_position.committable? 
+                  estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream
+                  next_position.branch_info = next_position.branch_info.context_info
+                  if estream
+                     estream << "into #{next_position.branch_id("MAIN")}"
+                     estream.end_line
+                  end
+               end
+            end
          end
-
+         
          return next_position
       end
+      
+      
+      #
+      # perform_reduce()
+      
+      def perform_reduce( position, action, estream, new_branch_info = nil )
+         production = action.by_production
+         estream.puts "===> REDUCE #{production.to_s}" if estream
+         
+         #
+         # Pop the right number of nodes.  Position.pop() may throw an exception if it detects an error.  
+         # We pass it through to our caller. 
+         
+         nodes           = []
+         top_position    = position
+         top_branch_info = new_branch_info.nil? ? top_position.branch_info : new_branch_info
 
+         branch_info   = top_branch_info
+         root_position = branch_info.nil? ? nil : branch_info.root_position
+         production.symbols.length.times do |i|
+            nodes.unshift position.node
+
+            #
+            # If the node we are about to pop is a root position for a branch, we need to verify
+            # that it produced a relevant production.  If not, it is time to reset for the
+            # next branch.
+            
+            if branch_info.exists? and branch_info.at_validate_position?(position) then
+               return launch_next_branch(top_position, branch_info, estream) if not branch_info.valid_production?(production) 
+               
+               branch_info   = branch_info.context_info
+               root_position = branch_info.nil? ? nil : branch_info.root_position
+            end
+
+            #
+            # If we are still here, do the pop.
+
+            position = position.pop( production, top_position )
+         end
+         
+         node = @build_ast ? ASN.map(production, nodes) : CSN.new(production.name, nodes)
+         
+         #
+         # Untaint the node if the error recovery is complete.
+         
+         if node.tainted? then
+            if next_token.rewind_position > node.original_error_position then
+               estream.puts "UNTAINTING" if estream
+               node.untaint()
+            end
+         end
+         
+         #
+         # Create/transfer recoverability marks, if appropriate.
+
+         warn_nyi( "error recovery commit" )
+                           
+         #
+         # Get the goto state from the now-top-of-stack State: it will be the next state.
+         
+         goto_action = position.state.actions[production.name]
+         goto_state  = goto_action.to_state
+
+         restore_lookahead = true
+         warn_bug( "we should be able to optimize restore_lookahead" )
+         
+         if estream then
+            estream << "===> "
+            estream << "RESTORE skipped lookahead; " if restore_lookahead
+            estream << "PUSH AND GOTO #{goto_state.number}" 
+            estream.end_line
+         end
+
+         position.determinant = node
+         # next_position = position.push( node, goto_state, top_position )
+         
+         #
+         # All reduced positions are part of the same branch as the top position in the 
+         # reduce.  Once we've dealt with that, look for any branches that can now be committed.
+         
+         # position.branch_info = top_branch_info
+         # while position.committable?
+         #    estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
+         #    next_position.branch_info = next_position.branch_info.context_info
+         #    if estream then
+         #       estream << "into #{next_position.branch_id("MAIN")}" 
+         #       estream.end_line
+         #    end
+         # end
+         
+         return position
+      end
+      
+      
+      #
+      # perform_tokenize()
+      #  - Tokenize is similar to Reduce, except that, at present, there is less interaction
+      #    with backtracking -- specifically, we don't need to check for valid productions
+      #    with Tokenize
+      
+      def perform_tokenize( position, action, estream, new_branch_info = nil )
+         production = action.by_production
+         estream.puts "===> TOKENIZE #{production.to_s}" if estream
+         
+         #
+         # Pop the right number of nodes.  Position.pop() may throw an exception if it detects an error.  
+         # We pass it through to our caller. 
+         
+         nodes           = []
+         top_position    = position
+         top_branch_info = new_branch_info.nil? ? top_position.branch_info : new_branch_info
+
+         branch_info   = top_branch_info
+         root_position = branch_info.nil? ? nil : branch_info.root_position
+         production.symbols.length.times do |i|
+            nodes.unshift position.node
+            position = position.pop( production, top_position )
+         end
+         
+         node = Token.new_from_nodes( production.name, nodes )
+         
+         #
+         # Get the goto state from the now-top-of-stack State: it will be the next state.
+         
+         goto_action = position.state.actions[production.name]
+         goto_state  = goto_action.to_state
+
+         if estream then
+            estream.puts "===> TOKENIZE AND GOTO #{goto_state.number}" 
+            estream.end_line
+         end
+
+         next_position = position.push( node, goto_state, top_position )
+         
+         #
+         # All tokenized positions are part of the same branch as the top position in the 
+         # tokenize.  Once we've dealt with that, look for any branches that can now be committed.
+         
+         next_position.branch_info = top_branch_info
+         while next_position.committable?
+            estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
+            next_position.branch_info = next_position.branch_info.context_info
+            if estream then
+               estream << "into #{next_position.branch_id("MAIN")}" 
+               estream.end_line
+            end
+         end
+         
+         return next_position
+      end
+      
+      
+      #
+      # perform_attempt()
+      
+      def perform_attempt( position, action, estream, new_branch_info = nil )
+         
+         #
+         # For Attempt, our only function is to pick the first action and set it running with 
+         # a new BranchInfo context.  Other parts of the parser deal with moving to subsequent
+         # branches when it is appropriate to do so (when the current branch fails).
+         
+         return perform_action( position, action.actions[0], next_token, estream, BranchInfo.new(position, action, 0) )
+      end
+      
+      
+      #
+      # perform_discard()
+      
+      def perform_discard( position, action, estream, new_branch_info = nil )
+         position.stream_position = position.determinant.follow_position
+         return position
+      end
 
       
       #
-      # setup_next_branch()
+      # launch_next_branch()
       #  - when a branch fails to parse, picks the next branch and restarts the parse
 
-      def setup_next_branch( position, branch_info, estream = nil )
+      def launch_next_branch( position, branch_info, estream = nil )
          branch_info  = position.branch_info if branch_info.nil?
          restart_info = branch_info.next_branch( position )
          if restart_info then
@@ -648,7 +613,7 @@ module Interpreter
                restart_info.root_position.display( estream )                               
             end
 
-            return perform_action( restart_info.root_position, restart_info.action, restart_info.root_position.next_token, estream, restart_info )
+            return perform_action( restart_info.root_position, restart_info.action, estream, restart_info )
          else
             estream.puts "===> ALL BRANCHES FAILED" if estream
             raise ParseError.new( position )
@@ -1057,3 +1022,31 @@ module Interpreter
 end  # module Interpreter
 end  # module Scanner
 end  # module RCC
+
+
+
+
+
+         
+         #
+         # Error recovery with attempts is tricky, because if something goes wrong, we'll have several positions
+         # from which to start error recovery (the terminal position for each attempt in the set).  That said, we 
+         # don't want to keep those positions as suspect forever -- once one of the attempts succeeds, we're probably 
+         # done with the alternate recovery positions produced by that attempt set.  
+         #
+         # We manage error recovery options by accumulating recovery positions in our position stack.  After an attempt 
+         # fails, we add its last-processed position and any of its alternate recovery positions to the next AttemptPosition
+         # as alternate recovery positions.  If we run out of attempts before finding a solution, we raise a ParseError
+         # for the last position tried.  The error recovery code will then ensure that all our alternates are considered, 
+         # when the time comes.
+         #
+         # This method works great for AttemptPositions that launch with a Shift.  The AttemptPosition will be on the
+         # stack of active positions until it is Reduced off, indicating that we have successfully left the attempt
+         # and are on to bigger things.  At this point, all the alternate recovery positions are irrelevant, and naturally 
+         # fall from our attention when the AttemptPosition leaves the stack.  The problem is that if the AttemptPosition 
+         # launches with a Reduce, it *immediately* leaves the stack.  Oops.  So, in this one case, we'll transfer any 
+         # alternate recovery positions to the resulting position.  That position will stay on the stack until it is reduced
+         # off, and that should be long enough to get us past any need for the alternate recovery positions from the set.
+         #
+         # Whew.  My brain hurts.
+         

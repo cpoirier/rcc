@@ -55,6 +55,22 @@ module Nodes
             return new( "", Name.any_type, start_position, line_number, column_number, source, footprint, true )
          end
       end
+
+
+      #
+      # ::new_from_nodes()
+      #  - builds a new Token from existing Characters and Tokens
+      #  - assumes the nodes are contiguous 
+      
+      def self.new_from_nodes( type, nodes )
+         characters     = nodes.collect{|node| node.is_a?(Token) ? node.characters : node.character }.flatten
+         start_position = nodes[0].start_position
+         line_number    = nodes[0].line_number
+         column_number  = nodes[0].column_number
+         source         = nodes[0].source
+         
+         return Token.new( characters, type, start_position, line_number, column_number, source )
+      end
       
 
 

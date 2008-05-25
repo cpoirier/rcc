@@ -34,6 +34,16 @@ module Util
          end
       end
       
+      def empty?()
+         return @ranges.empty?
+      end
+      
+      def each()
+         @ranges.length.times do |i|
+            yield( @ranges[i], @data[i] )
+         end
+      end
+      
       
       #
       # []
@@ -75,6 +85,14 @@ module Util
       #  - if index is a range, sets the value at all those indices
       
       def []=( index, value )
+         if index.is_a?(SparseRange) then
+            index.each_range do |range|
+               self[range] = value
+            end
+            
+            return
+         end
+         
          range = index.is_a?(Range) ? index : index..index
          start_index = find_range_index( range.first )
          end_index   = find_range_index( range.last  )

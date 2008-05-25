@@ -42,6 +42,20 @@ module ExpressionForms
       end
       
       
+      def optional?()
+         optional = true
+         each_element do |element|
+            unless element.optional?
+               optional = false 
+               break
+            end
+         end
+         
+         return true
+      end
+      
+      
+      
       #
       # <<()
       #  - adds an element to this Sequence

@@ -36,6 +36,14 @@ module ExpressionForms
          end
       end
       
+      def optional?()
+         each_element do |element|
+            return true if element.optional?
+         end
+         
+         return false
+      end
+      
       
       #
       # <<()

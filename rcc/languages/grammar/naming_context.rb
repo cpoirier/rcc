@@ -27,6 +27,7 @@ module Grammar
     
       attr_reader :explicit_names
       attr_reader :implicit_names
+      attr_reader :grammar_builder
 
       def initialize( grammar_builder )
          @grammar_builder   = grammar_builder
@@ -104,7 +105,7 @@ module Grammar
       
       #
       # import_pluralization()
-      #  - imports names from a Namer for a Pluralization
+      #  - imports names from a Namer for a PluralSubrule
       #  - the other Namer MUST ALREADY HAVE BEEN APPLIED to the other Rule
       
       def import_pluralization( pluralization_reference, namer )

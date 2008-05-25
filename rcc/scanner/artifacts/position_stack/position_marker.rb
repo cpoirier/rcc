@@ -10,6 +10,7 @@
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
 require "#{$RCCLIB}/scanner/artifacts/correction.rb"
+require "#{$RCCLIB}/scanner/artifacts/node.rb"
 
 module RCC
 module Scanner
@@ -31,28 +32,29 @@ module PositionStack
       attr_reader   :context
       attr_reader   :node
       attr_reader   :state
-      attr_reader   :stream_position
-      attr_accessor :rewind_position
-      attr_accessor :alternate_recovery_positions
       attr_accessor :sequence_number
-      attr_reader   :position_registry
       attr_accessor :branch_info
+      attr_reader   :position_registry
+      attr_reader   :original_stream_position
+      attr_accessor :adjusted_stream_position
+      attr_accessor :determinant
       
-      def initialize( context, node, state, lexer, stream_position, recovery_registry = nil, next_token = nil )
+      alias stream_position adjusted_stream_position
+      
+      def initialize( context, node, state, source, stream_position, recovery_registry = nil, next_token = nil )
          @context         = context
          @node            = node
          @state           = state
          @signature       = nil
-         @alternate_recovery_positions = []
+         @sequence_number = (@context.nil? ? 0 : @context.sequence_number + 1)
          
          #
          # Token management
 
-         @lexer             = lexer
-         @stream_position   = stream_position
-         @rewind_position   = stream_position
-         @next_token        = next_token
-         @sequence_number   = (@context.nil? ? 0 : @context.sequence_number + 1)
+         @source                   = source
+         @original_stream_position = stream_position
+         @adjusted_stream_position = stream_position
+         @determinant              = nil
          
          #
          # Register the Position with any recovery context.  This may raise Parser::PositionSeen.
@@ -71,9 +73,29 @@ module PositionStack
       end
       
       
+      #
+      # determinant()
+      #  - returns the next token or next character, depending on which is available
+      #  - returns nil if no determinant would normally be used by the position
+      
+      def determinant()
+         if @determinant.nil? then
+            unless @state.context_irrelevant?
+               if @source.at_eof?(@adjusted_stream_position) then
+                  @determinant = Scanner::Artifacts::Nodes::Token.end_of_file( @adjusted_stream_position, @source.eof_line_number, @source.eof_column_number, @source )
+               else
+                  @determinant = Scanner::Artifacts::Nodes::Character.new(nil, @adjusted_stream_position, @source)
+               end
+            end
+         end
+         
+         return @determinant 
+      end
+      
+      
       def stream_position=( position )
-         @next_token = nil
-         @stream_position = position
+         @determinant = nil
+         @adjusted_stream_position = position
       end
       
       
@@ -92,81 +114,9 @@ module PositionStack
       def committable?()
          return false if @branch_info.nil?
          return @branch_info.committable?(self)
-         # 
-         # root_position = @branch_info.root_position
-         # each_position do |position|
-         #    return false if position.object_id == root_position.object_id
-         #    break if position.sequence_number < root_position.sequence_number
-         # end
-         # 
-         # return true
       end
       
 
-      #
-      # next_token()
-      #  - returns the next_token from this Position
-
-      def next_token( estream = nil, position = nil )
-         if @next_token.nil? or !position.nil? then
-            if estream then 
-               lexer_explanation = "Lexing with prioritized symbols: #{@state.lexer_plan.order.collect{|symbol_name| symbol_name.description}.join(" ")}"
-               estream.puts "=" * lexer_explanation.length
-               estream.puts lexer_explanation
-               estream.puts "=" * lexer_explanation.length
-            end
-
-            done = false
-            until done
-               token = ContextStream.indent_with(estream, "|   ") do
-                  @lexer.read( (position.nil? ? @stream_position : position), @state.lexer_plan, @rewind_position, estream ) 
-               end
-               
-               done = true
-               
-               if @state.active_discard.member?(token.type) then
-                  done = false
-                  estream.indent("|   ") { estream.puts "===> DISCARDING\n" } if estream
-                  if position.nil? then
-                     @stream_position = token.follow_position
-                  else
-                     position = token.follow_position
-                  end
-               end
-            end
-         
-            if position.nil? then 
-               @next_token = token
-            else
-               return token
-            end
-         end
-
-         return @next_token
-      end
-      
-      
-      #
-      # next_token_hypothetical()
-      #  - used to give the position hypothetical lookahead
-   
-      def next_token_hypothetical( estream = nil )
-         token = @next_token
-         if @next_token.nil? then
-            if estream then
-               estream.puts "=================================================="
-               estream.puts "Skipping lexing, as it is irrelevant to this State"
-               estream.puts "=================================================="
-            end
-            
-            token = @lexer.hypothetical(@stream_position, @rewind_position..(@stream_position-1))
-            @next_token = token
-         end
-         
-         return token
-      end
-      
-      
       #
       # each_position()
       #  - calls your block for this position and every position back to the start position
@@ -204,7 +154,7 @@ module PositionStack
          until position.nil?
             break if position.stream_position < unwind_limit
             break if position.stream_position == unwind_limit and last_correction.deletes_token?
-            break if position.next_token.corrected?
+            break if position.determinant.corrected?
             
             # position.next_token.rewind_position < corrected? or (position.node.exists? and position.node.corrected?)
             yield( position )
@@ -252,8 +202,8 @@ module PositionStack
       #  - returns the combined corrections cost of this position's node and next_token
       
       def corrections_cost( include_next_token = true )
-         if include_next_token then
-            return @corrections_cost + next_token().corrections_cost
+         if include_next_token and @next_token.exists? then
+            return @corrections_cost + @next_token.corrections_cost
          else
             return @corrections_cost
          end
@@ -266,7 +216,7 @@ module PositionStack
       
       def tainted?( include_next_token = true )
          if include_next_token then 
-            return true if next_token().tainted?
+            return true if (@next_token.exists? and next_token().tainted?)
          end
          
          return true if @node.exists? and @node.tainted?
@@ -318,8 +268,8 @@ module PositionStack
       #  - returns the last Correction from the stack and (optionally) next_token
       
       def last_correction( consider_lookahead = true )
-         if consider_lookahead and next_token.corrected? then
-            return next_token.last_correction
+         if consider_lookahead and @next_token.exists? and @next_token.corrected? then
+            return @next_token.last_correction
          end
          
          each_position() do |position|
@@ -336,9 +286,9 @@ module PositionStack
       
       def corrections( consider_lookahead = true )
          if @context.nil? then
-            return (@node.nil? ? [] : @node.corrections()) + (consider_lookahead ? @next_token.corrections : [])
+            return (@node.nil? ? [] : @node.corrections()) + (consider_lookahead ? (@next_token.exists? and @next_token.corrections) : [])
          else
-            return @context.corrections(false) + @node.corrections() + (consider_lookahead ? @next_token.corrections : [])
+            return @context.corrections(false) + @node.corrections() + (consider_lookahead ? (@next_token.exists? and @next_token.corrections) : [])
          end
       end
       
@@ -370,7 +320,7 @@ module PositionStack
       #  - returns the new Position
       #  - raises Parser::PositionSeen if you attempt to push() to a Position we've already been
 
-      def push( node, state, reduce_position = nil, restore_lookahead = false, branch_point = nil )
+      def push( node, state, reduce_position = nil, branch_point = nil )
          next_position = nil
          
          #
@@ -386,25 +336,26 @@ module PositionStack
          
          #
          # Pass forward any faked lookahead, if we are reducing.
-         
+
+         warn_nyi( "faked lookahead stuff" )
          next_token = nil
-         if reduce_position.exists? and reduce_position.next_token.corrected? then
-            next_token = reduce_position.next_token
-         end
+         # if reduce_position.exists? and reduce_position.next_token.corrected? then
+         #    next_token = reduce_position.next_token
+         # end
          
          #
          # Generate the new position.  We patch up the sequence number if reducing, as it will be generated as 
          # following us, not the popped top-of-stack.
          
-         next_position = PositionMarker.new( self, node, state, @lexer, node.follow_position, recovery_registry, next_token )
+         next_position = PositionMarker.new( self, node, state, @source, node.follow_position, recovery_registry, next_token )
          next_position.adjust_sequence_number( reduce_position ) if reduce_position.exists?
 
          #
          # "Unread" any skipped data, if appropriate.
-         
-         if restore_lookahead and reduce_position.exists? and next_token.nil? then
-            next_position.stream_position = reduce_position.rewind_position 
-         end
+         #          
+         # if restore_lookahead and reduce_position.exists? and next_token.nil? then
+         #    next_position.stream_position = reduce_position.rewind_position 
+         # end
          
          #
          # Return the new Position.
@@ -510,23 +461,6 @@ module PositionStack
       end
 
 
-      # #
-      # # mark_recovery_anchor()
-      # #  - when used as a recovery context, adds an anchor Position to our registry
-      # #  - raises Parser::PositionSeen if the Position has already been tried during this recovery
-      # 
-      # def mark_recovery_anchor( position )
-      #    signature = position.recovery_signature(true)
-      #    
-      #    @recovery_registry = {} if @recovery_registry.nil?
-      #    if @recovery_registry.member?(signature) then
-      #       raise Parser::PositionSeen.new( position )
-      #    else
-      #       @recovery_registry[signature] = true
-      #    end
-      # end
-      # 
-      # 
       #
       # mark_recovery_progress()
       #  - when used as a recovery context, adds a progress Position to our registry
@@ -624,7 +558,7 @@ module PositionStack
       # description()
       #  - return a description of this Position (node data only)
 
-      def description( include_next_token = false )
+      def description( include_determinant = false )
          if @description.nil? then
             if @context.nil? or @context.node.nil? then
                @description = @node.nil? ? "" : "#{@sequence_number}:#{@node.description}#{@node.recoverable? ? " R" : (@node.tainted? ? " T" : "")}"
@@ -633,8 +567,8 @@ module PositionStack
             end
          end
 
-         if include_next_token then
-            return "#{@description} | #{next_token().description}"
+         if include_determinant then
+            return "#{@description} | #{determinant().description}"
          else
             return @description
          end
@@ -649,18 +583,10 @@ module PositionStack
          stack_description = description()
          stack_label       = "STACK"
          stack_bar         = "=" * (stack_description.length + stack_label.length + 3)
-
-         stream.puts stack_bar
-         # if corrected? or true then
-         #    stream.puts "#{stack_label} #{stack_description} |      CORRECTED LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   quality #{quality()}"
-         # else
-            stream.puts "#{stack_label} #{stack_description} |      LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
-         # end
+         
          stream.puts "#{stack_bar}"
-         # stream.indent("| ") do
-         #    stream.puts ""
-         #    @state.display( stream )
-         # end
+         stream.puts "#{stack_label} #{stack_description} |      LOOKAHEAD: #{lookahead_description()}   COST: #{corrections_cost()}"
+         stream.puts "#{stack_bar}"
       end
       
       
@@ -682,7 +608,19 @@ module PositionStack
       # display_lookahead()
       
       def display_lookahead( stream )
-         stream.puts "LOOKAHEAD: #{next_token().description}   #{next_token.line_number}:#{next_token.column_number}   positions #{next_token.start_position},#{next_token.follow_position}   COST: #{corrections_cost()}"
+         stream.puts lookahead_description()
+      end
+      
+      
+      #
+      # lookahead_description()
+      
+      def lookahead_description()
+         if @state.simple? then
+            return "not checked in this state"
+         else
+            return "#{determinant.description}   #{determinant.line_number}:#{determinant.column_number}   positions #{determinant.start_position},#{determinant.follow_position}"
+         end
       end
 
 

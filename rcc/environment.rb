@@ -18,7 +18,10 @@
    def min( a, b )
       a < b ? a : b
    end
-   
+
+   def once()
+      yield()
+   end
    
    def ignore_errors( *error_classes )
       begin
@@ -205,6 +208,17 @@
       
       
       #
+      # accumulate()
+      #  - appends your value to a list at the specified index
+      #  - creates the array if not present
+      
+      def accumulate( key, value )
+         self[key] = [] unless self.member?(key)
+         self[key] << value
+      end
+      
+      
+      #
       # subsets()
       #  - treating this list as a set, returns all possible subsets
       #  - by way of definitions, sets have no intended order and no duplicate elements
@@ -246,6 +260,23 @@
          end
          
          return hash
+      end
+      
+      
+      #
+      # merge()
+      #  - equivalant to (a + b).uniq(), but uses hashes to make the operation faster
+      
+      def merge( rhs )
+         index = {}
+         self.each do |e|
+            index[e] = true
+         end
+         rhs.each do |e|
+            index[e] = true
+         end
+         
+         return index.keys
       end
       
       
@@ -297,6 +328,21 @@
       
       def to_a()
          return self
+      end
+      
+   end
+   
+   
+   class Hash
+      
+      #
+      # accumulate()
+      #  - appends your value to a list at the specified index
+      #  - creates the array if not present
+      
+      def accumulate( key, value )
+         self[key] = [] unless self.member?(key)
+         self[key] << value
       end
       
    end
@@ -359,6 +405,12 @@
          start = Time.now
          yield()
          return Time.now - start
+      end
+      
+      def Time.measure_get()
+         start = Time.now
+         got = yield()
+         return [Time.now - start, got]
       end
       
    end
@@ -470,8 +522,9 @@
          write( "\n" )
       end
       
-      def write( string )
-         string = string.to_s
+      def write( data )
+         string = data.to_s
+         string = data.inspect if string.nil?
          
          if @pending then
             @stream.write( @indent )

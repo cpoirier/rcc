@@ -356,7 +356,6 @@ module RCC
          grammar.start_rule_name = make_token( "grammar" )
          grammar.ignore_terminals << make_token( "whitespace" )
          grammar.ignore_terminals << make_token( "eol"        )
-         grammar.enable_backtracking = false
          
          
          #

@@ -9,7 +9,6 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/util/recursion_loop_detector.rb"
 
 module RCC
 module Model
@@ -34,8 +33,11 @@ module Elements
       attr_accessor :associativity 
       attr_accessor :priority 
       attr_accessor :transformations  
+      attr_reader   :discard_symbols
 
-      def initialize( name, master_form, transformations = [] )
+
+
+      def initialize( name, master_form, discard_symbols = [], transformations = [] )
          type_check( name, Scanner::Artifacts::Name, false )
          
          @name            = name
@@ -45,17 +47,9 @@ module Elements
          @associativity   = nil         
          @priority        = 0
          @transformations = []
+         @discard_symbols = discard_symbols
          
          @has_pluralized_slots = false
-      end
-      
-      
-      def generate_pluralization_()
-         slots.each do |name, slot|
-            slot.each_pluralization() do |pluralization, source_slot|
-               
-            end
-         end
       end
       
       
@@ -66,7 +60,7 @@ module Elements
       
       
       def register_plural_import( name, object, imported_slot_name )
-         type_check( object, Markers::PluralizationReference )
+         type_check( object, Markers::Reference )
          @slots[name] = Slot.new( name, self ) unless @slots.member?(name)
          @slots[name].add_pluralization_import( object, imported_slot_name )
          @has_pluralized_slots = false
@@ -86,16 +80,12 @@ module Elements
       #
       # each_plural_import()
       #  - calls your block once for each plural import
-      #  - passes in the tree slot name, the Pluralization rule governing that slot, the (singular) name of the 
-      #    source slot from that Pluralization, and the (plural) name of the destination slot in this Rule
+      #  - passes in the tree slot name, the PluralSubrule rule governing that slot, the (singular) name of the 
+      #    source slot from that PluralSubrule, and the (plural) name of the destination slot in this Rule
       
       def each_plural_import()
          @slots.each do |name, slot|
             slot.each_pluralized_source do |tree_slot, pluralization, source_slot|
-               
-               
-               
-               
                yield( tree_slot, pluralization, source_slot, name )
             end
          end
@@ -144,6 +134,55 @@ module Elements
       end
       
    end # Rule
+   
+   
+   
+   
+   
+   
+   
+ #============================================================================================================================
+ # class Subrule
+ #  - represents a subrule that has been factor out for repeating
+ 
+   class Subrule < Rule
+      
+      Optional = Util::ExpressionForms::Optional
+      Sequence = Util::ExpressionForms::Sequence
+            
+    #---------------------------------------------------------------------------------------------------------------------
+    # Initialization
+    #---------------------------------------------------------------------------------------------------------------------
+
+      attr_reader :rule_form
+      attr_reader :singular_form
+      
+      def initialize( name, singular_form, discard_symbols )
+         @singular_form   = singular_form
+         
+         tree_side = Markers::Reference.new( name )
+         rule_form = Sequence.new( Optional.new(tree_side), @singular_form )
+         super( name, rule_form, discard_symbols )
+
+         # BUG: this prevents effectively slotless Subrules from being discarded internally, and maybe should be fixed
+         tree_side.set_slot_name( self, "__tree" )
+      end
+      
+      
+      # def reference( optional = true )
+      #    return Markers::SubruleReference.new( self, optional )
+      # end
+      
+      
+      def has_slots?()
+         return @slots.length > 1
+      end
+      
+      
+   end # Subrule
+   
+   
+   
    
 
 

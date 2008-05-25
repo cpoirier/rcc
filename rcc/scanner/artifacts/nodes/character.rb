@@ -19,11 +19,10 @@ module Nodes
 
  
  #============================================================================================================================
- # class Subtree
- #  - a base class for nodes that contain other nodes
+ # class Character
+ #  - a single Character read from a source file
 
-   class Subtree < Node
-      
+   class Character < Node
       
       
     #---------------------------------------------------------------------------------------------------------------------
@@ -32,40 +31,45 @@ module Nodes
 
       attr_reader :token_count               # The number of Tokens in this and all sub CSNs
       attr_reader :original_error_position   # The stream position at which the last original (non-cascade) error occurred
+      attr_reader :line_number
+      attr_reader :column_number
+      attr_reader :source
+      attr_reader :position 
       
-      def initialize( type, component_nodes )
-         super( type )
-         @token_count = component_nodes.inject(0) {|sum, node| node.token_count }
-
-         @tainted     = false
-         @recoverable = false
-         component_nodes.each do |node|
-            @tainted = true if node.tainted?
-            
-            if node.corrected? then
-               @corrections = [] if @corrections.nil?
-               @corrections.concat( node.corrections )
-            end
-         end
+      alias start_position position
+      
+      def initialize( code, position, source ) 
+         code = source[position] if code.nil?
+         super( Name.new(code) )
          
-         @original_error_position = 0
-         @original_error_position = @corrections[-1].original_error_position if defined?(@corrections) and !@corrections.empty?
+         @line_number   = source.line_number(position)
+         @column_number = source.column_number(position)
+         @position      = position
+         @source        = source
+      end
+      
+      def character()
+         return @type.name
       end
       
       def description()
-         return "#{@type}"
+         return @type.to_s
       end
       
       def follow_position()
-         return last_token().follow_position()
+         return @position + 1
       end
       
+      def character?()
+         return true
+      end
+            
       def first_token()
-         bug( "you must override first_token()" )
+         return nil
       end
 
       def last_token()
-         bug( "you must override last_token()" )
+         return nil
       end
       
 
@@ -79,33 +83,6 @@ module Nodes
     #---------------------------------------------------------------------------------------------------------------------
 
 
-      #
-      # tainted?
-      #  - returns true if this CSN carries Correction taint
-      
-      def tainted?()
-         return @tainted
-      end
-      
-      
-      #
-      # untaint()
-      #  - clears the taint from this Node (any Correction is still linked)
-      
-      def untaint()
-         @tainted = false
-      end
-      
-      
-      #
-      # recoverable?
-      #  - returns true if this Node can anchor 
-      
-      attr_writer :recoverable
-      
-      def recoverable?()
-         return @recoverable
-      end
       
    end # Node
    

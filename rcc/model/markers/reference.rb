@@ -17,22 +17,31 @@ module Markers
     
  
  #============================================================================================================================
- # class RuleReference
- #  - represents a rule reference in a rule
+ # class Reference
+ #  - represents a reference in a rule
 
-   class RuleReference
+   class Reference
       include Model::Elements::SlotInfo
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :rule_name
-      alias symbol_name rule_name
-      alias name rule_name
+      attr_reader :symbol_name
+      alias name symbol_name
       
-      def initialize( rule_name )
-         @rule_name = rule_name
+      def initialize( symbol_name )
+         type_check( symbol_name, Scanner::Artifacts::Name )
+         @symbol_name = symbol_name
+      end
+      
+      
+      #
+      # resolve()
+      #  - returns the object this Reference refers to
+      
+      def resolve( against )
+         return against.resolve(symbol_name)
       end
       
       
@@ -41,23 +50,23 @@ module Markers
       
       def display( stream )
          display_slot_info(stream) do 
-            stream.puts "parse(#{@rule_name})"
+            stream.puts "#{@symbol_name}"
          end
       end
       
       
       def hash()
-         return @rule_name.hash
+         return @symbol_name.hash
       end
       
       def ==( rhs )
-         return @rule_name == rhs.symbol_name
+         return @symbol_name == rhs.symbol_name
       end
       
       alias eql? ==
       
       
-   end # RuleReference
+   end # Reference
    
 
 

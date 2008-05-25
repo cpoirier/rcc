@@ -39,6 +39,9 @@ module ExpressionForms
          @maximum = maximum
       end
       
+      def optional?()
+         return @minimum == 0
+      end
       
       #
       # paths()

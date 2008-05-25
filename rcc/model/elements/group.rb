@@ -41,12 +41,6 @@ module Elements
       end
       
       
-      def name=( name )
-         type_check( name, Scanner::Artifacts::Name, true )
-         @name = name
-      end
-
-
       def each()
          @member_references.each do |ref|
             yield( ref )
@@ -72,25 +66,6 @@ module Elements
          stream.puts( "parse(#{@branches.collect{|s| s.symbol_name}.join("|")})#{@slot_name.exists? ? " as :#{@slot_name}" : ""}" )
       end
       
-      
-      #
-      # <<()
-      #  - expects everything added to reduce to a Symbol or Group, and will flatten nested
-      #    Groups into this one
-       
-      def <<( member )
-         case member
-            when Group
-               member.member_references.each do |reference|
-                  self << reference
-               end
-            when Markers::RuleReference, Markers::StringReference
-               @member_references << member.clone()
-            else
-               nyi( nil, member )
-         end
-      end
-
 
    end # Group
    

@@ -20,6 +20,13 @@ module Util
 
    class SparseRange
       
+      def self.deformed( *ranges )
+         with_context_variable( :no_cleanup, true ) do
+            return new( *ranges )
+         end
+      end
+      
+      
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
@@ -39,7 +46,6 @@ module Util
          end
          return length
       end
-      
       
       def first()
          return nil if @ranges.empty?
@@ -91,15 +97,15 @@ module Util
             if range1.first <= range2.first and range1.last >= range2.last then
                results << range2
                range2 = set2.shift
-            elsif range2.first <= range1.first and range2.last >= range1.first then
+            elsif range2.first <= range1.first and range2.last >= range1.last then
                results << range1
                range1 = set1.shift
             else
                if range1 === range2.first then
-                  results << range2.first..range1.last
+                  results << (range2.first..range1.last)
                   range1 = set1.shift
                elsif range2 === range1.first then
-                  results << range1.first..range2.last
+                  results << (range1.first..range2.last)
                   range2 = set2.shift
                else
                   if range1.first < range2.first then
@@ -112,6 +118,23 @@ module Util
          end
             
          return self.class.new( *results )
+      end
+      
+      
+      def ^( rhs )
+         with_context_variable( :no_cleanup, true ) do
+            overlap = (self & rhs)
+            result = nil
+            ranges = nil
+            
+            if overlap.empty? then
+               ranges = (@ranges + rhs.instance_eval{@ranges}).sort{|a, b| a.first <=> b.first }
+            else
+               ranges = ((self - overlap).instance_eval{@ranges} + overlap.instance_eval{@ranges} + (rhs - overlap).instance_eval{@ranges}).sort{|a, b| a.first <=> b.first }
+            end
+
+            return self.class.new( *ranges )
+         end
       end
       
       
@@ -134,16 +157,28 @@ module Util
       end
       
       
-      def member?( number )         
-         @ranges.each do |range|
-            return true if range.member?(number)
+      def member?( number )     
+         case number
+            when SparseRange
+               number.each_range do |range|
+                  return false unless member?(range)
+               end
+               return true
+            when Range
+               @ranges.each do |range|
+                  return true if (range.first <= number.first and range.last >= number.last)
+               end
+            else
+               @ranges.each do |range|
+                  return true if range.member?(number)
+               end
          end
          
          return false
       end
 
       def overlaps?( other )
-         case range
+         case other
          when SparseRange
             other.each_range do |piece|
                return true if overlaps?(piece)
@@ -152,6 +187,7 @@ module Util
             @ranges.each do |range|
                return true if range.member?(other.first)
                return true if range.member?(other.last)
+               return true if (other.first < range.first and other.last > range.last)
             end
          end
          
@@ -200,7 +236,11 @@ module Util
                   @ranges.length.times do |index|
                      existing_range = @ranges[index]
                      if existing_range.begin <= delta.begin and (existing_range.end + 1) >= delta.begin then
-                        extend_range(index, delta.end)
+                        if context_variable(:no_cleanup) then
+                           @ranges[index+1, 0] = delta
+                        else                        
+                           extend_range(index, delta.end)
+                        end
                         break
                      elsif existing_range.begin > delta.end then
                         @ranges[index, 0] = delta
@@ -297,6 +337,7 @@ module Util
       #    or adjacent ranges are merged
       
       def cleanup( from_index )
+         return if context_variable(:no_cleanup)
          next_index = from_index + 1
          while @ranges.length > (next_index)
             if @ranges[from_index].end + 1 >= @ranges[next_index].begin then
@@ -368,5 +409,30 @@ if $0 == __FILE__ then
       puts ""
    end
    
+   
+   range = C.new(141..141)
+   [
+      [C.new( 80..90 )            , C.deformed(80..90, 141..141                                                                          )],
+      [C.new( 5..10, 28..30 )     , C.deformed(5..10, 28..30, 80..90, 141..141                                                           )],
+      [C.new( 3..4, 8..9, 30..50 ), C.deformed(3..4, 5..7, 8..9, 10..10, 28..29, 30..30, 31..50, 80..90, 141..141                        )],
+      [C.new( 10..83 )            , C.deformed(3..4, 5..7, 8..9, 10..10, 11..27, 28..29, 30..30, 31..50, 51..79, 80..83, 84..90, 141..141)],
+      [C.new( 0..65536 )          , C.deformed(0..2, 3..4, 5..7, 8..9, 10..10, 11..27, 28..29, 30..30, 31..50, 51..79, 80..83, 84..90, 91..140, 141..141, 142..65536)]
+      
+   ].each do |test|
+      mask, result = *test
+      
+      puts "#{range} ^ #{mask} = "
+      range ^= mask
+      
+      if range == result then
+         puts "PASS: #{range}"
+      else
+         puts "FAIL: #{range}"
+         puts "EXP : #{result}"
+         break
+      end
+      
+      puts ""
+   end
    
 end

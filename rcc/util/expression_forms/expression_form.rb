@@ -29,6 +29,11 @@ module ExpressionForms
       end
       
       
+      def optional?()
+         nyi()
+      end
+      
+      
       #
       # paths()
       #  - returns an BranchPoint of ExpressionForms indicating all possible paths through this ExpressionForm
@@ -84,7 +89,6 @@ module ExpressionForms
             index -= 1
          end
       end
-      
       
       #
       # display()

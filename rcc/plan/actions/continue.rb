@@ -9,52 +9,38 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/model/model.rb"
+require "#{$RCCLIB}/plan/actions/action.rb"
 
 module RCC
-module Model
-module Markers   
- 
+module Plan
+module Actions
+
  
  #============================================================================================================================
- # class GroupReference
- #  - represents a group reference in a rule
+ # class Continue
+ #  - a group-oriented Shift action for the ParserPlan
 
-   class GroupReference
-      include Model::Elements::SlotInfo
+   class Continue < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :group
+      attr_reader :to_state
       
-      def group_name() ; return @group.name ; end
-      alias symbol_name group_name
-      
-      def initialize( group )
-         assert( group.name.exists?, "you can't use an anonymous group for a reference" )
-         @group = group
+      def initialize( group_name, to_state )
+         @group_name = group_name
+         @to_state   = to_state
       end
       
-      
-      
-      
-      
-      #
-      # display()
-      
-      def display( stream )
-         display_slot_info(stream) do 
-            stream.puts( "parse(#{@group.name})" )
-         end
+      def to_s()
+         return "Shift #{@group_name}, then goto #{@to_state.number}"
       end
       
-      
-   end # GroupReference
+   end # Continue
    
 
 
-end  # module Markers
-end  # module Model
+end  # module Actions
+end  # module Plan
 end  # module RCC

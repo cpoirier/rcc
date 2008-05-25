@@ -42,6 +42,19 @@ module Model
          @grammars[grammar.name] = grammar
          grammar.system = self
       end
+      
+      
+      def resolve( name )
+         if name.grammar.nil? then
+            @grammars.each do |grammar|
+               return grammar.resolve(name) if grammar.name_defined?(name)
+            end
+         else
+            return @grammars[name.grammar].resolve(name)
+         end
+         
+         return nil
+      end
 
 
       def start_rule()

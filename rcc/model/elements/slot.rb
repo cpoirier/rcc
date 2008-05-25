@@ -28,7 +28,7 @@ module Elements
     
       attr_reader :name              # The name of this slot
       attr_reader :context           # The Rule this slot is part of
-      attr_reader :sources           # A list of *Reference or [PluralizationReference, slot name] or Transformation that write to this slot
+      attr_reader :sources           # A list of *Reference or [SubruleReference, slot name] or Transformation that write to this slot
       
       def initialize( name, context_rule )
          assert( name.exists?, "you have to name the slot" )
@@ -66,13 +66,13 @@ module Elements
       #
       # each_pluralized_source()
       #  - calls your block once for each pluralized source
-      #  - passes in the tree slot name, the Pluralization, and singular name of the source slot
+      #  - passes in the tree slot name, the PluralSubrule, and singular name of the source slot
       
       def each_pluralized_source()
          @sources.each do |source|
             if source.is_an?(Array) then
                reference, singular_name = *source
-               yield( reference.slot_name, reference.pluralization, singular_name )
+               yield( reference.slot_name, reference.symbol_name, singular_name )
             end
          end
       end

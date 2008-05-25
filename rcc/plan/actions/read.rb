@@ -17,37 +17,28 @@ module Actions
 
  
  #============================================================================================================================
- # class Goto
- #  - a Goto action for the ParserPlan
+ # class Read
+ #  - a character-oriented Shift action for the ParserPlan
 
-   class Goto < Action
+   class Read < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
+      attr_reader :character_range
       attr_reader :to_state
-      attr_reader :commit_point
       
-      def initialize( to_state, commit_point )
-         @to_state     = to_state
-         @commit_point = commit_point
+      def initialize( character_range, to_state )
+         @character_range     = character_range
+         @to_state            = to_state
       end
       
-      def local_commit?()
-         return @commit_point == :local
+      def to_s()
+         return "Read #{@character_range}, then goto #{@to_state.number}"
       end
       
-      def global_commit?()
-         return @commit_point == :global
-      end
-      
-      def commit?()
-         return !@commit_point.nil?
-      end
-      
-      
-   end # Goto
+   end # Read
    
 
 

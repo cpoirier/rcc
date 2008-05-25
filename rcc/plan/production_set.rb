@@ -18,7 +18,7 @@ module Plan
  
  #============================================================================================================================
  # class ProductionSet
- #  - holds a related (in whatever way) set of Productions and provides useful services there-upon
+ #  - holds a related (in whatever way) set of Productions and provides useful services thereupon
 
    class ProductionSet < SequenceSet
       

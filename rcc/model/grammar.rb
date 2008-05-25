@@ -30,14 +30,9 @@ module Model
     #---------------------------------------------------------------------------------------------------------------------
     
       attr_reader :name                 # The name of the grammar within the set
-      attr_reader :strings              # name => lexical pattern (ExpressionForm of SparseRange)
+      attr_reader :patterns             # name => Pattern
       attr_reader :groups               # name => Group
       attr_reader :rules                # name => Rule
-
-      attr_reader :discard_symbols      # The names of any symbols the lexer should (usually) discard
-      attr_writer :enable_backtracking  # If true, backtracking will be used, where necessary, to handle conflicts
-
-      attr_reader :state_table          # An Array of States for all states in the Grammar
       
       attr_accessor :system
 
@@ -46,12 +41,10 @@ module Model
          
          @name                = name
          @start_rule_name     = nil
-         @discard_symbols     = []
-         @enable_backtracking = false
                             
-         @strings = Util::OrderedHash.new()
-         @rules   = Util::OrderedHash.new()
-         @groups  = Util::OrderedHash.new()
+         @patterns = Util::OrderedHash.new()
+         @rules    = Util::OrderedHash.new()
+         @groups   = Util::OrderedHash.new()
       end
       
       def start_rule_name=( name )
@@ -68,7 +61,14 @@ module Model
       # name_defined?()
       
       def name_defined?( name )
-         return (@strings.member?(name) || @rules.member?(name) || @groups.member?(name))
+         return (@patterns.member?(name) || @rules.member?(name) || @groups.member?(name))
+      end
+      
+      def resolve( name )
+         return @patterns[name] if @patterns.member?(name)
+         return @rules[name]    if @rules.member?(name)
+         return @groups[name]   if @groups.member?(name)
+         return nil
       end
       
       
@@ -82,15 +82,14 @@ module Model
     
       
       #
-      # add_string()
-      #  - adds a string definition (ExpressionForm of SparseRanges) to the Grammar
+      # add_pattern()
+      #  - adds a Pattern to the Grammar
       
-      def add_string( name, string_descriptor )
-         type_check( name, Scanner::Artifacts::Name )
-         type_check( string_descriptor, Elements::StringDescriptor )
+      def add_pattern( pattern )
+         type_check( pattern, Elements::Pattern )
          assert( !name_defined?(name), "name [#{name}] is already in use" )
          
-         @strings[name] = string_descriptor
+         @patterns[pattern.name] = pattern
       end
       
       
@@ -151,20 +150,11 @@ module Model
     
       
       #
-      # backtracking_enabled?()
-      #  - returns true if the Grammar should support backtracking
-      
-      def backtracking_enabled?()
-         return @enable_backtracking
-      end
-
-      
-      #
       # start_rule()
       #  - returns a RuleReference to the start rule for the Grammar
       
       def start_rule()
-         return Markers::RuleReference.new( start_rule_name() )
+         return Markers::Reference.new( start_rule_name() )
       end
     
     

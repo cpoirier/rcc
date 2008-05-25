@@ -27,6 +27,7 @@ module Plan
          return @@end_of_input_symbol
       end
       
+      @@types = [:production, :group, :token, :sequence]
       
       
     #---------------------------------------------------------------------------------------------------------------------
@@ -39,28 +40,53 @@ module Plan
       attr_accessor :commit_point
       
       def initialize( name, type, gateways = [] )
-         assert( type == :token || type == :production || type == :group || type == :discarder, "type is invalid" )
+         type_check( name, Scanner::Artifacts::Name )
+         assert( @@types.member?(type), "type is invalid" )
          
          @name         = name
          @type         = type
-         @gateways     = gateways       # A list of symbols to discard (if present) before reading this Symbol
+         @gateways     = [] + gateways       # A list of symbols to discard (if present) before reading this Symbol
          @commit_point = nil
+      end
+      
+      def symbolic?()
+         return true
       end
       
       def refers_to_token?()
          @type == :token
       end
       
+      def refers_to_producible_token?()
+         (@type == :token and !@name.eof?)
+      end
+      
       def refers_to_production?()
-         @type == :production || @type == :discarder
+         @type == :production
       end
       
       def refers_to_group?()
          @type == :group
       end
       
-      def refers_to_discarder?()
-         @type == :discarder
+      def refers_to_sequence?()
+         @type == :sequence
+      end
+      
+      def refers_to_character?()
+         return false
+      end
+      
+      def lexical?()
+         @type == :sequence
+      end
+      
+      def syntactic?()
+         @type == :production || @type == :group || @type == :token
+      end
+      
+      def producible?()
+         return @type == :production || @type == :sequence || (@type == :token and !@name.eof?)
       end
       
       def token_names( master_plan )
@@ -95,6 +121,14 @@ module Plan
          return @name.signature
       end
       
+      def full_description( elide_grammar = nil )
+         if @gateways.empty? then
+            return @name.description(elide_grammar)
+         else
+            return @gateways.collect{|gw| "!" + gw.description(elide_grammar)}.join(" ") + " " + @name.description(elide_grammar)
+         end
+      end
+      
       def description(elide_grammar = nil)
          return @name.description(elide_grammar)
       end      
@@ -104,18 +138,21 @@ module Plan
       end
       
       def ==( rhs )
-         type_check( rhs, Symbol )
+         return false unless rhs.is_a?(Symbol)
          return @type == rhs.type && @name == rhs.name
       end
       
       def eql?( rhs )
-         type_check( rhs, Symbol )
-         return @type == rhs.type && @name == rhs.name
+         if rhs.is_a?(Symbol) then
+            return @type == rhs.type && @name == rhs.name
+         else
+            return @name == rhs 
+         end
       end
       
       
       def to_s()
-         return description()
+         return signature()
       end
       
       # def eql?( rhs )

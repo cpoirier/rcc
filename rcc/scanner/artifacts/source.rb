@@ -120,6 +120,7 @@ module Artifacts
       #  - returns the line number of the specified position, or of the last one read
       
       def line_number( position = nil )
+         position = @last_position if position.nil?
          return eol_index(position) + @commit_eol_positions_discarded + 1
       end
       

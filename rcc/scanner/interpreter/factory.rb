@@ -37,12 +37,7 @@ module Interpreter
          @recovery_limit = 3
       end
       
-      def lexer_plan()
-         return @parser_plan.lexer_plan
-      end
-      
 
-      
       #
       # parse()
       #  - parses a file using machinery produced by this Factory
@@ -63,20 +58,11 @@ module Interpreter
       
       
       #
-      # build_lexer()
-      #  - returns a Lexer around your input
-      
-      def build_lexer( descriptor, file = nil )
-         return RCC::Scanner::Interpreter::Lexer.new( open_source(descriptor, file) )
-      end
-      
-      
-      #
       # build_parser()
       #  - returns a new Parser on your Lexer
       
       def build_parser( descriptor, file = nil )
-         return RCC::Scanner::Interpreter::Parser.new( @parser_plan, build_lexer(descriptor, file) )
+         return RCC::Scanner::Interpreter::Parser.new( @parser_plan, open_source(descriptor, file) )
       end
       
       

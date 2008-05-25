@@ -28,56 +28,18 @@ module Plan
     
       attr_reader :master_plan       # The MasterPlan
       attr_reader :name              # The name of the Grammar from which this Plan was built
-      attr_reader :lexer_plan        # A LexerState that describes how to lex the Grammar; note that each State can produce a customization on this one
       attr_reader :state_table       # Our States, in convenient table form
       attr_reader :ast_classes       # Our ASTClasses, in declaration order
 
-      def initialize( master_plan, name, state_table, enable_backtracking = false )         
-         assert( master_plan.lexer_plans.member?(name), "why is there no LexerPlan for this ParserPlan [#{name}]?" )
-         
+      def initialize( master_plan, name, state_table )         
          @master_plan         = master_plan
          @name                = name
          @state_table         = state_table
-         @lexer_plan          = master_plan.lexer_plans[name]
          @ast_classes         = master_plan.ast_plans[name]
-         @enable_backtracking = enable_backtracking
       end
       
       
-      
-      
 
-    #---------------------------------------------------------------------------------------------------------------------
-    # Parser construction
-    #---------------------------------------------------------------------------------------------------------------------
-
-
-      #
-      # compile_actions()
-      #  - runs through all our State tables and builds Actions that can drive a compiler
-      #  - optionally constructs explanations for conflict resolutions
-      
-      def compile_actions( estream = nil )
-         duration = Time.measure do 
-            @state_table.each do |state|
-               duration = Time.measure do
-                  state.compile_actions( @enable_backtracking, estream )
-                  state.compile_customized_lexer_plan( @lexer_plan, estream )
-               end
-               
-               estream.puts "Action compilation for state #{state.number}: #{duration}s" if estream && $show_statistics && duration > 0.25
-            end
-         end
-         
-         estream.puts "Action compilation duration: #{duration}s" if estream && $show_statistics
-         
-         return self
-      end
-
-
-
-   
-    
     #---------------------------------------------------------------------------------------------------------------------
     # Conversion and formatting
     #---------------------------------------------------------------------------------------------------------------------

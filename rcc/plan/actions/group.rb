@@ -9,58 +9,39 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/actions/action.rb"
 
 module RCC
 module Plan
-module DFA
+module Actions
 
  
  #============================================================================================================================
- # class Edge
- #  - an Edge that links on Point to another along a set of inputs 
+ # class Group
+ #  - the lexical equivalent of a Reduce
 
-   class Edge
+   class Group < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      attr_reader :points
-
-      def initialize( inputs, vectors, target = nil )
-         @inputs  = inputs
-         @vectors = vectors
-         @target  = target
+      attr_reader :by_production
+      
+      def initialize( by_production )
+         @by_production = by_production
       end
-
-      attr_accessor :target
-      attr_reader   :vectors
-      attr_reader   :inputs
-
-      def display( stream = $stdout )
-         stream << " --- "
-         stream << @inputs.join(",")
-         stream << " | "
-         stream << @vectors.join(",")
-         stream << " ---> "
-         stream.indent(" ") do
-            @target.display( stream )
-         end
+      
+      
+      def to_s()
+         return "Group #{@by_production.to_s}"
       end
-
-      def cycle?()
-         return false
-      end
-
-      def dup()
-         return self.class.new( @inputs.dup, @vectors.dup, @target.nil? ? nil : @target.dup )
-      end
-
-   end # Edge
+      
+      
+   end # Group
    
 
 
-
-end  # module DFA
+end  # module Actions
 end  # module Plan
 end  # module RCC

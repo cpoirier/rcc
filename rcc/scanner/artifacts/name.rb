@@ -59,6 +59,10 @@ module Artifacts
             @signature = "$"
          when true
             @signature = "*"
+         when Util::SparseRange
+            @signature = name.to_s
+         when Numeric
+            @signature = "[#{name}]"
          else
             @signature = grammar.nil? ? "\"#{@name.escape}\"" : "#{@grammar}.#{@name}"
          end
@@ -99,11 +103,18 @@ module Artifacts
          return (@grammar.nil? and !(@name == true))
       end
       
+      
+      def character?()
+         returng @name.is_a?(Numeric)
+      end
+      
 
       
       def ==( rhs )
          if rhs.is_a?(String) then
             return (@name == rhs || @signature == rhs)
+         elsif rhs.is_a?(Numeric) then
+            return @signature == "[#{rhs}]"
          else
             return @signature == rhs.signature
          end
@@ -116,8 +127,24 @@ module Artifacts
       def hash()
          return @signature.hash
       end
+
+      def ===( rhs )
+         if rhs.is_a?(String) then
+            return (@name == rhs || @signature == rhs)
+         elsif rhs.is_a?(Numeric) then
+            case @name
+            when Util::SparseRange
+               return @name.member?(rhs) 
+            when Numeric
+               return @name == rhs
+            else
+               return false
+            end
+         else
+            return @signature == rhs.signature
+         end
+      end
       
-      alias === ==
       alias eql? ==
       alias to_s description
       

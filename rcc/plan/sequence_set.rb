@@ -82,7 +82,9 @@ module Plan
       def initialize( sequences = [], unique = true )
          @sequences  = []
          @signatures = unique ? {} : nil
+         @leaders    = nil
          @lookahead  = nil
+         @lexical_lookahead = nil
          
          sequences.each do |sequence|
             add_sequence( sequence )
@@ -138,8 +140,18 @@ module Plan
          
          return set
       end
+      
+      
+      #
+      # leaders()
+      #  - returns an array of Symbols that lead this sequence set
+      
+      def leaders()
+         @leaders = @sequences.select{|sequence| !sequence.empty?}.collect{|sequence| sequence[0]} if @leaders.nil?
+         return @leaders
+      end
 
-
+      
       #
       # to_s()
       
@@ -157,21 +169,28 @@ module Plan
       # lookahead()
       #  - returns a set of all token Symbols that can start any of the sequences in this set
       
-      def lookahead( master_plan, loop_detection=[] )
+      def lookahead( master_plan, loop_detection=[], already_done={} )
          return @lookahead unless @lookahead.nil? 
          return [] if loop_detection.member?(self.object_id)
-         
+
+         complete  = already_done.empty?
          lookahead = {}
-         @sequences.select{|sequence| !sequence.empty?}.collect{|sequence| sequence[0]}.each do |start_symbol|
+         
+         # @sequences.select{|sequence| !sequence.empty?}.collect{|sequence| sequence[0]}.each do |start_symbol|
+         warn_bug( "does uniq work with SequenceSet.leaders()?" )
+         leaders().each do |start_symbol|
+            next if already_done.member?(start_symbol.name)
+            already_done[start_symbol.name] = true
+            
             if start_symbol.refers_to_token? then
                lookahead[start_symbol.signature] = start_symbol
             else
                if set = master_plan.production_sets[start_symbol.name] then
-                  set.lookahead(master_plan, loop_detection + [self.object_id]).each do |lookahead_symbol|
+                  set.lookahead(master_plan, loop_detection + [self.object_id], already_done).each do |lookahead_symbol|
                      lookahead[lookahead_symbol.signature] = lookahead_symbol
                   end
                end
-               
+         
                if start_symbol.refers_to_group? then
                   master_plan.group_members[start_symbol.name].each do |member_symbol|
                      if member_symbol.refers_to_token? then
@@ -182,12 +201,131 @@ module Plan
             end
          end
          
-         @lookahead = lookahead.values
-         return @lookahead
+         if complete then
+            @lookahead = lookahead.values
+            return @lookahead
+         else
+            return lookahead.values
+         end
       end
       
+      
+      def lexical_lookahead( master_plan, loop_detection=[], already_done={} )
+         return @lexical_lookahead unless @lexical_lookahead.nil? 
+         return [] if loop_detection.member?(self.object_id)
+
+         complete  = already_done.empty?
+         lookahead = CharacterRange.new()
+
+         # @sequences.select{|sequence| !sequence.empty?}.collect{|sequence| sequence[0]}.each do |start_symbol|
+         warn_bug( "does uniq work with SequenceSet.leaders()?" )
+         leaders().each do |start_symbol|
+            if start_symbol.refers_to_character? then
+               lookahead += start_symbol
+            else
+               next if already_done.member?(start_symbol.name)
+               already_done[start_symbol.name] = true
+
+               if set = master_plan.production_sets[start_symbol.name] then
+                  lookahead += set.lexical_lookahead( master_plan, loop_detection + [self.object_id], already_done )
+               end
+            end
+         end
+
+         @lexical_lookahead = lookahead if complete
+         return lookahead
+      end
     
 
+
+      
+      
+      # #
+      # # Known working versions, without optimizations.
+      # 
+      # 
+      # #
+      # # lookahead()
+      # #  - returns a set of all token Symbols that can start any of the sequences in this set
+      # 
+      # def lookahead( master_plan, loop_detection=[] )
+      #    return @lookahead unless @lookahead.nil? 
+      #    return [] if loop_detection.member?(self.object_id)
+      #    
+      #    if loop_detection.empty? then
+      #       puts ""
+      #       puts ""
+      #       puts "======================="
+      #    end
+      #    
+      #    lookahead = {}
+      #    @sequences.select{|sequence| !sequence.empty?}.collect{|sequence| sequence[0]}.each do |start_symbol|
+      #       p "#{object_id}.lookahead: #{start_symbol}"
+      #       if start_symbol.refers_to_token? then
+      #          lookahead[start_symbol.signature] = start_symbol
+      #       else
+      #          if set = master_plan.production_sets[start_symbol.name] then
+      #             set.lookahead(master_plan, loop_detection + [self.object_id]).each do |lookahead_symbol|
+      #                lookahead[lookahead_symbol.signature] = lookahead_symbol
+      #             end
+      #          end
+      #       
+      #          if start_symbol.refers_to_group? then
+      #             master_plan.group_members[start_symbol.name].each do |member_symbol|
+      #                if member_symbol.refers_to_token? then
+      #                   lookahead[member_symbol.signature] = member_symbol
+      #                end
+      #             end
+      #          end
+      #       end
+      #    end
+      #    
+      #    @lookahead = lookahead.values
+      #    return @lookahead
+      # end
+      # 
+      # 
+      # def lexical_lookahead( master_plan, loop_detection=[] )
+      #    return @lexical_lookahead unless @lexical_lookahead.nil? 
+      #    return [] if loop_detection.member?(self.object_id)
+      #    
+      #    if loop_detection.empty? then
+      #       puts ""
+      #       puts ""
+      #       puts "======================="
+      #    end
+      #    
+      #    duration = Time.measure do
+      #       lookahead = CharacterRange.new()   # can uniq always be applied?
+      #       @sequences.select{|sequence| !sequence.empty?}.collect{|sequence| sequence[0]}.each do |start_symbol|
+      #          p "#{object_id}.lexical_lookahead: #{start_symbol}"
+      #          if start_symbol.refers_to_character? then
+      #             lookahead += start_symbol
+      #          else
+      #             if set = master_plan.production_sets[start_symbol.name] then
+      #                $stdout.indent do 
+      #                   set.lexical_lookahead(master_plan, loop_detection + [self.object_id]).each do |lookahead_symbol|
+      #                      lookahead += lookahead_symbol
+      #                   end
+      #                end
+      #             end
+      #          end
+      #       end
+      #    
+      #       @lexical_lookahead = lookahead
+      #    end
+      #    
+      #    puts "#{object_id()}.lexical_lookahead took #{duration}s"
+      #    if duration > 0.1 then
+      #       @sequences.each do |sequence|
+      #          next if sequence.empty?
+      #          puts sequence[0]
+      #       end
+      #    end
+      #    return @lexical_lookahead
+      # end
+      #     
+      
        
    end # SequenceSet
    

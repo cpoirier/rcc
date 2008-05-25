@@ -9,63 +9,42 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
+require "#{$RCCLIB}/plan/actions/action.rb"
 
 module RCC
-module Scanner
-module Artifacts
-module PositionStack
+module Plan
+module Actions
 
  
  #============================================================================================================================
- # class StartPosition
- #  - a special Position marker that denotes the start position of the Parser
+ # class Discard
+ #  - a Discard action for the ParserPlan
 
-   class StartPosition < PositionMarker
+   class Discard < Action
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-
-      def initialize( state, source )
-         super( nil, nil, state, source, 0 )
+      attr_reader :to_state
+      
+      def initialize( symbol_name, to_state = nil )
+         @symbol_name = symbol_name
+         @to_state    = to_state
       end
       
-
-      #
-      # pop()
-      #  - tells this Position it is being "popped" from the working set
-      #  - returns our context Position
-      
-      def pop( production )
-         return @context
-      end
-      
-      
-      #
-      # description()
-      #  - return a description of this Position (node data only)
-      
-      def description( include_determinant = false )
-         if include_determinant then
-            return " | #{determinant().description}"
+      def to_s()
+         if @to_state.nil? then
+            return "Discard #{@symbol_name.description}, then resume"
          else
-            return ""
+            return "Discard #{@symbol_name.description}, then goto #{@to_state.number}"
          end
       end
-
-
-      def start_position?
-         return true
-      end
       
-   end # StartPosition
+   end # Discard
    
 
 
-end  # module PositionStack
-end  # module Artifacts
-end  # module Scanner
+end  # module Actions
+end  # module Plan
 end  # module RCC
-
-

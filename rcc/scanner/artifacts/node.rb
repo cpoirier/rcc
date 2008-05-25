@@ -24,7 +24,6 @@ module Artifacts
    class Node
       
       
-      
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
@@ -47,6 +46,10 @@ module Artifacts
       def token?()
          return false
       end   
+      
+      def character?()
+         return false
+      end
       
       def first_token()
          bug( "you must override first_token()" )
@@ -117,16 +120,6 @@ module Artifacts
       #  - clears the taint from this Node (any Correction is still linked)
       
       def untaint()
-         #
-         # untaint()
-         #  - clears the taint from this Node (any Correction is still linked)
-
-         def untaint()
-            @tainted = false
-         end
-
-
-         
          bug( "you must override untaint()" )
       end
       
@@ -187,3 +180,7 @@ end  # module Artifacts
 end  # module Scanner
 end  # module RCC
 
+
+require "#{$RCCLIB}/scanner/artifacts/nodes/character.rb"
+require "#{$RCCLIB}/scanner/artifacts/nodes/token.rb"
+require "#{$RCCLIB}/scanner/artifacts/nodes/subtree.rb"
