@@ -548,71 +548,7 @@ module Plan
 
          assert( @production_sets.member?(name), "not a valid start rule name" )
          state_table = StateTable.build( self, name )
-         
-         
-         # start_state = State.start_state( self, name )
-         # start_state.close(@discard_lists)
-         # 
-         # 
-         # #
-         # # From the start state, build new states, one for each follow symbol.  Repeat for each new state until all are complete.  
-         # # We take some pains, here, to avoid creating new states that have the same signature as old states.  We are trying to
-         # # be LALR(k), after all.
-         # 
-         # state_table = [ start_state ]
-         # state_index = { start_state.signature => start_state }
-         # 
-         # duration = Time.measure do
-         #    work_queue = [start_state]
-         #    until work_queue.empty?
-         #       current_state = work_queue.shift
-         #       current_state.enumerate_transitions do |symbol_name, shifted_items|
-         #          
-         #          #
-         #          # If a matching state is already is in the index, all we need to do is merge in the lookahead 
-         #          # from the new contexts.  
-         #       
-         #          if transition_state = state_index[State.signature(shifted_items)] then
-         #             transition_state.add_contexts( shifted_items, current_state )    
-         #          
-         #          #
-         #          # Otherwise, we need to create a new State from the shifted_items.
-         #       
-         #          else
-         #             transition_state = State.new( self, state_table.length, shifted_items, current_state )
-         #             transition_state.close(@discard_lists)
-         #             
-         #             state_table << transition_state
-         #             state_index[transition_state.signature] = transition_state
-         #          
-         #             work_queue << transition_state
-         #          end
-         #       
-         #          current_state.add_transition( symbol_name, transition_state )
-         #       end
-         # 
-         #       # current_state.display( STDOUT, "" )
-         #    end
-         # end
-         # 
-         # STDERR.puts "State generation duration: #{duration}s" if $stderr['show_statistics']
-         # 
-         # 
-         # #
-         # # Close the State Items.
-         # 
-         # duration = Time.measure do
-         #    state_table.each do |state|
-         #       state.close_items()
-         #    end
-         # end
-         # 
-         # STDERR.puts "Follow context propagation duration: #{duration}s" if $stderr['show_statistics']
-         
-         
-         #
-         # Return the new ParserPlan.
-         
+
          return ParserPlan.new( self, name.grammar, state_table )
       end
       
