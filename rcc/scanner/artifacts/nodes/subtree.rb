@@ -68,7 +68,17 @@ module Nodes
          bug( "you must override last_token()" )
       end
       
-
+      def line_number()
+         return first_token.line_number()
+      end
+      
+      def column_number()
+         return first_token.column_number()
+      end
+      
+      def start_position()
+         return first_token.start_position()
+      end
 
 
 

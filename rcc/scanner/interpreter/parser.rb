@@ -288,29 +288,34 @@ module Interpreter
                
 
                #
-               # Pick an action.
+               # Pick an action and process it.  If there is no action, we have an error: move to the next branch
+               # or fail.
                
-               unless state.simple? or determinant = position.determinant()
-                  nyi( "processing for EOF" )
-               else
-                  action = state.find_action( determinant )
+               determinant = position.determinant unless state.context_free?
+               action      = state.action_for( determinant )
+
+               if action.exists? then
                   if estream then
                      position.display( estream ) 
                      estream.indent( "| " ) do
                         estream.puts
-                        estream.puts "Action analysis for lookahead #{determinant.description}" unless determinant.nil? 
-                        state.find_explanations( determinant ).each do |explanation|
-                           estream.indent() { estream.puts explanation }
+                        
+                        if action.has_explanations? then
+                           if state.context_free? then
+                              estream.puts "State is context free; using default action without looking ahead"
+                           else
+                              estream.puts "Action analysis for lookahead #{determinant.description}"
+                           end
+                           
+                           action.explanations.each do |explanation|
+                              estream.indent do
+                                 estream.puts explanation
+                              end
+                           end
                         end
                      end
                   end
-               end
-               
-               
-               #
-               # Process the action.  If there is no action, we have an error: move to the next branch or fail.
-
-               if action.exists? then
+                  
                   if action.is_a?(Plan::Actions::Accept) then
                      solution = position
                   else
@@ -353,7 +358,7 @@ module Interpreter
       def perform_shift( position, action, estream, new_branch_info = nil )
          node = position.determinant()
          
-         estream.puts "===> SHIFT #{next_token.description} AND GOTO #{action.to_state.number}" if estream
+         estream.puts "===> SHIFT #{node.description} AND GOTO #{action.to_state.number}" if estream
          next_position = position.push( node, action.to_state )
 
          #
@@ -403,16 +408,16 @@ module Interpreter
          elsif position.branch_info.exists? then
             next_position.branch_info = position.branch_info
             
-            if action.local_commit? then
-               while next_position.committable? 
-                  estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream
-                  next_position.branch_info = next_position.branch_info.context_info
-                  if estream
-                     estream << "into #{next_position.branch_id("MAIN")}"
-                     estream.end_line
-                  end
-               end
-            end
+            # if action.local_commit? then
+            #    while next_position.committable? 
+            #       estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream
+            #       next_position.branch_info = next_position.branch_info.context_info
+            #       if estream
+            #          estream << "into #{next_position.branch_id("MAIN")}"
+            #          estream.end_line
+            #       end
+            #    end
+            # end
          end
          
          return next_position
@@ -445,10 +450,11 @@ module Interpreter
             # next branch.
             
             if branch_info.exists? and branch_info.at_validate_position?(position) then
-               return launch_next_branch(top_position, branch_info, estream) if not branch_info.valid_production?(production) 
-               
-               branch_info   = branch_info.context_info
-               root_position = branch_info.nil? ? nil : branch_info.root_position
+               if not branch_info.valid_production?(production) then
+                  return launch_next_branch(top_position, branch_info, estream) 
+               else
+                  branch_info, root_position = *branch_info.context_info_and_root()
+               end
             end
 
             #
@@ -463,6 +469,7 @@ module Interpreter
          # Untaint the node if the error recovery is complete.
          
          if node.tainted? then
+            nyi( "error recovery support" )
             if next_token.rewind_position > node.original_error_position then
                estream.puts "UNTAINTING" if estream
                node.untaint()
@@ -473,25 +480,11 @@ module Interpreter
          # Create/transfer recoverability marks, if appropriate.
 
          warn_nyi( "error recovery commit" )
-                           
+         
          #
-         # Get the goto state from the now-top-of-stack State: it will be the next state.
+         # Replace the now-top-of-stack State with one using the new determinant.
          
-         goto_action = position.state.actions[production.name]
-         goto_state  = goto_action.to_state
-
-         restore_lookahead = true
-         warn_bug( "we should be able to optimize restore_lookahead" )
-         
-         if estream then
-            estream << "===> "
-            estream << "RESTORE skipped lookahead; " if restore_lookahead
-            estream << "PUSH AND GOTO #{goto_state.number}" 
-            estream.end_line
-         end
-
-         position.determinant = node
-         # next_position = position.push( node, goto_state, top_position )
+         position = position.replace( node, top_position )
          
          #
          # All reduced positions are part of the same branch as the top position in the 
@@ -538,35 +531,66 @@ module Interpreter
          
          node = Token.new_from_nodes( production.name, nodes )
          
-         #
-         # Get the goto state from the now-top-of-stack State: it will be the next state.
-         
-         goto_action = position.state.actions[production.name]
-         goto_state  = goto_action.to_state
-
+         next_position = position.replace( node, top_position )
          if estream then
-            estream.puts "===> TOKENIZE AND GOTO #{goto_state.number}" 
+            estream.puts "===> TOKENIZE" 
             estream.end_line
          end
-
-         next_position = position.push( node, goto_state, top_position )
          
-         #
-         # All tokenized positions are part of the same branch as the top position in the 
-         # tokenize.  Once we've dealt with that, look for any branches that can now be committed.
-         
-         next_position.branch_info = top_branch_info
-         while next_position.committable?
-            estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
-            next_position.branch_info = next_position.branch_info.context_info
-            if estream then
-               estream << "into #{next_position.branch_id("MAIN")}" 
-               estream.end_line
-            end
-         end
+         # #
+         # # All tokenized positions are part of the same branch as the top position in the 
+         # # tokenize.  Once we've dealt with that, look for any branches that can now be committed.
+         # 
+         # next_position.branch_info = top_branch_info
+         # while next_position.committable?
+         #    estream << "===> COMMITING BRANCH #{next_position.branch_id} " if estream 
+         #    next_position.branch_info = next_position.branch_info.context_info
+         #    if estream then
+         #       estream << "into #{next_position.branch_id("MAIN")}" 
+         #       estream.end_line
+         #    end
+         # end
          
          return next_position
       end
+
+
+      #
+      # perform_group()
+      #  - at present, Group is really only useful for State planning - we just Tokenize instead
+      
+      def perform_group( position, action, estream, new_branch_info = nil )
+         return perform_tokenize( position, action, estream, new_branch_info )
+      end
+      
+      
+      #
+      # perform_continue()
+      #  - performs Continue, the lexical equivalent of Shift
+
+      def perform_continue( position, action, estream, new_branch_info = nil )
+         node = position.determinant()
+         
+         estream.puts "===> SHIFT #{node.description} AND GOTO #{action.to_state.number}" if estream
+         next_position = position.push( node, action.to_state )
+
+         #
+         # With the next_position chosen, we need to chain forward the branch information.
+         # If one is supplied, we use it.  Otherwise, we copy forward one from the previous
+         # position: either the context info if this action disambiguates the parse, or
+         # the existing one otherwise.
+         
+         if new_branch_info.exists? then
+            next_position.branch_info = new_branch_info
+         elsif position.branch_info.exists? then
+            next_position.branch_info = position.branch_info
+         end         
+         
+         return next_position         
+      end
+      
+
+      
       
       
       #
@@ -579,7 +603,7 @@ module Interpreter
          # a new BranchInfo context.  Other parts of the parser deal with moving to subsequent
          # branches when it is appropriate to do so (when the current branch fails).
          
-         return perform_action( position, action.actions[0], next_token, estream, BranchInfo.new(position, action, 0) )
+         return perform_action( position, action.actions[0], estream, BranchInfo.new(position, action, 0) )
       end
       
       
@@ -587,6 +611,12 @@ module Interpreter
       # perform_discard()
       
       def perform_discard( position, action, estream, new_branch_info = nil )
+         if estream then
+            estream << "===> DISCARD #{position.determinant.description} AND "
+            estream << (action.to_state ? "GOTO #{action.to_state.number}" : "RESUME")
+            estream.end_line
+         end
+         
          position.stream_position = position.determinant.follow_position
          return position
       end

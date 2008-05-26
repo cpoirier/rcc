@@ -89,7 +89,6 @@ module Plan
          @symbolic_actions        = {}                       # Symbol.name => Action
          @literal_actions         = nil                      # Symbol.name|CharacterRange => Action
          @fallback_lexical_action = nil                      # Action to use if no @literal_actions apply
-         @explanations            = nil                      # A set of Explanations for the Actions, if requested during creation
          @lookahead_explanations  = nil                      # An InitialOptions Explanation, if requested
          @context_grammar_name    = context_state.nil? ? nil : context_state.context_grammar_name
 
@@ -128,19 +127,26 @@ module Plan
       
       
       #
-      # find_action()
+      # action_for()
+      #  - properly handles action lookup for various types
+      #  - returns the fallback reduce action for unknown symbolic determinants
+      #  - returns nil for unknown literal determinants (as it indicates an error)
       
-      def find_action( determinant )
-         if simple? then
-            (@symbolic_actions.empty? ? @literal_actions : @symbolic_actions).each do |determinant, action|
-               return action
-            end
+      def action_for( determinant )
+         if context_free? then
+            return @symbolic_actions[nil]
          elsif determinant.character? then
-            @literal_actions.each do |character_range, action|
-               return action if character_range.member?(determinant.type.name)
+            if found = @literal_actions[determinant.character] then
+               return found[0]
+            elsif @symbolic_actions.member?(nil) then
+               return @symbolic_actions[nil]
             end
          else
-            return @symbolic_actions[determinant.type]
+            if @symbolic_actions.member?(determinant.type) then
+               return @symbolic_actions[determinant.type]
+            elsif @symbolic_actions.member?(nil) then
+               return @symbolic_actions[nil]
+            end
          end
          
          return nil
@@ -148,25 +154,12 @@ module Plan
       
       
       #
-      # find_explanations()
+      # default_action()
       
-      def find_explanations( determinant )
-         if simple? then
-            @explanations.each do |determinant, explanations|
-               return explanations
-            end
-         elsif determinant.character? then
-            @explanations.each do |character_range, explanations|
-               next unless character_range.is_a?(CharacterRange)
-               return explanations if character_range.member?(determinant)
-            end
-         else
-            return @explanations[determinant.type]
-         end
-         
-         return []
+      def default_action()
+         return @symbolic_actions[nil]
       end
-
+      
       
       #
       # add_productions( )
@@ -479,7 +472,6 @@ module Plan
       
       def compile_syntactic_actions( state_table, estream = nil )
          explain = @master_plan.produce_explanations?
-         @explanations     = (explain ? {} : nil)
          
          present_determinants    = {}
          additional_determinants = {}
@@ -998,7 +990,7 @@ module Plan
             # Finish up.
 
             bug( "wtf?" ) if explanations.empty?
-            @explanations[symbol_name] = explanations if explain
+            @symbolic_actions[symbol_name].explanations = explanations if explain
             recovery_data[symbol_name] = in_play
          end
          
@@ -1369,7 +1361,7 @@ module Plan
                      end
                   end
                   
-                  unless @literal_actions.empty?
+                  unless (@literal_actions.nil? or @literal_actions.empty?)
                      stream.puts "Literal Actions:"
                      stream.indent do
                         @literal_actions.each do |character_range, action|

@@ -36,7 +36,17 @@ module Actions
          stream << self.to_s << "\n"
       end
       
+      def explanations()
+         return has_explanations? ? @explanations : nil
+      end
 
+      def explanations=( explanations )
+         @explanations = explanations
+      end
+      
+      def has_explanations?()
+         return (defined?(@explanations) and @explanations.set?)
+      end
       
    end # Action
    

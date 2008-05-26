@@ -478,7 +478,7 @@ module Plan
          if symbols.is_an?(Array) then
             determinants = CharacterRange.new()
             symbols.each do |symbol|
-               determinants += lexical_determinants_for( symbol )
+               determinants.add( lexical_determinants_for(symbol) )
             end
             return determinants
             
@@ -520,7 +520,7 @@ module Plan
                   end
                end
             end
-
+            
             return determinants
          end
       end

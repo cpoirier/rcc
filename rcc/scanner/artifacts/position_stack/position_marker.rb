@@ -41,7 +41,7 @@ module PositionStack
       
       alias stream_position adjusted_stream_position
       
-      def initialize( context, node, state, source, stream_position, recovery_registry = nil, next_token = nil )
+      def initialize( context, node, state, source, stream_position, recovery_registry = nil, determinant = nil )
          @context         = context
          @node            = node
          @state           = state
@@ -54,7 +54,7 @@ module PositionStack
          @source                   = source
          @original_stream_position = stream_position
          @adjusted_stream_position = stream_position
-         @determinant              = nil
+         @determinant              = determinant
          
          #
          # Register the Position with any recovery context.  This may raise Parser::PositionSeen.
@@ -80,7 +80,7 @@ module PositionStack
       
       def determinant()
          if @determinant.nil? then
-            unless @state.context_irrelevant?
+            unless @state.context_free?
                if @source.at_eof?(@adjusted_stream_position) then
                   @determinant = Scanner::Artifacts::Nodes::Token.end_of_file( @adjusted_stream_position, @source.eof_line_number, @source.eof_column_number, @source )
                else
@@ -362,6 +362,18 @@ module PositionStack
 
          return next_position
       end
+      
+      
+      #
+      # replace()
+      #  - returns a new Position identical to this one, except for its determinant
+      
+      def replace( determinant, reduce_position = nil )
+         next_position = PositionMarker.new( @context, @node, @state, @source, determinant.follow_position, @recovery_registry, determinant )
+         next_position.adjust_sequence_number( reduce_position ) if reduce_position.exists?
+         
+         return next_position
+      end
 
 
       #
@@ -372,16 +384,6 @@ module PositionStack
 
       def pop( production, top_position )
          return @context
-      end
-
-
-      #
-      # fork()
-      #  - returns an AttemptPosition that replace this position for further processing of one branch of an Attempt
-      #  - call this on the original Position for each of your potential branches, then use the AttemptPositions instead
-
-      def fork( launch_action, expected_productions = nil )
-         return AttemptPosition.new( @context, @node, @state, @lexer, @stream_position, launch_action, expected_productions )
       end
 
 
@@ -616,7 +618,7 @@ module PositionStack
       # lookahead_description()
       
       def lookahead_description()
-         if @state.simple? then
+         if @state.context_free? then
             return "not checked in this state"
          else
             return "#{determinant.description}   #{determinant.line_number}:#{determinant.column_number}   positions #{determinant.start_position},#{determinant.follow_position}"

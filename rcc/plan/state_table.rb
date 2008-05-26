@@ -42,12 +42,11 @@ module Plan
       attr_reader :states            # The States
 
       def initialize( master_plan, start_state )
-         @master_plan   = master_plan
-         @states        = [ start_state ]                                # All our states
-         @current_index = { start_state.signature => start_state }       # {signature => State}
-         @base_index    = nil 
-         @work_queue    = [ start_state ]
-         @closed        = false
+         @master_plan = master_plan
+         @states      = [ start_state ]                                # All our states
+         @index       = { start_state.signature => start_state }       # {signature => State}
+         @work_queue  = [ start_state ]
+         @closed      = false
       end
       
       
@@ -73,7 +72,7 @@ module Plan
          # If a matching state is already is in the index, all we need to do is merge in the lookahead 
          # from the new contexts.  
       
-         if state = @current_index[State.signature(start_items)] then
+         if state = @index[State.signature(start_items)] then
             state.add_contexts( start_items, context_state )
       
          #
@@ -98,15 +97,6 @@ module Plan
       def build( estream = nil )
          compile_syntax( estream )
          compile_lex( estream )
-      end
-
-      
-      #
-      # find_base_state()
-      #  - looks for any base (initial pass) State matching the specified start items
-      
-      def find_base_state( start_items )
-         return @base_index[State.signature(start_items)]
       end
 
       
@@ -159,12 +149,7 @@ module Plan
                end
             end
             
-            if @base_index.nil?
-               @base_index = @current_index
-               @current_index = {}
-            else
-               @current_index.clear()
-            end
+            @index.clear()
 
 
             #
@@ -208,6 +193,7 @@ module Plan
                current_state = @work_queue.shift
                processed << current_state
             
+               current_state.close()
                current_state.enumerate_lexical_transitions do |vector, shifted_items|
                   transition_state = create_state( shifted_items, current_state )
                   current_state.add_transition( vector, transition_state )
@@ -229,7 +215,7 @@ module Plan
             end
          end
          
-         @current_index.clear
+         @index.clear
 
 
          #
@@ -247,9 +233,8 @@ module Plan
 
          #
          # After this, the state table is closed.
-         
-         @base_index = nil
-         @closed     = true
+
+         @closed = true
       end
 
 
@@ -276,12 +261,12 @@ module Plan
       def add_state( state )
          assert( !@closed, "you cannot add any more states to this state table, as you have already built the lexical states" )
          
-         if @current_index.member?(state.signature) then
+         if @index.member?(state.signature) then
             bug( "can't define duplicate state", state ) 
          else
             state.number = @states.length
             @states << state
-            @current_index[state.signature] = state
+            @index[state.signature] = state
             
             @work_queue << state
          end

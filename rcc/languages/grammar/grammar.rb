@@ -80,7 +80,7 @@ module Grammar
       
          section_spec( 'misc',
 
-            rule_spec( 'whitespace'       , sp_exp(cs_characters(' ', est('t'), est('r')))            ),
+            rule_spec( 'whitespace'       , sp_exp(sp_repeated("+", cs_characters(' ', est('t'), est('r')))) ),
             rule_spec( 'eol'              , sp_exp(cs_characters(est('n')))                           ),
             rule_spec( 'any_character'    , sp_exp(cs_characters(cs_range(ust('0000'), ust('FFFF')))) ),
             rule_spec( 'line_character'   , sp_exp(cs_difference(cs_characters(cs_reference('any_character')), cs_characters(est('n')))) ),

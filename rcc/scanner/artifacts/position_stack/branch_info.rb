@@ -111,6 +111,16 @@ module PositionStack
       
       
       #
+      # context_info_and_root()
+      
+      def context_info_and_root()
+         context_info  = context_info()
+         root_position = context_info.nil? ? nil : context_info.root_position
+         return context_info, root_position
+      end
+      
+      
+      #
       # add_recovery_branch()
       #  - even if a branch fails, we still need it around in case all branches fail and a recovery
       #    must be attempted; this routine adds a peer or downline BranchInfo to our recovery set

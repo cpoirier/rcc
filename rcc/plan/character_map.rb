@@ -45,6 +45,10 @@ module Plan
          replace_data( value, coordinates )
       end
       
+      def []( coordinates )
+         find( coordinates )
+      end
+      
 
       #
       # merge_data()
@@ -64,6 +68,36 @@ module Plan
       def replace_data( value, *coordinates )
          stratify_over( coordinates ) do |mapping|
             mapping.replace_data( value )
+         end
+      end
+      
+      
+      #
+      # find()
+      #  - returns the data at the specified coordinates
+      
+      def find( coordinates )
+         case coordinates
+         when Numeric
+            each() do |character_range, data|
+               return data if character_range.member?(coordinates)
+            end
+         else
+            nyi( "support for #{coordinates.class.name} coordinates", coordinates )
+         end
+         
+         return nil
+      end
+
+
+      def display( stream = $stdout )
+         stream.puts "CharacterMap:"
+         stream.indent do 
+            current = @next
+            until current.nil?
+               current.display( stream )
+               current = current.next
+            end
          end
       end
 
@@ -139,12 +173,12 @@ module Plan
          else
             while (from <= to and current.exists?)
                if to < current.first then
-                  mapping = @mapping_class.new(from, to).move_after( current )
+                  mapping = @mapping_class.new(from, to).move_after( previous )
                   yield( mapping )
                   from = to + 1
                elsif from > current.last then
                   if current.next.nil? then
-                     mapping = @mapping_class.new(from, to).move_after(current)
+                     mapping = @mapping_class.new(from, to).move_after( current )
                      yield( mapping )
                      from = to + 1
                   else
@@ -188,22 +222,27 @@ module Plan
 
          def stratify( from, to )
             in_scope = []
-            first    = @first
-            last     = @last
 
             if from < @first then
-               in_scope << alter_range(from, first -1)
-               in_scope << make_copy(first, last).move_after(self)
-            else
+               created = make_copy( @first, @last ).move_after(self)
+               @last  = @first - 1
+               @first = from
+               arrange_data( created, :forward )
+
                in_scope << self
+               in_scope << created
+            elsif from == @first then
+               in_scope << self
+            else
+               created = split(from)
+               in_scope << created
             end
 
             if to >= @last then
                from = @last + 1
             else
                previous_mapping = in_scope[-1]
-               previous_mapping.alter_range( first, to )
-               previous_mapping.make_copy(to+1, last).move_after(previous_mapping)
+               previous_mapping.split( to + 1 )
                from = to + 1
             end
 
@@ -218,16 +257,39 @@ module Plan
             return self.class.new( first, last, [] + self.data )
          end
 
-         def alter_range( first, last )
-            @first = first
-            @last  = last
-            return self
+         def split( first_of_second, placement = :both )
+            copy = make_copy( first_of_second, @last ).move_after(self)
+            @last = first_of_second - 1
+            arrange_data( copy, placement )
+            return copy
+         end
+         
+         def arrange_data( forward_copy, placement = :both )
+            case placement
+            when :forward
+               @data.clear()
+            when :back
+               forward_copy.instance_eval { @data.clear() }
+            else
+               # no op
+            end
+            
+            return forward_copy
          end
 
          def move_after( previous )
             self.next = previous.next
             previous.next = self
             return self
+         end
+         
+         def display( stream = $stdout )
+            stream.puts "#{@first}..#{@last}:"
+            stream.indent do
+               @data.each do |datum|
+                  datum.display( stream )
+               end
+            end
          end
       end
 
