@@ -158,7 +158,7 @@ module Plan
             end
             
             if literal.set? and found = @literal_actions[literal] then
-               return found[0]
+               return found
             elsif @symbolic_actions.member?(name) then
                return @symbolic_actions[name]
             end
@@ -1203,6 +1203,12 @@ module Plan
                end
             end
          end
+
+         
+         #
+         # Step 6: As we are done with our literal actions, make them a little faster to use.
+         
+         @literal_actions = @literal_actions.close( true )
       end
 
 

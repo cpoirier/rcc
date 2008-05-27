@@ -88,6 +88,16 @@ module Plan
          
          return nil
       end
+      
+      
+      #
+      # close()
+      #  - returns a ClosedCharacterMap copy of this CharacterMap, for fast, read-only access
+      
+      def close( singular = false )
+         return ClosedCharacterMap.new( self, singular )
+      end
+      
 
 
       def display( stream = $stdout )
@@ -323,6 +333,122 @@ module Plan
    end # CharacterMap
    
 
+
+
+
+
+ #============================================================================================================================
+ # class ClosedCharacterMap
+ #  - a read-only, faster-access version of CharacterRange
+
+   class ClosedCharacterMap
+      
+      def initialize( character_map, singular = false )
+         @ranges   = []
+         @data     = []
+         @boundary = nil
+         @start    = nil
+         
+         index = 0
+         character_map.each do |range, data|
+            @ranges << range
+            @data   << (singular ? data[0] : data)
+            
+            if index < 3 then
+               @boundary = range.last
+            else
+               index += 1
+            end
+         end
+         
+         @start = (@ranges.length / 2).floor if @ranges.length > 3
+      end
+      
+      
+      def empty?()
+         return @ranges.empty?
+      end
+      
+      
+      def []( code )
+         return nil if @boundary.nil?
+
+         #
+         # We do a linear search if the code is less than the boundary we marked during construction.
+         # No point going to the trouble of a binary search if three checks would get us an answer.
+         
+         if code <= @boundary then
+            index = 0
+            @ranges.each do |range|
+               if code < range.first then
+                  return nil
+               elsif code <= range.last then
+                  return @data[index]
+               end
+               
+               index += 1
+            end
+            
+         #
+         # Otherwise, we do a binary search for the data index.
+         
+         else
+            return nil if @start.nil?
+            
+            first = 0
+            index = @start
+            last  = @ranges.length - 1
+
+            while true
+               range = @ranges[index]
+               if code < range.first then
+                  if last <= first then
+                     return nil
+                  else
+                     last  = index - 1
+                     delta = ((last - first) / 2).floor
+                     index = delta > 0 ? first + delta : last
+                  end
+               elsif code > range.last then
+                  if last <= first then
+                     return nil
+                  else
+                     first = index + 1
+                     delta = ((last - first) / 2).floor
+                     index = delta > 0 ? first + delta : first
+                  end
+               else
+                  return @data[index]
+               end
+            end
+         end
+         
+         return nil
+      end
+      
+      
+      def each()
+         @ranges.length.times do |i|
+            range = @ranges[i]
+            datum = @data[i]
+            yield( range, datum )
+         end
+      end
+      
+      
+      def display( stream = $stdout )
+         stream.puts "CharacterMap:"
+         stream.indent do 
+            each do |range, datum|
+               stream.puts "#{range.first}..#{range.last}:"
+               stream.indent do
+                  datum.display( stream )
+               end
+            end
+         end
+      end
+      
+   end
 
 
 end  # module Plan
