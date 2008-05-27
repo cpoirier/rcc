@@ -80,6 +80,18 @@ module Transformations
       
       
       #
+      # unset()
+      
+      def unset( search_nodes )
+         traverse(search_nodes) do |element, nodes|
+            element.unset( nodes )
+            break if element.target?
+         end
+         
+         return nil
+      end
+      
+      #
       # targets()
       #  - returns any target? elements
       

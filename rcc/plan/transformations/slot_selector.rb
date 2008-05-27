@@ -84,6 +84,18 @@ module Transformations
       
       
       #
+      # unset()
+      
+      def unset( search_nodes )
+         return super unless target?
+         
+         update( search_nodes ) do |node|
+            node.undefine_slot( @slot_name )
+         end
+      end
+      
+      
+      #
       # display()
       
       def display( stream = $stdout )

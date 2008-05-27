@@ -51,6 +51,10 @@ module Artifacts
          return false
       end
       
+      def eof?()
+         return false
+      end
+      
       def first_token()
          bug( "you must override first_token()" )
       end

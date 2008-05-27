@@ -105,7 +105,11 @@ module Artifacts
       
       
       def character?()
-         returng @name.is_a?(Numeric)
+         return @name.is_a?(Numeric)
+      end
+      
+      def character_range?()
+         return @name.is_a?(Util::SparseRange)
       end
       
 

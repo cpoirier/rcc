@@ -203,6 +203,15 @@ module Nodes
       def token?()
          return true
       end
+      
+      
+      #
+      # eof?
+      #  - returns true if this Node is the EOF Token
+      
+      def eof?()
+         return @type.eof?
+      end
 
 
       #

@@ -91,6 +91,10 @@ module Nodes
       def define_slot( slot, value )
          @slots[slot] = value
       end
+      
+      def undefine_slot( slot )
+         @slots.delete( slot )
+      end
 
       def method_missing( id, *args )
          name, set = id.to_s.split("=")
@@ -191,10 +195,6 @@ module Nodes
                   end
                end
             end
-            
-            # @slots.each do |name, asn|
-            #    asn.commit( true )
-            # end
          end
 
          

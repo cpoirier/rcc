@@ -9,7 +9,7 @@
 #================================================================================================================================
 
 require "#{File.expand_path(__FILE__).split("/rcc/")[0..-2].join("/rcc/")}/rcc/environment.rb"
-require "#{$RCCLIB}/plan/transformations/selector.rb"
+require "#{$RCCLIB}/plan/transformations/transform.rb"
 
 module RCC
 module Plan 
@@ -17,18 +17,16 @@ module Transformations
  
  
  #============================================================================================================================
- # class Transform
- #  - base class for things that represent a transformation
+ # class UnsetTransform
 
-   class Transform
+   class UnsetTransform < Transform
       
     #---------------------------------------------------------------------------------------------------------------------
     # Initialization
     #---------------------------------------------------------------------------------------------------------------------
 
-      def initialize( lhs_selector, rhs_selector )
-         @lhs_selector = lhs_selector
-         @rhs_selector = rhs_selector
+      def initialize( selector )
+         super( selector, nil )
       end
       
       
@@ -37,19 +35,14 @@ module Transformations
       #  - performs the transform
       
       def apply( node )
-         bug( "you must override Transform.apply()" )
+         @lhs_selector.unset( node )
       end
       
       
-   end # Transform
+   end # UnsetTransform
    
 
 
 end  # module Transformations
 end  # module Plan
 end  # module RCC
-
-
-require "#{$RCCLIB}/plan/transformations/assignment_transform.rb"
-require "#{$RCCLIB}/plan/transformations/append_transform.rb"
-require "#{$RCCLIB}/plan/transformations/unset_transform.rb"

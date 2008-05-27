@@ -141,6 +141,8 @@ module Plan
             elsif @symbolic_actions.member?(nil) then
                return @symbolic_actions[nil]
             end
+         elsif determinant.eof? and found = @literal_actions[-1] then
+            return found[0]
          else
             if @symbolic_actions.member?(determinant.type) then
                return @symbolic_actions[determinant.type]
@@ -148,7 +150,7 @@ module Plan
                return @symbolic_actions[nil]
             end
          end
-         
+
          return nil
       end
       
@@ -1302,18 +1304,7 @@ module Plan
                      stream << sprintf("Transition %-#{width}s to %d", symbol, state.number) << "\n"
                   end
                end
-         
-               #
-               # Display the reductions.
-         
-               unless @reductions.empty?
-                  @reductions.each do |item|
-                     stream << "Reduce rule #{item.production.name} => #{item.production.symbols.join(" ")}" 
-                     stream << " (*)" if item.object_id == @chosen_reduction.object_id
-                     stream << "\n"
-                  end
-               end
-            
+                           
                #
                # Display the recovery options.
             

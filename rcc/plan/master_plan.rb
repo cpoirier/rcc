@@ -230,23 +230,16 @@ module Plan
                   when "assignment_transform"
                      lhs_selector = build_transformation_selector( spec.destination, true )
                      rhs_selector = build_transformation_selector( spec.source            )
-
                      ast_class.transformations << Transformations::AssignmentTransform.new( lhs_selector, rhs_selector )
-                     # $stdout.puts( "target:" )
-                     # $stdout.indent{ lhs_selector.display($stdout) }
-                     # $stdout.end_line
-                     # 
-                     # $stdout.puts( "source:" )
-                     # $stdout.indent{ rhs_selector.display($stdout) }
-                     # $stdout.end_line
-                     # 
-                     # warn_nyi( "transformation plan" )
-                     # ast_class.transformations << nil
+
                   when "append_transform"
                      lhs_selector = build_transformation_selector( spec.destination, true )
                      rhs_selector = build_transformation_selector( spec.source            )
-
                      ast_class.transformations << Transformations::AppendTransform.new( lhs_selector, rhs_selector )
+                  
+                  when "unset_transform"
+                     selector = build_transformation_selector( spec.destination, true )
+                     ast_class.transformations << Transformations::UnsetTransform.new( selector )
                   end
                end
                
@@ -454,6 +447,8 @@ module Plan
                      end
                   end
                end
+            elsif name.character_range?() then
+               determinants[name.name] = true
             else
                determinants[Plan::Symbol.new(name, :token)] = true
             end
@@ -493,30 +488,38 @@ module Plan
             symbols      = @lexical_production_sets.member?(name) ? [symbol] : syntactic_determinants_for( symbol )
          
             symbols.each do |symbol|
-               token_name = symbol.name
+               if symbol.refers_to_character? then
+                  determinants.add(symbol)
+               else
+                  token_name = symbol.name
                
-               next if visited.member?(token_name)
-               visited[token_name] = true
+                  next if visited.member?(token_name)
+                  visited[token_name] = true
                
-               if @lexical_determinants.member?(token_name) then
-                  determinants += @lexical_determinants[token_name]
-               elsif @lexical_production_sets.member?(token_name) then
-                  production_set = @lexical_production_sets[token_name]
-                  unless production_set.empty?
-                     assert( production_set[0].lexical?, "expected lexical production for #{token_name}!" )
+                  if @lexical_determinants.member?(token_name) then
+                     determinants += @lexical_determinants[token_name]
+                  elsif @lexical_production_sets.member?(token_name) then
+                     production_set = @lexical_production_sets[token_name]
+                     unless production_set.empty?
+                        assert( production_set[0].lexical?, "expected lexical production for #{token_name}!" )
 
-                     set_determinants = CharacterRange.new()
-                     production_set.each do |production|
-                        leader = production.symbols[0]
-                        if leader.refers_to_character? then
-                           set_determinants += leader
-                        else
-                           set_determinants += lexical_determinants_for( leader, visited ) unless visited.member?(leader.name)
+                        set_determinants = CharacterRange.new()
+                        production_set.each do |production|
+                           leader = production.symbols[0]
+                           if leader.refers_to_character? then
+                              set_determinants += leader
+                           else
+                              set_determinants += lexical_determinants_for( leader, visited ) unless visited.member?(leader.name)
+                           end
                         end
-                     end
                
-                     @lexical_determinants[token_name] = set_determinants
-                     determinants += set_determinants
+                        @lexical_determinants[token_name] = set_determinants
+                        determinants += set_determinants
+                     end
+                  elsif token_name.eof? then
+                     determinants.add( -1..-1 ) 
+                  else
+                     nyi( "lexical determinant support for #{token_name}", symbol )
                   end
                end
             end

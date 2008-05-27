@@ -66,6 +66,15 @@ module Transformations
       def append( search_nodes, result_nodes )
          return apply(search_nodes)
       end
+      
+      
+      #
+      # unset()
+      #  - most selectors can't be unset, but can form the path to the target
+      
+      def unset( search_nodes )
+         return apply(search_nodes)
+      end
 
       
       #

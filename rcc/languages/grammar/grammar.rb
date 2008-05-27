@@ -654,6 +654,10 @@ module Grammar
       def define_slot( slot, value )
          @slots[slot] = value
       end
+      
+      def undefine_slot( slot )
+         @slots.delete( slot )
+      end
 
    
       def method_missing( id, *args )
@@ -1327,6 +1331,14 @@ module Grammar
    
    def self.append_transform( destination, source )
       return node( "append_transform", "destination" => destination, "source" => source )
+   end
+   
+   
+   #
+   # ::unset_transform()
+   
+   def self.unset_transform( destination )
+      return node( "unset_transform", "destination" => destination )
    end
    
    

@@ -181,6 +181,10 @@ module Grammar
                         )
                      )
                   )
+                  
+                  @rule_defs[name].transformations << validate_transform( name,
+                     Grammar.unset_transform( Grammar.npath_slot_exp(tree_slot) )
+                  )
                end
             
                #
@@ -893,6 +897,8 @@ module Grammar
             validate_transform( rule, spec.source )
             validate_transform( rule, spec.destination )
             
+         when "unset_transform"
+            validate_transform( rule, spec.destination )
             
          when "npath_predicate_exp"
             validate_transform( rule, spec.npath )
