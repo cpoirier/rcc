@@ -84,7 +84,9 @@ module PositionStack
                if @source.at_eof?(@adjusted_stream_position) then
                   @determinant = Scanner::Artifacts::Nodes::Token.end_of_file( @adjusted_stream_position, @source.eof_line_number, @source.eof_column_number, @source )
                else
-                  @determinant = Scanner::Artifacts::Nodes::Character.new(nil, @adjusted_stream_position, @source)
+                  read()
+                  # 
+                  # @determinant = Scanner::Artifacts::Nodes::Character.new(nil, @adjusted_stream_position, @source)
                end
             end
          end
@@ -618,7 +620,7 @@ module PositionStack
       # lookahead_description()
       
       def lookahead_description()
-         if @state.context_free? then
+         if @state.context_free? or @determinant.nil? then
             return "not checked in this state"
          else
             return "#{determinant.description}   #{determinant.line_number}:#{determinant.column_number}   positions #{determinant.start_position},#{determinant.follow_position}"
@@ -649,6 +651,121 @@ module PositionStack
       end
 
 
+      #
+      # read()
+      #  - reads a Token from the stream
+      
+      def read()
+         pos = @adjusted_stream_position
+         line_number = column_number = 0
+
+         if @source.at_eof?(stream_position) then
+            line_number   = @source.eof_line_number
+            column_number = @source.eof_column_number
+         else
+            line_number   = @source.line_number(stream_position)
+            column_number = @source.column_number(stream_position)
+         end
+         
+         characters = []
+         states     = [ @state ]
+
+         while true
+            c      = readc(pos)
+            action = states[-1].action_for( c )
+            
+            case action
+               
+               #
+               # Read a single character and prepare to move on.
+               
+               when Plan::Actions::Read
+                  characters << c
+                  states     << action.to_state
+                  pos   += 1
+                  
+               
+               #
+               # Group several characters for further processing.  Unlike in the Parser, we
+               # perform the Shift here directly.  We don't move the pos, because nothing was
+               # used.
+               
+               when Plan::Actions::Group
+                  length = action.by_production.length
+                  group  = characters.slice!(-length..-1)
+                  states.slice!(-length..-1)
+                  states << states[-1].action_for(action.by_production.name).to_state
+                  characters << group
+
+
+               #
+               # Tokenize ends the read() operation.  We set our answer into the start_position
+               # and return.
+               
+               when Plan::Actions::Tokenize
+                  length = action.by_production.length
+                  if characters.length == length then
+                     @determinant = Nodes::Token.new( characters.flatten, action.by_production.name, @adjusted_stream_position, line_number, column_number, @source )
+                     break
+                  else
+                     nyi( "error handling for too short Tokenize" )
+                  end
+                  
+                  
+               #
+               # For lexical stuff, all Attempt actions will be of the same type.  For Group
+               # actions, we want the longest match (always), so we need to try all branches
+               # and find the longest Token produced.  For Tokenize, we need to interact with
+               # the Parser's BranchInfo system.
+               
+               when Plan::Actions::Attempt
+                  case action.actions[0]
+                  when Plan::Actions::Group
+                     nyi()
+                  when Plan::Actions::Tokenize
+                     action = action.actions[0]
+                     length = action.by_production.length
+                     if characters.length == length then
+                        @determinant = Nodes::Token.new( characters.flatten, action.by_production.name, @adjusted_stream_position, line_number, column_number, @source )
+                        break
+                     else
+                        nyi( "error handling for too short Tokenize" )
+                     end
+                     
+                     warn_nyi( "backtracking support for Tokenize" )
+                  else
+                     nyi( "attempt support for #{action.actions[0].class.name}" )
+                  end
+               
+               
+               #
+               # If there is no action, we've got an error.
+               
+               when NilClass
+                  nyi( "error" )
+
+
+               #
+               # Otherwise, action_for() has returned a Parser-only action, and lexing is irrelevant.
+               
+               else
+                  assert( characters.empty?, "wtf?" )
+                  break
+            end
+         end
+      end
+      
+      
+      
+      #
+      # readc()
+      
+      def readc(at)
+         return -1 if @source.at_eof?(at)
+         return @source[at]
+      end
+      
+      
       
 
 

@@ -23,6 +23,12 @@
       yield()
    end
    
+   def forever()
+      while true
+         yield()
+      end
+   end
+   
    def ignore_errors( *error_classes )
       begin
          yield()

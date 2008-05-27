@@ -135,18 +135,35 @@ module Plan
       def action_for( determinant )
          if context_free? then
             return @symbolic_actions[nil]
-         elsif determinant.character? then
-            if found = @literal_actions[determinant.character] then
-               return found[0]
-            elsif @symbolic_actions.member?(nil) then
-               return @symbolic_actions[nil]
-            end
-         elsif determinant.eof? and found = @literal_actions[-1] then
-            return found[0]
          else
-            if @symbolic_actions.member?(determinant.type) then
-               return @symbolic_actions[determinant.type]
-            elsif @symbolic_actions.member?(nil) then
+            literal = nil
+            name    = nil
+            
+            case determinant
+            when Numeric
+               literal = determinant
+            when Name
+               name    = determinant
+            when NilClass
+               # no op
+            else
+               if determinant.character? then
+                  literal = determinant.character
+               elsif determinant.eof? then
+                  literal = -1
+                  name    = determinant.type
+               else
+                  name    = determinant.type
+               end
+            end
+            
+            if literal.set? and found = @literal_actions[literal] then
+               return found[0]
+            elsif @symbolic_actions.member?(name) then
+               return @symbolic_actions[name]
+            end
+            
+            if @symbolic_actions.member?(nil) then
                return @symbolic_actions[nil]
             end
          end
