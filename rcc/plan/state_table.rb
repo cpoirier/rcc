@@ -159,6 +159,7 @@ module Plan
             
             duration = Time.measure do 
                processed.each do |state|
+                  state.display
                   state.compile_syntactic_actions( self, estream )
                   # $stdout.with( :state_context => :discards ) do
                   #    state.display

@@ -570,7 +570,9 @@ module Plan
       #  - adds a follow context, which can be used when calculating lookahead 
       
       def add_follow_context( item )
-         unless @follow_context_index.member?(item.object_id)
+         warn_bug( "we are ignoring add_follow_context() requests on a closed item -- is this a good idea?" )
+         
+         unless @closed || @follow_context_index.member?(item.object_id)
             @follow_contexts << item
             @follow_context_index[item.object_id] = item
          end

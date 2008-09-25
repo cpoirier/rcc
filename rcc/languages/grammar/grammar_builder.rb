@@ -478,6 +478,9 @@ module Grammar
                else
                   bug( "unsupported repeat_count [#{node.repeat_count}]")
                end
+               
+            when "sp_group"
+               result = process_string_pattern( node.string_pattern, rule_name, loop_detection )
 
             when "cs_characters", "cs_difference"
                result = create_sequence( process_character_data(node, loop_detection) )
@@ -675,7 +678,8 @@ module Grammar
                         child_namer.commit( @rule_defs[child_name.name] )
                      end
 
-                     result = reference = Reference.new( child_name )
+                     reference = Reference.new( child_name )
+                     result = create_sequence(reference)
                      result = create_optional(result) if node.repeat_count.text == "*"
 
                      if @rule_defs[child_name.name].has_slots? then
