@@ -669,7 +669,7 @@ module Plan
                shift_items.each do |item|
                   item.leaders.each do |leader|
                      if actionable_discards.member?(leader) then
-                        DiscardPlan.get_instance(discard_plans, leader.name).shift_items << item
+                        DiscardPlan.instance(discard_plans, leader.name).shift_items << item
                      end
                   end
                end
@@ -1748,7 +1748,7 @@ module Plan
                end
 
                unless @shift_items.empty?
-                  actions << Actions::Shift.new( @symbol_name, state.transitions[symbol_name], @shift_items.collect{|item| item.production}.uniq, false )
+                  actions << Actions::Shift.new( @symbol_name, state.transitions[@symbol_name], @shift_items.collect{|item| item.production}.uniq, false )
                   attempt_span = @shift_items.inject(attempt_span){|span, item| max(span, item.length) }
                end
                
@@ -1761,7 +1761,7 @@ module Plan
                   discard_state = state_table.create_state( transfers, state )
                   transfer_transferable_transitions( state, discard_state, state_table, transfers )
                   
-                  puts "Discard state: #{discard_state.number}" 
+                  # puts "Discard state: #{discard_state.number}" 
 
                   #
                   # And generate the actions.

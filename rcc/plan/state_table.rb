@@ -159,7 +159,7 @@ module Plan
             
             duration = Time.measure do 
                processed.each do |state|
-                  state.display
+                  # state.display
                   state.compile_syntactic_actions( self, estream )
                   # $stdout.with( :state_context => :discards ) do
                   #    state.display
@@ -178,7 +178,7 @@ module Plan
       #
       # compile_lex()
       #  - transitively constructs States to handle lexical processing for the existing states
-      #  - DO NOT call this untill ALL syntactic states have been built
+      #  - DO NOT call this until ALL syntactic states have been built
       #  - you cannot add any more states to this table once you have called this
       
       def compile_lex( estream )
