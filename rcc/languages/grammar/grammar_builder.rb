@@ -336,6 +336,7 @@ module Grammar
             case node.type.name
                when "section_spec"
                   section_discard_list = build_discard_list( node.options, node.slot_filled?("_discard_list") ? node._discard_list : grammar_discard_list )
+                  # puts "SECTION [#{node.name}] discard list: #{section_discard_list.join(" ")}"
                   node.specifications.reverse.each do |spec| 
                      spec.define_slot( "_discard_list", section_discard_list )
                      work_queue.unshift spec 
@@ -349,7 +350,7 @@ module Grammar
                   if @specifications.member?(node.name.text) then
                      nyi( "error handling for duplicate name [#{node.name.text}]" )
                   else
-                     node.define_slot("_discard_list", grammar_discard_list) unless node.slot_filled?("_discard_list")
+                     node.define_slot("_discard_list", grammar_discard_list) unless node.slot_defined?("_discard_list")
                      @specifications[node.name.text] = node
                      
                      if node.type == "group_spec" then
@@ -380,11 +381,14 @@ module Grammar
          list = [] + existing
          
          options.each do |option|
-            next unless option.type.name == "discard_switch"
-            name = create_name( option.name )
-            
-            list         << name unless list.member?(name)
-            @discardable << name unless @discardable.member?(name)
+            case option.type.name
+               when "discard_switch"
+                  name = create_name( option.name )
+                  list         << name unless list.member?(name)
+                  @discardable << name unless @discardable.member?(name)
+               when "no_discard"
+                  list = []
+            end
          end
          
          return list
@@ -658,6 +662,7 @@ module Grammar
                      end
                      
                      child_name = nil
+                     warn_nyi( "discard list discrimination for factored terms" )
                      if resolution.set? then
                         child_name = create_name("#{child_form[0].symbol_name.name}__sequence")
                      elsif node.expression.slot_filled?("label") then

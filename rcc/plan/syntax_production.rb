@@ -120,6 +120,7 @@ module Plan
                stream << @symbols[i].description
                stream.puts( @slots[i].nil? ? ", then discard" : ", store in #{@slots[i]}" )  
             end
+            stream.puts( "Discarded symbols: " + @discards.join(", ") )
          end
       end
       

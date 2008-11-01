@@ -603,7 +603,7 @@ module Plan
                      common_discards = intersection unless initializing
                   end
                end
-               
+
                
                #
                # Add all local discards to the state for lexing purposes.
@@ -614,7 +614,7 @@ module Plan
                      add_productions( production_set, item )
                   end
                end
-               
+
                
                #
                # Any common discards can immediately be converted to actions.  By definition, common discards

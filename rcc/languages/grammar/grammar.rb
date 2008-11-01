@@ -47,7 +47,6 @@ module Grammar
       #    start_rule system_spec
       #    discard    whitespace
       #    discard    comment
-      # 
       
       @@ast = system_spec( 
       grammar_spec( 'RCC',
@@ -162,7 +161,7 @@ module Grammar
       #       group specification
       #          macros_spec     => block('macros')              [ macro_spec*           ]
       #          reorder_spec    => block('reorder')             [ reorder_level*        ]
-      #          section_spec    => block('section' word:name)   [ discard_switch:option* specification* ]
+      #          section_spec    => block('section' word:name)   [ no_discard? discard_switch:option* specification* ]
       #          group_spec      => block('group' word:name)     [ (rule_spec|group_spec|spec_reference):specification* ]
       #          rule_spec       => statement() [ word:name '=>' expression directive* ] transformation_spec*
       #       end
@@ -174,6 +173,7 @@ module Grammar
                
                rule_spec( 'section_spec', 
                   block_macro_call( expression('section', reference_exp('word', 'name')),
+                     repeated_reference( '?', 'no_discard' ),
                      repeated_reference( '*', 'discard_switch', "option" ),
                      repeated_reference( '*', 'specification'  )
                   )
@@ -202,9 +202,11 @@ module Grammar
             ),
             
       #       
+      #       no_discard     => statement() [ 'no' 'discard' ]
       #       spec_reference => statement() [ word:name ]
       #       reorder_level  => statement() [ word:reference+ ]
       #
+            rule_spec( 'no_discard'    , statement_macro_call(string_exp('no'), string_exp('discard'))   ),
             rule_spec( 'spec_reference', statement_macro_call(reference_exp('word', 'name'))                ),
             rule_spec( 'reorder_level' , statement_macro_call(repeated_reference('+', 'word', 'reference')) )
       
@@ -229,8 +231,6 @@ module Grammar
             ),
 
       #       
-      #       string => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
-      #
       #       group expression
       #          local_commit => ';'
       #          transclusion => '%%'
@@ -254,12 +254,6 @@ module Grammar
       #       end
       # 
          
-            rule_spec( 'string', 
-               est("'"), 
-               repeated_exp( '+', group_exp(branch_exp(reference_exp('unicode_sequence'), reference_exp('escape_sequence'), reference_exp('general_text')), 'element') ), 
-               est("'") 
-            ),
-      
             group_spec( 'expression',
                rule_spec( 'local_commit', ';'  ),
                rule_spec( 'transclusion', '%%' ),
@@ -321,6 +315,12 @@ module Grammar
       #          sp_branch     => string_pattern:tree '|' string_patttern:leaf          @associativity=left
       #          sp_repeated   => string_pattern ('*'|'+'|'?'):repeat_count
       #       end
+      #
+      #       group character_set
+      #          cs_characters
+      #          cs_difference => character_set:lhs '-' character_set:rhs   @associativity=none
+      #       end
+      #
       # 
          
             group_spec( 'string_pattern',
@@ -331,13 +331,21 @@ module Grammar
                rule_spec( 'sp_branch'   , reference_exp('string_pattern', "tree"), '|', reference_exp('string_pattern', "leaf"), assoc('left')  ),
                rule_spec( 'sp_repeated' , reference_exp('string_pattern'), group_exp(branch_exp('*', '+', '?'), 'repeat_count') )
             ),
+            
+            group_spec( 'character_set',
+               spec_reference( 'cs_characters' ),
+               rule_spec( 'cs_difference', reference_exp('character_set', 'lhs'), '-', reference_exp('character_set', 'rhs'), assoc('none') )
+            )
+         ),
          
-      #    
-      #       group character_set
-      #          cs_characters => '[' cs_element+ ']'
-      #          cs_difference => character_set:lhs '-' character_set:rhs   @associativity=none
-      #       end
-      #       
+         
+      #
+      #    section strings
+      #       no discard
+      #
+      #       string => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
+      #       cs_characters => '[' cs_element+ ']'
+      #
       #       group cs_element
       #          character                              
       #          cs_reference  => '{' word:name '}'              
@@ -351,11 +359,17 @@ module Grammar
       #       end
       #    end
       #    
+      
+         section_spec( 'strings',
+            no_discard(),
          
-            group_spec( 'character_set',
-               rule_spec( 'cs_characters', '[', repeated_reference('+', 'cs_element'), ']' ),
-               rule_spec( 'cs_difference', reference_exp('character_set', 'lhs'), '-', reference_exp('character_set', 'rhs'), assoc('none') )
+            rule_spec( 'string', 
+               est("'"), 
+               repeated_exp( '+', group_exp(branch_exp(reference_exp('unicode_sequence'), reference_exp('escape_sequence'), reference_exp('general_text')), 'element') ), 
+               est("'") 
             ),
+
+            rule_spec( 'cs_characters', '[', repeated_reference('+', 'cs_element'), ']' ),
          
             group_spec( 'cs_element',
                spec_reference( 'character' ),
@@ -368,6 +382,7 @@ module Grammar
                spec_reference( 'unicode_sequence'  ),
                spec_reference( 'escape_sequence'   )
             )
+
          ),
       
       
@@ -827,6 +842,7 @@ module Grammar
          when "option"
             return true if node.type == "start_rule"
             return true if node.type == "discard_switch"
+            return true if node.type == "no_discard"
          when "specification"
             return true if node.type == "macros_spec"
             return true if node.type == "section_spec"
@@ -960,6 +976,13 @@ module Grammar
    
    def self.discard_switch( name )
       return node( "discard_switch", "name" => w(name) )
+   end
+
+   #
+   # ::no_discard()
+   
+   def self.no_discard()
+      return node( "no_discard" )
    end
    
    

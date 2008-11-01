@@ -719,9 +719,18 @@ module PositionStack
                # the Parser's BranchInfo system.
                
                when Plan::Actions::Attempt
+
                   case action.actions[0]
                   when Plan::Actions::Group
-                     nyi()
+                     action = action.actions[0]
+                     length = action.by_production.length
+                     group  = characters.slice!(-length..-1)
+                     states.slice!(-length..-1)
+                     states << states[-1].action_for(action.by_production.name).to_state
+                     characters << group
+                     
+                     warn_nyi( "backtracking support for Group" )
+                     
                   when Plan::Actions::Tokenize
                      action = action.actions[0]
                      length = action.by_production.length
@@ -742,7 +751,8 @@ module PositionStack
                # If there is no action, we've got an error.
                
                when NilClass
-                  nyi( "error" )
+                  states[-1].display
+                  nyi( "error for [#{c}]", @source.sample )
 
 
                #

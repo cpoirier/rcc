@@ -49,6 +49,7 @@ module Plan
          ast_plans         = {}
          discard_lists     = {}
 
+         warn_nyi( "discard lexicals should not occlude rule lexicals!" )
       
          #
          # Produces a global set of Productions, in declaration order.  Note that Grammar.rules contains
@@ -150,17 +151,6 @@ module Plan
                #
                # Each path through the master_form will become a single Production. 
                
-               $stderr.puts "#{rule.name}:" 
-               $stderr.indent do
-                  $stderr.puts "form:"
-                  $stderr.indent do
-                     rule.master_form.display($stderr)
-                  end
-                  $stderr.end_line
-                  $stderr.puts 
-               end
-               
-               
                rule.master_form.paths.each do |branchpoint|
                   branchpoint.each_element do |sequence|
                      if debug_production_build then
@@ -218,7 +208,7 @@ module Plan
                         production.commit_point = symbols[-1].commit_point
                         symbols[-1].commit_point = nil
                      end
-                     
+
                      if debug_production_build then
                         $stderr.indent do
                            $stderr.puts "production: "
@@ -254,7 +244,7 @@ module Plan
                   end
                end
                
-               
+
                #
                # Optionally display the build results.
                

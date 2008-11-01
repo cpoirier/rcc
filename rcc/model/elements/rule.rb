@@ -48,7 +48,7 @@ module Elements
          @priority        = 0
          @transformations = []
          @discard_symbols = discard_symbols
-         
+
          @has_pluralized_slots = false
       end
       
