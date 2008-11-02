@@ -1,5 +1,5 @@
 
-grammar Math
+grammar BasicMath
    priority ascending
    start_rule program
    discard whitespace

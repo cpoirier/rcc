@@ -1,0 +1,34 @@
+Grammar code
+   StartRule      program
+   IgnoreTerminal whitespace
+   IgnoreTerminal comment
+   EnableBacktracking
+                
+   Terminals
+      eol         => /\n+/          '\n'
+      whitespace  => /[\t ]+/       ' '
+      comment     => /\#[^\n]*/     '# comment'
+      name        => /[^\s]*/       '<name>'
+   end
+
+   Rules          
+      program     => statement
+                  => statements statement
+            
+      eols        => eols eol       {assoc=right}
+                  => eol       
+
+      grammar     => 'with'?  name:grammar_file
+                  => 'using'? name:grammar_file
+                  
+      statement   => grammar 'generate' generator_type                  eols  {generation_statement}
+                  => grammar 'explain'  explain_type   name:source_file eols  {explain_statement}
+                  
+      generator_type => 'scanner'
+      
+      explain_type   => 'parse'
+                     => 'recovery'
+                     => 'lex'
+
+   end
+end
