@@ -23,7 +23,7 @@
    RCC_BUILD     = "$Revision$".gsub(/[^0-9]/, "").to_i     # Note, to force this to update, change this line and commit/update: 1
    RCC_STRING    = "RCC #{RCC_RELEASE} Build #{RCC_BUILD}"
    RCC_COPYRIGHT = "Copyright (C) 2007-2008 Chris Poirier"
-   RCC_WELCOME   = RCC_STRING + "\n" + RCC_COPYRIGHT + "\nThis program comes with ABSOLUTELY NO WARRANTY."
+   RCC_WELCOME   = RCC_STRING + " -- " + RCC_COPYRIGHT + "\nThis program comes with ABSOLUTELY NO WARRANTY.  See license for details."
 
 
    #
