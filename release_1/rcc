@@ -14,13 +14,10 @@
 
 
    rc = 0
-
-
-   #
-   # Start processing.
-
    begin
       require "#{File.dirname(File.expand_path(__FILE__))}/system/environment.rb"
+      puts "#{RCC_WELCOME}\n\n" if $stdout.tty?
+
       require "#{RCC_LIBDIR}/languages/grammar/loader.rb"
 
       #
@@ -32,7 +29,6 @@
          exit 10
       end
 
-      puts "#{RCC_WELCOME}\n" if $stdout.tty?
       warn_bug( "setting $stderr to $stdout" )
       $stderr = $stdout
 

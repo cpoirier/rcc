@@ -14,17 +14,24 @@
 
 
    RCC_LIBDIR = File.expand_path(File.dirname(File.expand_path(__FILE__)))
+   RCC_INDEV  = true   # Clear this when building a distribution!
    
-   RCC_RELEASE   = 1
-   RCC_BUILD     = "$Revision$".gsub(/[^0-9]/, "").to_i     # Note, to force this to update, change this line and commit/update: 1
-   RCC_STRING    = "RCC #{RCC_RELEASE} Build #{RCC_BUILD}"
-   RCC_COPYRIGHT = "Copyright (C) 2007-2008 Chris Poirier"
-   RCC_WELCOME   = RCC_STRING + " -- " + RCC_COPYRIGHT + "\nThis program comes with ABSOLUTELY NO WARRANTY.  See license for details."
-
-
+   
    #
    # Bootstrap the environment.
    
    Dir["#{RCC_LIBDIR}/environment/*.rb"].each {|path| require path}
    ContextStream.hijack_std()
+
+
+   #
+   # Set up some useful constants.
+   
+   RCC_RELEASE   = 1
+   RCC_VERSION   = (RCC_INDEV && `which svnversion`.strip.length > 0) ? `svnversion -n "#{RCC_LIBDIR}"`.split(":").pop : "$Revision$".to_i
+   RCC_STRING    = "RCC #{RCC_RELEASE} Version #{RCC_VERSION}"
+   RCC_COPYRIGHT = "Copyright (C) 2007-2008 Chris Poirier"
+   RCC_WELCOME   = RCC_STRING + " -- " + RCC_COPYRIGHT + "\nThis program comes with ABSOLUTELY NO WARRANTY.  See license for details."
+
+
 
