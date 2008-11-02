@@ -12,8 +12,252 @@
 # governing permissions and limitations under the License.
 #================================================================================================================================
 
-   require "#{File.dirname(File.expand_path(__FILE__))}/system/environment.rb"
-   
-   puts "#{RCC_WELCOME}\n" if $stdout.tty?
-   
-   
+
+   rc = 0
+
+
+   #
+   # Start processing.
+
+   begin
+      require "#{File.dirname(File.expand_path(__FILE__))}/system/environment.rb"
+      require "#{RCC_LIBDIR}/languages/grammar/loader.rb"
+
+      #
+      # Verify usage.
+
+      if ARGV.empty? then
+         puts "USAGE: #{File.basename($0)} <grammar file> <test>*"
+         puts "TESTS: read, lex, parse"
+         exit 10
+      end
+
+      puts "#{RCC_WELCOME}\n" if $stdout.tty?
+      warn_bug( "setting $stderr to $stdout" )
+      $stderr = $stdout
+
+
+      #
+      # Initialize the RCC system
+      $dur = 0
+      parser_factory = RCC::Languages::Grammar::Loader.initialize_bootstrap_parser()
+
+      # File.open("states.out", "w+") do |file|
+      #    stream = ContextStream.new(file)
+      #    with_context_variables( :grammar_name => "RCC" ) do 
+      #       stream.with( :state_actions => true ) do
+      #          parser_factory.parser_plan.state_table.each do |state|
+      #             state.display( stream )
+      #             stream.blank_lines( 3 )
+      #          end
+      #       end
+      #    end
+      # end
+
+      ARGV.each do |test|
+         case test
+
+         #
+         # Drive the Source over the supplied grammar.  Test streaming capabilities.
+
+         when "read"
+            source    = parser_factory.open_source( ARGV.shift )
+            last_code = nil
+            count     = 0
+            source.each_character do |position, code, line_number, column_number|
+               if last_code == 10 then
+                  count += 1
+                  if count == 4 then
+                     source.commit(position - 1) 
+                     count = 0
+                  end
+               end
+
+               info = line_number.to_s.rjust(3) + ":" + column_number.to_s.rjust(3) + "|   " + code.to_s.ljust(4) + " " + [code].pack("U*").escape.ljust(2) + "|   "
+
+               sample, marker = source.sample_line_and_mark_position()
+               if sample then
+                  $stdout << info << sample << "\n"
+                  $stdout << ("-" * info.length) << marker << "\n"
+               else
+                  $stdout << info << "\n"
+                  $stdout << "\n"
+               end
+
+               $stdout << "\n" if code == 10
+
+               last_code = code
+            end
+
+
+
+         #
+         # Drive the Lexer over the Source.
+
+         when "lex"
+            lexer = parser_factory.build_lexer( ARGV.shift )
+            while token = lexer.read( lexer.next_position, parser_factory.lexer_plan )
+               token.display( $stdout )
+            end
+
+            # while token = lexer.next_token( parser_plan.lexer_plan, explain ? "" : nil )
+            #    if explain then
+            #       puts "\n"
+            #    else
+            #       puts "[#{token.gsub("\n", "\\n")}]#{token.type.is_a?(Symbol) ? ":" + token.type.to_s : "" } at #{token.line_number}:#{token.column_number}"
+            #    end
+            # end
+            # 
+            # if lexer.input_remaining? then
+            #    puts "UNRECOGNIZED INPUT at #{lexer.line_number}:#{lexer.column_number} [#{lexer.sample_unconsumed.gsub("\n", "\\n")}]"
+            # else
+            #    puts "DONE"
+            # end
+            # 
+
+
+         #
+         # Dump information about the bootstrap parser.
+
+         when "debug"
+            $stdout[:state_context]  = :determinants
+            $stdout[:state_complete] = true
+            parser = parser_factory.build_parser( ARGV.shift )
+            parser.parser_plan.state_table.each do |state|
+               state.display( $stdout )
+               $stdout.puts ""
+               $stdout.puts ""
+            end
+
+         #
+         # Drive the Parser over the Source.
+
+         when "parse"
+            $stdout[:hide_ignored]   = true
+            $stdout[:skip_generated] = true
+
+            parser   = parser_factory.build_parser( ARGV.shift )
+            solution = parser.parse( nil, 0 )
+
+            if solution.valid? then
+               solution.ast.display( $stdout )
+            else
+               solution.report_errors( $stdout )
+               solution.ast.display( $stdout ) if solution.complete?
+            end
+
+         #
+         # Parse a grammar, then parse something with it.
+
+         when "try"
+            parser   = parser_factory.build_parser( ARGV.shift )
+            solution = parser.parse( nil )
+
+            if solution.valid? then
+               $stdout[:hide_ignored]   = true
+               $stdout[:skip_generated] = true
+               solution.ast.display()
+
+   puts "===> Solution is valid; BUILDING parser"            
+               built_factory = nil
+
+               duration = Time.measure do 
+                  system_model = RCC::Languages::Grammar::ModelBuilder.build( solution.ast )
+                  master_plan  = system_model.compile_master_plan()
+                  parser_plan  = master_plan.compile_parser_plan( system_model.start_rule )
+                  built_factory = RCC::Scanner::Interpreter::Factory.new( parser_plan )
+
+                  File.open("states.out", "w+") do |file|
+                     stream = ContextStream.new(file)
+                     with_context_variables( :grammar_name => "Math" ) do 
+                        stream.with( :state_actions => true ) do
+                           built_factory.parser_plan.state_table.each do |state|
+                              state.display( stream )
+                              stream.blank_lines( 3 )
+                           end
+                        end
+                     end
+                  end
+               end
+
+   puts "===> Parser built in #{duration}s; PARSING input"            
+               built_parser = built_factory.build_parser( "<stdin>", $stdin )
+               solution = built_parser.parse( nil, 3 )
+
+   puts "===> DONE"             
+               if solution.valid? then
+                  solution.ast.display( $stdout )
+               else
+                  solution.report_errors( $stdout )
+                  solution.ast.display( $stdout ) if solution.complete?
+               end
+            end
+         end
+      end
+
+
+
+
+   rescue Bug => e
+      $stdout.flush
+      $stderr.puts e.message 
+      $stderr.indent do
+         unless e.data.nil? or e.data.empty?
+            e.data.each do |object|
+               $stderr.puts "Detail:"
+               $stderr.indent { object.display($stderr) }
+               $stderr.end_line()
+            end
+         end
+         $stderr.puts "Backtrace:"
+         $stderr.indent { e.backtrace.each {|entry| $stderr.puts entry} }
+      end
+
+      rc = 10
+
+   rescue Exception => e
+      $stdout.flush
+
+      case e
+      when SystemExit
+         rc = 0
+      when Interrupt, Errno::EPIPE
+         $stderr.puts ">>   . . . terminated."
+         rc = 1
+      when LoadError
+         $stderr.puts "Unable to load RCC component: #{e.message.split(" -- ")[1]}"
+         $stderr.puts "   at: #{e.backtrace[0]}"
+         rc = 2
+      else
+
+         #
+         # I've noticed that Ruby often hangs in error.message for some of
+         # its errors, and only returns when you hit Control-C on the console.
+         # In order to avoid this, we start a timeout thread and have it kick 
+         # the main thread after 1 second.  
+
+         main_thread = Thread.current
+         Thread.start do
+            sleep 1
+            main_thread.kill
+         end
+
+         $stderr.puts "#{e.class.name}: #{e.message}"
+         $stderr.indent do
+            $stderr.puts "Backtrace:"
+            $stderr.indent { e.backtrace.each { |entry| $stderr.puts entry }}
+         end
+
+         rc = 10
+      end
+   end
+
+
+   #
+   # Clean up any running worker threads and exit.
+
+   Thread.list.each do |thread|
+      thread.kill unless thread.object_id == Thread.current.object_id
+   end
+
+   exit rc
