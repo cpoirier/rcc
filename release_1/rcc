@@ -16,9 +16,9 @@
    rc = 0
    begin
       require "#{File.dirname(File.expand_path(__FILE__))}/system/environment.rb"
-      puts "#{RCC_WELCOME}\n\n" if $stdout.tty?
-
       require "#{RCC_LIBDIR}/languages/grammar/loader.rb"
+
+      puts "#{RCC_WELCOME}\n\n" if $stdout.tty?
 
       #
       # Verify usage.

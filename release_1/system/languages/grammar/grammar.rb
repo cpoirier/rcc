@@ -62,22 +62,22 @@ module Grammar
 
       #
       #    section misc
-      #       whitespace        => [ \t\r]+
-      #       eol               => [\n]
-      #       any_character     => [\u0000-\uffff]
-      #       line_character    => [{any_character}]-[\n]
-      #       general_character => [{line_character}]-['\\\{\}\[\]]
-      #       digit             => [0-9]
-      #       hex_digit         => [{digit}a-fA-F]
+      #       whitespace        := [ \t\r]+
+      #       eol               := [\n]
+      #       any_character     := [\u0000-\uffff]
+      #       line_character    := [{any_character}]-[\n]
+      #       general_character := [{line_character}]-['\\\{\}\[\]]
+      #       digit             := [0-9]
+      #       hex_digit         := [{digit}a-fA-F]
       #       
-      #       unicode_sequence  => [\\] [u] [{hex_digit}] [{hex_digit}] [{hex_digit}] [{hex_digit}]
-      #       escape_sequence   => [\\] [a-z\\\-\[\]\']
+      #       unicode_sequence  := [\\] [u] [{hex_digit}] [{hex_digit}] [{hex_digit}] [{hex_digit}]
+      #       escape_sequence   := [\\] [a-z\\\-\[\]\']
       #       
-      #       word              => [a-zA-Z] [a-zA-Z0-9_]*
-      #       property_text     => [{general_character}]-[}]+
-      #       general_text      => [{general_character}]+
+      #       word              := [a-zA-Z] [a-zA-Z0-9_]*
+      #       property_text     := [{general_character}]-[}]+
+      #       general_text      := [{general_character}]+
       #       
-      #       comment           => [#] [{line_character}]*
+      #       comment           := [#] [{line_character}]*
       #    end
       #
       
@@ -105,8 +105,8 @@ module Grammar
          
       #
       #    macros
-      #       statement         => %% eol:ignore+ ;
-      #       block( header )   => statement() [ statement() [$header] %% 'end' ]
+      #       statement         := %% eol:ignore+ ;
+      #       block( header )   := statement() [ statement() [$header] %% 'end' ]
       #    end
       # 
       
@@ -123,9 +123,9 @@ module Grammar
          
       # 
       #    section grammar
-      #       system_spec  => grammar_spec+ addendum?
-      #       grammar_spec => block('grammar' word:name) [ priority option* specification* transformations? ]
-      #       addendum     => statement() [ 'stop' ] 
+      #       system_spec  := grammar_spec+ addendum?
+      #       grammar_spec := block('grammar' word:name) [ priority option* specification* transformations? ]
+      #       addendum     := statement() [ 'stop' ] 
       # 
       
          section_spec( 'grammar',
@@ -144,12 +144,12 @@ module Grammar
             ),
       
       #
-      #       priority => statement() [ 'priority' ('ascending'|'descending'):direction ]
+      #       priority := statement() [ 'priority' ('ascending'|'descending'):direction ]
       #
       #       group option
-      #          start_rule          => statement() [ 'start_rule' word:rule_name        ]
-      #          discard_switch      => statement() [ 'discard'    word:name             ]
-      #          pluralization_guide => statement() [ 'pluralize'  word:name word:plural ]
+      #          start_rule          := statement() [ 'start_rule' word:rule_name        ]
+      #          discard_switch      := statement() [ 'discard'    word:name             ]
+      #          pluralization_guide := statement() [ 'pluralize'  word:name word:plural ]
       #       end
       #
       # 
@@ -163,11 +163,11 @@ module Grammar
 
       #       
       #       group specification
-      #          macros_spec     => block('macros')              [ macro_spec*           ]
-      #          reorder_spec    => block('reorder')             [ reorder_level*        ]
-      #          section_spec    => block('section' word:name)   [ no_discard? discard_switch:option* specification* ]
-      #          group_spec      => block('group' word:name)     [ (rule_spec|group_spec|spec_reference):specification* ]
-      #          rule_spec       => statement() [ word:name '=>' expression directive* ] transformation_spec*
+      #          macros_spec     := block('macros')              [ macro_spec*           ]
+      #          reorder_spec    := block('reorder')             [ reorder_level*        ]
+      #          section_spec    := block('section' word:name)   [ no_discard? discard_switch:option* specification* ]
+      #          group_spec      := block('group' word:name)     [ (rule_spec|group_spec|spec_reference):specification* ]
+      #          rule_spec       := statement() [ word:name ':=' expression directive* ] transformation_spec*
       #       end
       #
       
@@ -197,7 +197,7 @@ module Grammar
                rule_spec( 'rule_spec',
                   statement_macro_call( 
                      reference_exp( 'word', 'name' ), 
-                     string_exp( '=>' ),
+                     string_exp( ':=' ),
                      reference_exp( 'expression' ),
                      repeated_reference( '*', 'directive' )
                   ),
@@ -206,9 +206,9 @@ module Grammar
             ),
             
       #       
-      #       no_discard     => statement() [ 'no' 'discard' ]
-      #       spec_reference => statement() [ word:name ]
-      #       reorder_level  => statement() [ word:reference+ ]
+      #       no_discard     := statement() [ 'no' 'discard' ]
+      #       spec_reference := statement() [ word:name ]
+      #       reorder_level  := statement() [ word:reference+ ]
       #
             rule_spec( 'no_discard'    , statement_macro_call(string_exp('no'), string_exp('discard'))   ),
             rule_spec( 'spec_reference', statement_macro_call(reference_exp('word', 'name'))                ),
@@ -223,8 +223,8 @@ module Grammar
       #    
       #    section rule_spec
       #       macros
-      #          labelled()          => %% (':' word:label)?
-      #          attribute_set(name) => '@' $name '=' %%
+      #          labelled()          := %% (':' word:label)?
+      #          attribute_set(name) := '@' $name '=' %%
       #       end
       #
       
@@ -236,24 +236,24 @@ module Grammar
 
       #       
       #       group expression
-      #          local_commit => ';'
-      #          transclusion => '%%'
-      #          gateway_exp  => '!' !whitespace word
+      #          local_commit := ';'
+      #          transclusion := '%%'
+      #          gateway_exp  := '!' !whitespace word
       #
       #          group general_exp
       #             group repeatable_exp
-      #                reference_exp => labelled() [ word:name            ]
-      #                string_exp    => labelled() [ string               ]
-      #                sp_exp        => labelled() [ string_pattern       ]
-      #                variable_exp  => labelled() [ '$' word:name        ]
-      #                group_exp     => labelled() [ '(' general_exp:expression ')'   ]
+      #                reference_exp := labelled() [ word:name            ]
+      #                string_exp    := labelled() [ string               ]
+      #                sp_exp        := labelled() [ string_pattern       ]
+      #                variable_exp  := labelled() [ '$' word:name        ]
+      #                group_exp     := labelled() [ '(' general_exp:expression ')'   ]
       #
-      #                macro_call    => word:macro_name !whitespace '(' parameters? ')' ('[' expression:body? ']')?
-      #                sequence_exp  => expression:tree expression:leaf              @associativity=left
-      #                branch_exp    => general_exp:tree '|' general_exp:leaf        @associativity=left
+      #                macro_call    := word:macro_name !whitespace '(' parameters? ')' ('[' expression:body? ']')?
+      #                sequence_exp  := expression:tree expression:leaf              {left associative}
+      #                branch_exp    := general_exp:tree '|' general_exp:leaf        {left associative}
       #             end
       #
-      #             repeated_exp => repeatable_exp:expression ('*'|'+'|'?'):repeat_count
+      #             repeated_exp := repeatable_exp:expression ('*'|'+'|'?'):repeat_count
       #          end
       #       end
       # 
@@ -287,13 +287,13 @@ module Grammar
       # 
       #       group parameters
       #          expression
-      #          parameter_tree  => parameters:tree ',' parameters:leaf      @associativity=left
+      #          parameter_tree  := parameters:tree ',' parameters:leaf      {left associative}
       #       end
       # 
       #       group directive
-      #          associativity_directive => attribute_set('associativity') [ ('left'|'right'|'none'):direction ]
+      #          associativity_directive := '{' 'associativity'? ('left'|'right'|'non'):direction ('assoc'|'associative')? '}'
       #       end
-      #       
+      #
       
             group_spec( 'parameters',
                rule_spec( 'parameter_tree', reference_exp('parameters', 'tree'), ',', reference_exp('parameters', "leaf"), assoc('left') ),
@@ -302,27 +302,33 @@ module Grammar
             
             group_spec( 'directive',
                rule_spec( 'associativity_directive', 
-                  macro_call( 'attribute_set', ['associativity'], 
+                  '{', 
+                  repeated_exp('?', string_exp('associativity')),
+                  group_exp(
+                     branch_exp('left', 'right', 'none'),
+                     'direction'
+                  ),
+                  repeated_exp('?',
                      group_exp(
-                        branch_exp('left', 'right', 'none'),
-                        'direction'
+                         branch_exp('assoc', 'associative')
                      )
-                  )
+                  ),
+                  '}'
                )
             ),
 
       # 
       #       group string_pattern
       #          character_set
-      #          sp_group      => '(' string_pattern ')'
-      #          sp_sequence   => string_pattern:tree string_pattern:leaf               @associativity=left
-      #          sp_branch     => string_pattern:tree '|' string_patttern:leaf          @associativity=left
-      #          sp_repeated   => string_pattern ('*'|'+'|'?'):repeat_count
+      #          sp_group      := '(' string_pattern ')'
+      #          sp_sequence   := string_pattern:tree string_pattern:leaf               {left associative}
+      #          sp_branch     := string_pattern:tree '|' string_patttern:leaf          {left associative}
+      #          sp_repeated   := string_pattern ('*'|'+'|'?'):repeat_count
       #       end
       #
       #       group character_set
       #          cs_characters
-      #          cs_difference => character_set:lhs '-' character_set:rhs   @associativity=none
+      #          cs_difference := character_set:lhs '-' character_set:rhs   @associativity=none
       #       end
       #
       # 
@@ -347,13 +353,13 @@ module Grammar
       #    section strings
       #       no discard
       #
-      #       string => '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
-      #       cs_characters => '[' cs_element+ ']'
+      #       string := '\'' (unicode_sequence|escape_sequence|general_text):element+ '\''
+      #       cs_characters := '[' cs_element+ ']'
       #
       #       group cs_element
       #          character                              
-      #          cs_reference  => '{' word:name '}'              
-      #          cs_range      => character:from '-' character:to           @associativity=none
+      #          cs_reference  := '{' word:name '}'              
+      #          cs_range      := character:from '-' character:to           @associativity=none
       #       end
       # 
       #       group character
@@ -393,31 +399,31 @@ module Grammar
          
       #    
       #    section transformations
-      #       transformations         => block('transformations') [ transformation_set* ]
-      #       transformation_set      => word:rule_name eol:ignore* transformation_spec+
+      #       transformations         := block('transformations') [ transformation_set* ]
+      #       transformation_set      := word:rule_name eol:ignore* transformation_spec+
       #
       #       group transformation_spec
-      #          assignment_transform => statement() ['**' npath:destination '='  npath:source ]
-      #          append_transform     => statement() ['**' npath:destination '+=' npath:source ]
+      #          assignment_transform := statement() ['**' npath:destination '='  npath:source ]
+      #          append_transform     := statement() ['**' npath:destination '+=' npath:source ]
       #       end
       #
       #       group npath
-      #          npath_self_exp       => '.'
-      #          npath_slot_exp       => '@' word:slot_name
-      #          npath_tclose_exp     => '{' npath '}'
-      #          npath_branch_exp     => npath:tree '|' npath:leaf   @associativity=left
-      #          npath_reverse_exp    => '-' npath 
-      #          npath_predicate_exp  => npath '[' npred ']'         @associativity=left
-      #          npath_path_exp       => npath:tree '/' npath:leaf   @associativity=left
-      #          npath_group_exp      => '(' npath ')'
+      #          npath_self_exp       := '.'
+      #          npath_slot_exp       := '@' word:slot_name
+      #          npath_tclose_exp     := '{' npath '}'
+      #          npath_branch_exp     := npath:tree '|' npath:leaf   {left associative}
+      #          npath_reverse_exp    := '-' npath 
+      #          npath_predicate_exp  := npath '[' npred ']'         {left associative}
+      #          npath_path_exp       := npath:tree '/' npath:leaf   {left associative}
+      #          npath_group_exp      := '(' npath ')'
       #       end
       #
       #       group npred
-      #          npred_type_exp       => word:type_name
+      #          npred_type_exp       := word:type_name
       #          npath
-      #          npred_or_exp         => npred:tree '|' npred:leaf   @associativity=left
-      #          npred_and_exp        => npred:tree '&' npred:leaf   @associativity=left
-      #          npred_negation_exp   => '!' npred
+      #          npred_or_exp         := npred:tree '|' npred:leaf   {left associative}
+      #          npred_and_exp        := npred:tree '&' npred:leaf   {left associative}
+      #          npred_negation_exp   := '!' npred
       #       end
       #
       #       reorder
@@ -468,10 +474,10 @@ module Grammar
       
       #
       #    section macros_spec
-      #       macro_spec => => statement() [ word:name (!whitespace '(' parameter_defs? ')')? '=>' expression ]
+      #       macro_spec := statement() [ word:name (!whitespace '(' parameter_defs? ')')? ':=' expression ]
       #       
       #       group parameter_defs
-      #          parameter_def_tree => parameter_defs:tree ',' parameter_defs:leaf   @associativity=left
+      #          parameter_def_tree := parameter_defs:tree ',' parameter_defs:leaf   {left associative}
       #          word
       #       end
       #    end
@@ -488,7 +494,7 @@ module Grammar
                         )
                      )
                   ),
-                  '=>', 
+                  ':=', 
                   reference_exp('expression') 
                )
             ),
