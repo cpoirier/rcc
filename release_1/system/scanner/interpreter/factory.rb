@@ -14,7 +14,6 @@
 
 require "#{File.expand_path(__FILE__).split("/system/")[0..-2].join("/system/")}/system/environment.rb"
 require "#{RCC_LIBDIR}/scanner/artifacts/source.rb"
-require "#{RCC_LIBDIR}/scanner/interpreter/lexer.rb"
 require "#{RCC_LIBDIR}/scanner/interpreter/parser.rb"
 
 
@@ -63,7 +62,7 @@ module Interpreter
       
       #
       # build_parser()
-      #  - returns a new Parser on your Lexer
+      #  - returns a new Parser
       
       def build_parser( descriptor, file = nil )
          return RCC::Scanner::Interpreter::Parser.new( @parser_plan, open_source(descriptor, file) )

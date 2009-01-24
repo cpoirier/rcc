@@ -69,20 +69,6 @@ module Interpreter
       
       
       #
-      # connect()
-      #  - connect a source (lexer) to the Parser for processing
-      
-      def connect( lexeer )
-         @lexer       = lexer
-         @in_recovery = false
-         
-         @work_queue.clear
-         @recovery_queue.clear
-      end
-      
-      
-      
-      #
       # ::describe_type()
       
       def self.describe_type( type )
@@ -91,7 +77,6 @@ module Interpreter
       
       
             
-
 
       #
       # parse()

@@ -16,7 +16,7 @@
    rc = 0
    begin
       require "#{File.dirname(File.expand_path(__FILE__))}/system/environment.rb"
-      require "#{RCC_LIBDIR}/languages/grammar/loader.rb"
+      require "#{RCC_LIBDIR}/languages/grammar/grammar.rb"
 
       puts "#{RCC_WELCOME}\n\n" if $stdout.tty?
 
@@ -36,7 +36,7 @@
       #
       # Initialize the RCC system
       $dur = 0
-      parser_factory = RCC::Languages::Grammar::Loader.initialize_bootstrap_parser()
+      parser_factory = RCC::Languages::Grammar.factory()
 
       # File.open("states.out", "w+") do |file|
       #    stream = ContextStream.new(file)
@@ -52,64 +52,6 @@
 
       ARGV.each do |test|
          case test
-
-         #
-         # Drive the Source over the supplied grammar.  Test streaming capabilities.
-
-         when "read"
-            source    = parser_factory.open_source( ARGV.shift )
-            last_code = nil
-            count     = 0
-            source.each_character do |position, code, line_number, column_number|
-               if last_code == 10 then
-                  count += 1
-                  if count == 4 then
-                     source.commit(position - 1) 
-                     count = 0
-                  end
-               end
-
-               info = line_number.to_s.rjust(3) + ":" + column_number.to_s.rjust(3) + "|   " + code.to_s.ljust(4) + " " + [code].pack("U*").escape.ljust(2) + "|   "
-
-               sample, marker = source.sample_line_and_mark_position()
-               if sample then
-                  $stdout << info << sample << "\n"
-                  $stdout << ("-" * info.length) << marker << "\n"
-               else
-                  $stdout << info << "\n"
-                  $stdout << "\n"
-               end
-
-               $stdout << "\n" if code == 10
-
-               last_code = code
-            end
-
-
-
-         #
-         # Drive the Lexer over the Source.
-
-         when "lex"
-            lexer = parser_factory.build_lexer( ARGV.shift )
-            while token = lexer.read( lexer.next_position, parser_factory.lexer_plan )
-               token.display( $stdout )
-            end
-
-            # while token = lexer.next_token( parser_plan.lexer_plan, explain ? "" : nil )
-            #    if explain then
-            #       puts "\n"
-            #    else
-            #       puts "[#{token.gsub("\n", "\\n")}]#{token.type.is_a?(Symbol) ? ":" + token.type.to_s : "" } at #{token.line_number}:#{token.column_number}"
-            #    end
-            # end
-            # 
-            # if lexer.input_remaining? then
-            #    puts "UNRECOGNIZED INPUT at #{lexer.line_number}:#{lexer.column_number} [#{lexer.sample_unconsumed.gsub("\n", "\\n")}]"
-            # else
-            #    puts "DONE"
-            # end
-            # 
 
 
          #
