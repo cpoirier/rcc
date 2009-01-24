@@ -37,15 +37,13 @@ module Grammar
             require "#{RCC_LIBDIR}/languages/grammar/model_builder.rb"
             require "#{RCC_LIBDIR}/scanner/interpreter/factory.rb"
             
-            duration = Time.measure do
+            Time.log_duration( "build the RCC grammar" ) do
                system_model = ModelBuilder.build( ast() )
                master_plan  = system_model.compile_master_plan()
                parser_plan  = master_plan.compile_parser_plan( system_model.start_rule )
                
                @@factory = RCC::Scanner::Interpreter::Factory.new( parser_plan )
             end
-            
-            puts "It took #{duration}s to build the RCC grammar"
          end
       end
       

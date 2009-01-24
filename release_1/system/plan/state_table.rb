@@ -128,7 +128,7 @@ module Plan
             # Step 1: Transitively construct states for everything in the work queue.
             
             processed = []
-            duration = Time.measure do
+            Time.log_duration( "enumerate_syntactic_transitions()" ) do 
                until @work_queue.empty?
                   current_state = @work_queue.shift
                   processed << current_state
@@ -139,15 +139,13 @@ module Plan
                   end
                end
             end
-            
-            puts "It took #{duration} seconds to enumerate_syntactic_transitions()"
                   
             #
             # Step 2: Close the processed States' Items to new follow contexts.  We'll need this data locked 
             # down for action generation.  Unfortunately, that means we can no longer merge new states with
             # our existing ones, so we clear the signature index.
          
-            duration = Time.measure do
+            Time.log_duration( "close_items() for syntax states" ) do 
                processed.each do |state|
                   state.close_items()
                end
@@ -161,7 +159,7 @@ module Plan
             # may be added to the table (to properly handle discards).  We'll pick them up on the next go
             # round.
             
-            duration = Time.measure do 
+            Time.log_duration( "compile_syntactic_actions()" ) do 
                processed.each do |state|
                   # state.display
                   state.compile_syntactic_actions( self, estream )
@@ -172,8 +170,6 @@ module Plan
                   # end
                end
             end
-            
-            puts "It took #{duration} seconds to compile_syntactic_actions()"
          end
       end
       
@@ -193,7 +189,7 @@ module Plan
          @work_queue = [] + @states
          processed   = []
          
-         duration = Time.measure do
+         Time.log_duration( "enumerate_lexical_transitions()" ) do 
             until @work_queue.empty?
                current_state = @work_queue.shift
                processed << current_state
@@ -206,15 +202,13 @@ module Plan
             end
          end
          
-         puts "It took #{duration} seconds to enumerate_lexical_transitions()"
-         
                
          #
          # Step 2: Close the processed States' Items to new follow contexts.  We'll need this data locked 
          # down for action generation.  As this is the last pass through enumeration, we can clear the
          # signature index.
       
-         duration = Time.measure do
+         Time.log_duration( "close_items() for lexical states" ) do 
             processed.each do |state|
                state.close_items()
             end
@@ -227,13 +221,11 @@ module Plan
          # Step 3: Build lexical actions for the States we processed (the whole table, actually).  Unlike with
          # syntactic action compilation, this is the last hurrah.  We'll be here exactly and only once.
          
-         duration = Time.measure do 
+         Time.log_duration( "compile_lexical_actions()" ) do 
             processed.each do |state|
                state.compile_lexical_actions( estream )
             end
          end
-
-         puts "It took #{duration} seconds to compile_lexical_actions()"
 
 
          #

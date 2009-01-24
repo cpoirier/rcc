@@ -36,5 +36,21 @@ class Time
       return [Time.now - start, got]
    end
    
+   #
+   # Time.log_duration()
+   #  - measure()s your block and outputs the duration, if appropriate
+   #  - your message should have a %f where you want the duration included
+   
+   def Time.log_duration( label, stream = $stdout, format = "TIME %s: %fs" )
+      wanted = (stream.respond_to?(:[]) ? stream[:durations] : nil)
+      
+      if wanted && (wanted.member?(:all) || wanted.member?(label)) then
+         duration = Time.measure { yield() }
+         stream.puts sprintf( format, label, duration )
+      else
+         yield()
+      end
+   end
+   
 end
 

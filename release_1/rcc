@@ -31,24 +31,13 @@
 
       warn_bug( "setting $stderr to $stdout" )
       $stderr = $stdout
+      
+      $stdout[:show_duration_labels] = true
+      $stdout[:durations] = [:all]
 
 
       #
       # Initialize the RCC system
-      $dur = 0
-      parser_factory = RCC::Languages::Grammar.parser_factory()
-
-      # File.open("states.out", "w+") do |file|
-      #    stream = ContextStream.new(file)
-      #    with_context_variables( :grammar_name => "RCC" ) do 
-      #       stream.with( :state_actions => true ) do
-      #          parser_factory.parser_plan.state_table.each do |state|
-      #             state.display( stream )
-      #             stream.blank_lines( 3 )
-      #          end
-      #       end
-      #    end
-      # end
 
       ARGV.each do |test|
          case test
@@ -60,7 +49,8 @@
          when "debug"
             $stdout[:state_context]  = :determinants
             $stdout[:state_complete] = true
-            parser = parser_factory.build_parser( ARGV.shift )
+            $stdout[:durations]      = []
+            parser = RCC::Languages::Grammar.parser_factory.build_parser( ARGV.shift )
             parser.parser_plan.state_table.each do |state|
                state.display( $stdout )
                $stdout.puts ""
@@ -74,7 +64,7 @@
             $stdout[:hide_ignored]   = true
             $stdout[:skip_generated] = true
 
-            parser   = parser_factory.build_parser( ARGV.shift )
+            parser   = RCC::Languages::Grammar.parser_factory.build_parser( ARGV.shift )
             solution = parser.parse( nil, 0 )
 
             if solution.valid? then
@@ -88,7 +78,7 @@
          # Parse a grammar, then parse something with it.
 
          when "try"
-            parser   = parser_factory.build_parser( ARGV.shift )
+            parser   = RCC::Languages::Grammar.parser_factory.build_parser( ARGV.shift )
             solution = parser.parse( nil )
 
             if solution.valid? then
@@ -99,7 +89,8 @@
    puts "===> Solution is valid; BUILDING parser"            
                built_factory = nil
 
-               duration = Time.measure do 
+
+               Time.log_duration( "parser built" ) do 
                   system_model = RCC::Languages::Grammar::ModelBuilder.build( solution.ast )
                   master_plan  = system_model.compile_master_plan()
                   parser_plan  = master_plan.compile_parser_plan( system_model.start_rule )
@@ -118,7 +109,6 @@
                   end
                end
 
-   puts "===> Parser built in #{duration}s; PARSING input"            
                built_parser = built_factory.build_parser( "<stdin>", $stdin )
                solution = built_parser.parse( nil, 3 )
 
