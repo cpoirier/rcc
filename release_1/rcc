@@ -36,7 +36,7 @@
       #
       # Initialize the RCC system
       $dur = 0
-      parser_factory = RCC::Languages::Grammar.factory()
+      parser_factory = RCC::Languages::Grammar.parser_factory()
 
       # File.open("states.out", "w+") do |file|
       #    stream = ContextStream.new(file)

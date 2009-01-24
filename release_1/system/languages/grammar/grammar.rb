@@ -26,10 +26,10 @@ module Grammar
    
    
    #
-   # ::factory()
+   # ::parser_factory()
    #  - returns a factory for grammar parsers -- the fastest one available
    
-   def self.factory()
+   def self.parser_factory()
       if @@factory.nil? then
          if File.exists?("#{RCC_LIBDIR}/languages/grammar/parser/parser.rb") then
             nyi( "support for pre-build parser" )
