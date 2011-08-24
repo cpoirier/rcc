@@ -1,6 +1,6 @@
 This is my "ruby compiler compiler" project. Unfortunately, it doesn't currently work, and development stopped several years ago. Ultimately, I got too smart for myself -- I ended up designing something I wasn't smart enough to build.
 
-In the current repository, the +release_0+ directory represents a snapshot of the pretty-much working original design, just before (or maybe a few days after) I decided to redesign it all from scratch. The +release_1+ directory contains that redesign, and is  unfinished.
+In the current repository, the +release_1+ is where the action was last happening (judging from the commit log).
 
 
 
