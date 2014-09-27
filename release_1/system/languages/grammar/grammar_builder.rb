@@ -549,13 +549,13 @@ module Grammar
          
          case node.type.name
             when "general_character"
-               result = node.text[0]
+               result = node.text.codepoints[0]
                
             when "escape_sequence"
                if @@escape_sequences.member?(node.text) then
-                  result = @@escape_sequences[node.text][0]
+                  result = @@escape_sequences[node.text].codepoints[0]
                else
-                  result = node.text[1]
+                  result = node.text.codepoints[1]
                end
                
             when "unicode_sequence"

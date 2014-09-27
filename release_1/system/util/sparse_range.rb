@@ -260,7 +260,7 @@ module Util
                end
             
             else
-               bug( "unsupported RHS type [#{delta.class.name}]" )
+               bug( "unsupported RHS type [#{delta.class.name}]", delta )
          end
       end
 
